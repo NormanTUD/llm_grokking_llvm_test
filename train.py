@@ -907,7 +907,7 @@ def parse_args() -> argparse.Namespace:
 
     # ── Model architecture ──────────────────────────────────────────────
     g = p.add_argument_group("Model Architecture")
-    g.add_argument("--target-params", type=int, default=100_000,
+    g.add_argument("--target-params", type=int, default=1_000,
                    help="Target number of model parameters (used for auto config)")
     g.add_argument("--d-model", type=int, default=0,
                    help="Model dimension (0 = auto from target-params)")
