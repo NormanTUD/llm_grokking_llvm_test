@@ -3,3 +3,7 @@ rich
 torch
 matplotlib
 llvmlite
+ripser
+persim
+scikit-learn
+scipy

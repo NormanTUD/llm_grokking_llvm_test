@@ -93,6 +93,38 @@ def condition_number(sigma: np.ndarray) -> float:
 
 # ═══════════════════════════════════════════════════════════════════════
 
+def load_trained_model(
+    checkpoint_path: str = "runs/latest/checkpoint.pt",
+    vocab_size: int = 80,
+    d_model: int = 32,
+    n_heads: int = 4,
+    n_layers: int = 4,
+    max_seq_len: int = 256,
+) -> TinyGPT:
+    """Load a trained TinyGPT from a checkpoint file."""
+    config = LLVMGPTConfig(
+        vocab_size=vocab_size,
+        d_model=d_model,
+        n_heads=n_heads,
+        n_layers=n_layers,
+        max_seq_len=max_seq_len,
+        dropout=0.0,
+    )
+    model = TinyGPT(config)
+
+    # Load trained weights
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    # Handle different checkpoint formats:
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["state_dict"])
+    else:
+        model.load_state_dict(checkpoint)
+
+    model.eval()
+    print(f"       Loaded checkpoint from: {checkpoint_path}")
+    return model
 
 def build_small_model(vocab_size: int = 80, d_model: int = 32,
                        n_heads: int = 4, n_layers: int = 4,
@@ -433,13 +465,13 @@ def main():
     tokenizer = CharTokenizer()
 
     print("[2/6] Building model...")
-    model = build_small_model(
-        vocab_size=tokenizer.vocab_size,
-        d_model=32,
-        n_heads=4,
-        n_layers=4,
-        max_seq_len=256,
-    )
+    model = load_trained_model(
+            checkpoint_path="runs/latest/checkpoint.pt",  # <-- adjust to your actual path
+            vocab_size=tokenizer.vocab_size,
+            d_model=32,
+            n_heads=4,
+            n_layers=4,
+            )
     print(f"       Parameters: {model.count_parameters():,}")
 
     # Create a sample input
