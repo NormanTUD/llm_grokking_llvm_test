@@ -62,7 +62,6 @@ from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
 import random
-from topo_plotter import TopoPlotter
 from generate_samples import generate_example_samples
 from random_llvm_gen import generate_random_function
 import subprocess
@@ -723,15 +722,48 @@ class EpochController:
 # 7.  LIVE PLOTTER
 # ════════════════════════════════════════════════════════════════════════════
 
+# ════════════════════════════════════════════════════════════════════════════
+# 7.  LIVE PLOTTER  (with integrated TDA barcode + birth/death panels)
+# ════════════════════════════════════════════════════════════════════════════
+
+try:
+    from ripser import ripser as _ripser_fn
+    _HAS_RIPSER = True
+except ImportError:
+    _HAS_RIPSER = False
+
+try:
+    from sklearn.decomposition import PCA as _PCA
+    from sklearn.preprocessing import StandardScaler as _StandardScaler
+    _HAS_SKLEARN = True
+except ImportError:
+    _HAS_SKLEARN = False
+
+
 class LivePlotter:
-    def __init__(self, enabled: bool = True, update_every: int = 5):
+    def __init__(self, enabled: bool = True, update_every: int = 5,
+                 topo_enabled: bool = False, topo_every: int = 50,
+                 topo_max_points: int = 200, topo_pca_dim: int = 30):
         self.enabled = enabled
         self.update_every = update_every
         self._global_batch = 0
-        self._ema_train = None  # ← THIS WAS MISSING
+        self._ema_train = None
+
+        # ── TDA config ──────────────────────────────────────────────────
+        self.topo_enabled = topo_enabled and _HAS_RIPSER and enabled
+        self.topo_every = topo_every
+        self.topo_max_points = topo_max_points
+        self.topo_pca_dim = topo_pca_dim
+        self._topo_step = 0
+        self._topo_dgms = None  # latest persistence diagrams
+        self._topo_layer_name = ""
 
         if not enabled:
             return
+
+        if topo_enabled and not _HAS_RIPSER:
+            console.print("[yellow][TopoPlotter] ripser not installed. "
+                          "pip install ripser  — TDA panels disabled.[/]")
 
         _suppress_c_stderr()
         try:
@@ -741,54 +773,94 @@ class LivePlotter:
             _restore_c_stderr()
 
         self.plt.ion()
-        self.fig, self.axes = self.plt.subplots(2, 2, figsize=(16, 10))
+
+        # ── 2×3 grid if TDA enabled, else 2×2 ──────────────────────────
+        if self.topo_enabled:
+            self.fig, axes_arr = self.plt.subplots(2, 3, figsize=(22, 11))
+            ax_epoch    = axes_arr[0, 0]
+            ax_batch    = axes_arr[0, 1]
+            ax_lr       = axes_arr[0, 2]
+            ax_val      = axes_arr[1, 0]
+            ax_barcode  = axes_arr[1, 1]
+            ax_bd       = axes_arr[1, 2]
+            self.ax_barcode = ax_barcode
+            self.ax_bd = ax_bd
+            self.axes = axes_arr
+        else:
+            self.fig, axes_arr = self.plt.subplots(2, 2, figsize=(16, 10))
+            ax_epoch = axes_arr[0, 0]
+            ax_batch = axes_arr[0, 1]
+            ax_lr    = axes_arr[1, 0]
+            ax_val   = axes_arr[1, 1]
+            self.ax_barcode = None
+            self.ax_bd = None
+            self.axes = axes_arr
+
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
         try:
             self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
         except Exception:
             pass
 
-        ax_epoch, ax_batch, ax_lr, ax_val = self.axes.flat
-
-        # Top-left: Epoch losses
+        # ── Top-left: Epoch losses ──────────────────────────────────────
         ax_epoch.set_title("Epoch Loss")
         ax_epoch.set_xlabel("Epoch")
         ax_epoch.set_ylabel("Loss")
         ax_epoch.grid(True, alpha=0.3)
-        self.line_train_epoch, = ax_epoch.plot([], [], label="Train", color="steelblue", linewidth=2)
-        self.line_val_epoch, = ax_epoch.plot([], [], label="Val", color="tomato", linewidth=2)
+        self.line_train_epoch, = ax_epoch.plot([], [], label="Train",
+                                                color="steelblue", linewidth=2)
+        self.line_val_epoch, = ax_epoch.plot([], [], label="Val",
+                                              color="tomato", linewidth=2)
         ax_epoch.legend(loc="upper right")
 
-        # Top-right: Batch loss EMA (train)
+        # ── Top-center: Batch loss EMA ──────────────────────────────────
         ax_batch.set_title("Batch Loss (Train EMA)")
         ax_batch.set_xlabel("Batch")
         ax_batch.set_ylabel("Loss")
         ax_batch.grid(True, alpha=0.3)
-        self.line_batch_ema, = ax_batch.plot([], [], label="Train EMA", color="steelblue", linewidth=2)
+        self.line_batch_ema, = ax_batch.plot([], [], label="Train EMA",
+                                              color="steelblue", linewidth=2)
         ax_batch.legend(loc="upper right")
 
-        # Bottom-left: LR
+        # ── Top-right (or bottom-left): LR ─────────────────────────────
         ax_lr.set_title("Learning Rate")
         ax_lr.set_xlabel("Epoch")
         ax_lr.set_ylabel("LR")
         ax_lr.grid(True, alpha=0.3)
         ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
-        self.line_lr, = ax_lr.plot([], [], label="LR", color="seagreen", linewidth=2)
+        self.line_lr, = ax_lr.plot([], [], label="LR",
+                                    color="seagreen", linewidth=2)
         ax_lr.legend(loc="upper right")
 
-        # Bottom-right: Val batch loss — raw per-batch + epoch average markers
+        # ── Val batch loss ──────────────────────────────────────────────
         ax_val.set_title("Batch Loss (Val)")
         ax_val.set_xlabel("Global Val Batch")
         ax_val.set_ylabel("Loss")
         ax_val.grid(True, alpha=0.3)
-        self.line_val_raw, = ax_val.plot(
-            [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
-        )
-        self.line_val_epoch_avg, = ax_val.plot(
-            [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
-            marker="o", markersize=4,
-        )
+        self.line_val_raw, = ax_val.plot([], [], label="Val Batch",
+                                          color="tomato", linewidth=1.0, alpha=0.5)
+        self.line_val_epoch_avg, = ax_val.plot([], [], label="Val Epoch Avg",
+                                                color="darkred", linewidth=2.0,
+                                                marker="o", markersize=4)
         ax_val.legend(loc="upper right")
+
+        # ── TDA: Barcode panel ──────────────────────────────────────────
+        if self.ax_barcode is not None:
+            self.ax_barcode.set_title("TDA Barcode (Embedding Space)")
+            self.ax_barcode.text(0.5, 0.5, "Waiting for data...",
+                                  ha="center", va="center",
+                                  transform=self.ax_barcode.transAxes,
+                                  fontsize=11, alpha=0.4)
+            self.ax_barcode.grid(True, alpha=0.2, axis="x")
+
+        # ── TDA: Birth/Death panel ──────────────────────────────────────
+        if self.ax_bd is not None:
+            self.ax_bd.set_title("TDA Birth / Death (Persistence)")
+            self.ax_bd.text(0.5, 0.5, "Waiting for data...",
+                             ha="center", va="center",
+                             transform=self.ax_bd.transAxes,
+                             fontsize=11, alpha=0.4)
+            self.ax_bd.grid(True, alpha=0.2)
 
         self.fig.tight_layout()
 
@@ -798,7 +870,6 @@ class LivePlotter:
         self.batch_ema: List[float] = []
         self.lr_history: List[float] = []
 
-        # Val batch: raw losses + epoch averages
         self.val_batch_raw: List[float] = []
         self._val_epoch_batch_buf: List[float] = []
         self._val_epoch_avg_xs: List[float] = []
@@ -809,6 +880,7 @@ class LivePlotter:
         self.fig.canvas.flush_events()
         self.plt.pause(0.001)
 
+    # ── Refresh helper ──────────────────────────────────────────────────
     def _refresh(self):
         if not self.enabled:
             return
@@ -822,6 +894,7 @@ class LivePlotter:
         finally:
             _restore_c_stderr()
 
+    # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
         if not self.enabled:
             return
@@ -839,15 +912,14 @@ class LivePlotter:
             self.line_batch_ema.set_data(xs, self.batch_ema)
             self._refresh()
 
+    # ── Val batch ───────────────────────────────────────────────────────
     def update_val_batch(self, val_batch_loss: float):
-        """Record a single raw val batch loss."""
         if not self.enabled:
             return
         self.val_batch_raw.append(val_batch_loss)
         self._val_epoch_batch_buf.append(val_batch_loss)
 
     def finish_val_epoch(self):
-        """Call after all val batches in an epoch. Computes epoch avg and updates plot."""
         if not self.enabled:
             return
         if self._val_epoch_batch_buf:
@@ -859,11 +931,12 @@ class LivePlotter:
             self._val_epoch_avg_ys.append(avg)
             self._val_epoch_batch_buf = []
 
-        # Update plot lines
         vxs = list(range(len(self.val_batch_raw)))
         self.line_val_raw.set_data(vxs, self.val_batch_raw)
-        self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs, self._val_epoch_avg_ys)
+        self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs,
+                                          self._val_epoch_avg_ys)
 
+    # ── Epoch update ────────────────────────────────────────────────────
     def update_epoch(self, train_loss: float, val_loss: float, lr: float):
         if not self.enabled:
             return
@@ -877,10 +950,197 @@ class LivePlotter:
         self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
         self.line_lr.set_data(epochs, self.lr_history)
 
-        # finish_val_epoch already updated the val batch plot,
-        # just refresh everything
         self._refresh()
 
+    # ════════════════════════════════════════════════════════════════════
+    # TDA: Topological Data Analysis — integrated into the same window
+    # ════════════════════════════════════════════════════════════════════
+
+    @torch.no_grad()
+    def update_topo(self, model: nn.Module, input_ids: torch.Tensor):
+        """
+        Call every training batch. Computes persistent homology every
+        `topo_every` steps and updates the barcode + birth/death panels.
+        """
+        if not self.topo_enabled:
+            return
+
+        self._topo_step += 1
+        if self._topo_step % self.topo_every != 0:
+            return
+
+        was_training = model.training
+        model.eval()
+
+        try:
+            # 1. Extract hidden states from the model
+            output = model(input_ids=input_ids, output_hidden_states=True)
+            hidden_states = output.hidden_states
+            if hidden_states is None:
+                return
+
+            # Pick the middle layer for a representative view, plus embedding
+            n_layers = len(hidden_states)
+            if n_layers >= 3:
+                layer_idx = n_layers // 2
+                layer_name = f"Block {layer_idx - 1}"
+            else:
+                layer_idx = n_layers - 1
+                layer_name = "Embed+Pos" if layer_idx == 0 else f"Block {layer_idx - 1}"
+
+            hs = hidden_states[layer_idx]  # (batch, seq, d_model)
+            points = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
+
+            # Subsample
+            if points.shape[0] > self.topo_max_points:
+                idx = np.random.choice(points.shape[0],
+                                       self.topo_max_points, replace=False)
+                points = points[idx]
+
+            # 2. Optional PCA
+            if _HAS_SKLEARN and points.shape[1] > self.topo_pca_dim:
+                scaler = _StandardScaler()
+                points = scaler.fit_transform(points)
+                n_comp = min(self.topo_pca_dim, points.shape[0], points.shape[1])
+                pca = _PCA(n_components=n_comp)
+                points = pca.fit_transform(points)
+
+            # 3. Compute persistence
+            if points.shape[0] > 100:
+                sample = points[np.random.choice(points.shape[0], 100, replace=False)]
+            else:
+                sample = points
+
+            dists = np.linalg.norm(sample[:, None] - sample[None, :], axis=-1)
+            thresh = np.percentile(dists[dists > 0], 50)
+
+            result = _ripser_fn(points, maxdim=1, thresh=thresh)
+            dgms = result["dgms"]
+
+            self._topo_dgms = dgms
+            self._topo_layer_name = layer_name
+
+            # 4. Draw barcode
+            self._draw_barcode(dgms, layer_name)
+
+            # 5. Draw birth/death
+            self._draw_birth_death(dgms, layer_name)
+
+            self._refresh()
+
+        except Exception as e:
+            # Silently skip — don't crash training for a visualization bug
+            pass
+        finally:
+            if was_training:
+                model.train()
+
+    def _draw_barcode(self, dgms: list, layer_name: str):
+        """Draw persistence barcode on self.ax_barcode."""
+        ax = self.ax_barcode
+        if ax is None:
+            return
+
+        ax.clear()
+        ax.set_title(f"TDA Barcode — {layer_name}  (step {self._topo_step})",
+                      fontsize=9, fontweight="bold")
+
+        colors = ["#2196F3", "#FF5722", "#4CAF50"]
+        dim_labels = ["H₀ (components)", "H₁ (loops)", "H₂ (voids)"]
+
+        y_offset = 0
+        y_ticks = []
+        y_tick_labels = []
+
+        for dim, dgm in enumerate(dgms):
+            if dim > 1:
+                break
+
+            finite = dgm[np.isfinite(dgm[:, 1])]
+            if len(finite) == 0:
+                continue
+
+            # Sort by persistence (longest bars on top)
+            persistences = finite[:, 1] - finite[:, 0]
+            order = np.argsort(-persistences)
+            finite = finite[order]
+
+            start_y = y_offset
+            for bar in finite:
+                birth, death = bar
+                ax.plot(
+                    [birth, death], [y_offset, y_offset],
+                    color=colors[dim % len(colors)],
+                    linewidth=2.0, alpha=0.8,
+                    solid_capstyle="butt",
+                )
+                y_offset += 1
+
+            mid_y = (start_y + y_offset) / 2
+            y_ticks.append(mid_y)
+            y_tick_labels.append(
+                dim_labels[dim] if dim < len(dim_labels) else f"H_{dim}"
+            )
+
+        ax.set_xlabel("Filtration value", fontsize=8)
+        if y_ticks:
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels(y_tick_labels, fontsize=8)
+        else:
+            ax.set_yticks([])
+        ax.grid(True, alpha=0.2, axis="x")
+        ax.tick_params(axis="x", labelsize=7)
+
+    def _draw_birth_death(self, dgms: list, layer_name: str):
+        """Draw birth/death persistence diagram on self.ax_bd."""
+        ax = self.ax_bd
+        if ax is None:
+            return
+
+        ax.clear()
+        ax.set_title(f"TDA Birth/Death — {layer_name}  (step {self._topo_step})",
+                      fontsize=9, fontweight="bold")
+
+        colors = ["#2196F3", "#FF5722", "#4CAF50"]
+        labels = ["H₀", "H₁", "H₂"]
+
+        all_vals = []
+        for dim, dgm in enumerate(dgms):
+            if dim > 1:
+                break
+            finite = dgm[np.isfinite(dgm[:, 1])]
+            if len(finite) == 0:
+                continue
+
+            all_vals.extend(finite.flatten().tolist())
+            ax.scatter(
+                finite[:, 0], finite[:, 1],
+                s=25, alpha=0.7,
+                color=colors[dim % len(colors)],
+                label=labels[dim] if dim < len(labels) else f"H_{dim}",
+                edgecolors="white", linewidth=0.4,
+                zorder=3,
+            )
+
+        if all_vals:
+            lo, hi = min(all_vals), max(all_vals)
+            margin = (hi - lo) * 0.1 + 1e-6
+            ax.plot(
+                [lo - margin, hi + margin],
+                [lo - margin, hi + margin],
+                "k--", alpha=0.3, linewidth=1, zorder=1,
+            )
+            ax.set_xlim(lo - margin, hi + margin)
+            ax.set_ylim(lo - margin, hi + margin)
+
+        ax.set_xlabel("Birth", fontsize=8)
+        ax.set_ylabel("Death", fontsize=8)
+        ax.legend(fontsize=7, loc="lower right")
+        ax.grid(True, alpha=0.2)
+        ax.tick_params(labelsize=7)
+        ax.set_aspect("equal", adjustable="box")
+
+    # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
         if not self.enabled:
             return
@@ -951,13 +1211,13 @@ def train(args: argparse.Namespace):
     random.seed(args.seed)
 
     # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
-    plotter = LivePlotter(enabled=args.plot, update_every=args.plot_every)
-
-    topo_plotter = TopoPlotter(
-        enabled=args.topo,
-        update_every=args.topo_every,
-        max_points=args.topo_max_points,
-        max_layers_to_show=args.topo_max_layers,
+    plotter = LivePlotter(
+        enabled=args.plot,
+        update_every=args.plot_every,
+        topo_enabled=args.topo,
+        topo_every=args.topo_every,
+        topo_max_points=args.topo_max_points,
+        topo_pca_dim=30,
     )
 
     # ── Tokenizer ───────────────────────────────────────────────────────
@@ -1177,10 +1437,7 @@ def train(args: argparse.Namespace):
                     ema_loss = 0.05 * bl + 0.95 * ema_loss
 
                 plotter.update_batch(bl)
-
-                # ── Topological barcode update ──────────────────────
-                if args.topo:
-                    topo_plotter.update(model, inp)
+                plotter.update_topo(model, inp)
 
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
@@ -1420,7 +1677,6 @@ def train(args: argparse.Namespace):
         )
 
     console.print("Finalizing plotters")
-    topo_plotter.finalize()
     plotter.finalize()
 
     if run_logger:
@@ -1542,9 +1798,6 @@ def parse_args() -> argparse.Namespace:
                    help="Update topological barcodes every N batches")
     g.add_argument("--topo-max-points", type=int, default=200,
                    help="Max points to subsample for persistence computation")
-    g.add_argument("--topo-max-layers", type=int, default=6,
-                   help="Max layers to display in topo window")
-
 
     return p.parse_args()
 
