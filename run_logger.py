@@ -56,8 +56,9 @@ class RunLogger:
             time.strftime("%Y-%m-%d %H:%M:%S %Z")
         )
 
-    def get_base_dir(self):
-        return self.base_dir
+    def get_base_dir(self) -> str:
+        """Returns the base directory and the run ID (nr) as a tuple."""
+        return f"{self.base_dir}/{self.run_id}"
 
     def _next_run_id(self) -> int:
         """Find the next available run ID by scanning existing folders."""
