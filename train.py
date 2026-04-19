@@ -655,7 +655,7 @@ class EpochController:
     Press  q          →  finish after current epoch
     """
 
-    def __init__(self, initial_epochs: int, step: int = 10):
+    def __init__(self, initial_epochs: int, step: int = 10, plotter=None):
         self.total_epochs = initial_epochs
         self.step = step
         self._min_epoch = 1
@@ -663,6 +663,7 @@ class EpochController:
         self._thread = None
         self._running = False
         self._quit = False
+        self._plotter = plotter  # Reference to LivePlotter for reopen
 
     def start(self):
         self._running = True
@@ -711,6 +712,13 @@ class EpochController:
                                 f"\n[bold red]  ↓ Epochs → "
                                 f"{self.total_epochs} (-{self.step})[/]\n"
                             )
+                        elif ch == "r":
+                            # Request plot window reopen
+                            if self._plotter is not None:
+                                self._plotter.request_reopen()
+                                console.print(
+                                    "\n[bold cyan]  📊 Reopen plot requested...[/]\n"
+                                )
                         elif ch == "q":
                             with self._lock:
                                 self._quit = True
@@ -748,11 +756,17 @@ except ImportError:
 class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
                  topo_enabled: bool = False, topo_every: int = 50,
-                 topo_max_points: int = 200, topo_pca_dim: int = 30):
+                 topo_max_points: int = 200, topo_pca_dim: int = 30,
+                 suppress_window: bool = False, plot_file: str = "training_plot.png"):
         self.enabled = enabled
         self.update_every = update_every
         self._global_batch = 0
         self._ema_train = None
+        self.suppress_window = suppress_window
+        self.plot_file = plot_file
+        self._window_closed = False
+        self._reopen_requested = False
+        self._lock = threading.Lock()
 
         # ── TDA config ──────────────────────────────────────────────────
         self.topo_enabled = topo_enabled and _HAS_RIPSER and enabled
@@ -760,7 +774,7 @@ class LivePlotter:
         self.topo_max_points = topo_max_points
         self.topo_pca_dim = topo_pca_dim
         self._topo_step = 0
-        self._topo_dgms = None  # latest persistence diagrams
+        self._topo_dgms = None
         self._topo_layer_name = ""
 
         if not enabled:
@@ -772,14 +786,39 @@ class LivePlotter:
 
         _suppress_c_stderr()
         try:
-            matplotlib.use("TkAgg")
+            if suppress_window:
+                matplotlib.use("Agg")
+            else:
+                matplotlib.use("TkAgg")
             self.plt = plt
         finally:
             _restore_c_stderr()
 
-        self.plt.ion()
+        if not suppress_window:
+            self.plt.ion()
 
-        # ── 2×3 grid if TDA enabled, else 2×2 ──────────────────────────
+        # ── Data stores (initialized BEFORE _create_figure) ─────────────
+        self.train_epoch_losses: List[float] = []
+        self.val_epoch_losses: List[float] = []
+        self.batch_ema: List[float] = []
+        self.lr_history: List[float] = []
+
+        self.val_batch_raw: List[float] = []
+        self._val_epoch_batch_buf: List[float] = []
+        self._val_epoch_avg_xs: List[float] = []
+        self._val_epoch_avg_ys: List[float] = []
+
+        self._create_figure()
+
+        if not suppress_window:
+            # Start a thread that watches for window close events
+            self._window_watch_thread = threading.Thread(
+                target=self._watch_window, daemon=True
+            )
+            self._window_watch_thread.start()
+
+    def _create_figure(self):
+        """Create (or recreate) the matplotlib figure and axes."""
         if self.topo_enabled:
             self.fig, axes_arr = self.plt.subplots(2, 3, figsize=(22, 11))
             ax_epoch    = axes_arr[0, 0]
@@ -827,7 +866,7 @@ class LivePlotter:
                                               color="steelblue", linewidth=2)
         ax_batch.legend(loc="upper right")
 
-        # ── Top-right (or bottom-left): LR ─────────────────────────────
+        # ── LR ──────────────────────────────────────────────────────────
         ax_lr.set_title("Learning Rate")
         ax_lr.set_xlabel("Epoch")
         ax_lr.set_ylabel("LR")
@@ -849,7 +888,7 @@ class LivePlotter:
                                                 marker="o", markersize=4)
         ax_val.legend(loc="upper right")
 
-        # ── TDA: Barcode panel ──────────────────────────────────────────
+        # ── TDA panels ─────────────────────────────────────────────────
         if self.ax_barcode is not None:
             self.ax_barcode.set_title("TDA Barcode (Embedding Space)")
             self.ax_barcode.text(0.5, 0.5, "Waiting for data...",
@@ -858,7 +897,6 @@ class LivePlotter:
                                   fontsize=11, alpha=0.4)
             self.ax_barcode.grid(True, alpha=0.2, axis="x")
 
-        # ── TDA: Birth/Death panel ──────────────────────────────────────
         if self.ax_bd is not None:
             self.ax_bd.set_title("TDA Birth / Death (Persistence)")
             self.ax_bd.text(0.5, 0.5, "Waiting for data...",
@@ -869,33 +907,125 @@ class LivePlotter:
 
         self.fig.tight_layout()
 
-        # ── Data stores ─────────────────────────────────────────────────
-        self.train_epoch_losses: List[float] = []
-        self.val_epoch_losses: List[float] = []
-        self.batch_ema: List[float] = []
-        self.lr_history: List[float] = []
+        # ── Restore existing data onto the new figure ───────────────────
+        self._restore_data()
 
-        self.val_batch_raw: List[float] = []
-        self._val_epoch_batch_buf: List[float] = []
-        self._val_epoch_avg_xs: List[float] = []
-        self._val_epoch_avg_ys: List[float] = []
+        # ── Register close event ────────────────────────────────────────
+        if not self.suppress_window:
+            self.fig.canvas.mpl_connect('close_event', self._on_close)
 
         # Force window to appear
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
-        self.plt.pause(0.001)
+        if not self.suppress_window:
+            self.fig.canvas.draw()
+            self.fig.canvas.flush_events()
+            self.plt.pause(0.001)
+
+    def _restore_data(self):
+        """Re-plot all accumulated data onto current line objects."""
+        if self.train_epoch_losses:
+            epochs = list(range(1, len(self.train_epoch_losses) + 1))
+            self.line_train_epoch.set_data(epochs, self.train_epoch_losses)
+            self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
+
+        if self.batch_ema:
+            xs = list(range(len(self.batch_ema)))
+            self.line_batch_ema.set_data(xs, self.batch_ema)
+
+        if self.lr_history:
+            epochs = list(range(1, len(self.lr_history) + 1))
+            self.line_lr.set_data(epochs, self.lr_history)
+
+        if self.val_batch_raw:
+            vxs = list(range(len(self.val_batch_raw)))
+            self.line_val_raw.set_data(vxs, self.val_batch_raw)
+            self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs,
+                                              self._val_epoch_avg_ys)
+
+        # Redraw TDA if we have cached diagrams
+        if self._topo_dgms is not None and self.ax_barcode is not None:
+            self._draw_barcode(self._topo_dgms, self._topo_layer_name)
+            self._draw_birth_death(self._topo_dgms, self._topo_layer_name)
+
+    def _on_close(self, event):
+        """Called when the user closes the matplotlib window."""
+        with self._lock:
+            self._window_closed = True
+        console.print(
+            "\n[bold yellow]📊 Plot window closed. "
+            "Press [bold white]r[/bold white] to reopen it.[/]\n"
+        )
+
+    def _watch_window(self):
+        """Background thread: does nothing itself, reopen is triggered from
+        the EpochController key listener or a dedicated check."""
+        # This thread just periodically checks if a reopen was requested
+        while True:
+            time.sleep(0.2)
+            with self._lock:
+                if self._reopen_requested and self._window_closed:
+                    self._reopen_requested = False
+                    self._window_closed = False
+            # Actual figure recreation must happen on the main thread,
+            # so we just set a flag and let _refresh() handle it.
+
+    def request_reopen(self):
+        """Call this (e.g. from EpochController) to request window reopen."""
+        with self._lock:
+            if self._window_closed:
+                self._reopen_requested = True
+
+    def _check_reopen(self):
+        """Check if we need to reopen the window. Must be called from main thread."""
+        with self._lock:
+            needs_reopen = self._reopen_requested and self._window_closed
+            if needs_reopen:
+                self._reopen_requested = False
+                self._window_closed = False
+
+        if needs_reopen:
+            console.print("[bold green]📊 Reopening plot window...[/]")
+            self.plt.ion()
+            self._create_figure()
+
+    def _is_window_alive(self) -> bool:
+        """Check if the figure window is still open."""
+        with self._lock:
+            return not self._window_closed
+
+    # ── Save figure to file ─────────────────────────────────────────────
+    def _save_to_file(self):
+        """Save the current figure to disk."""
+        if not self.enabled:
+            return
+        try:
+            save_path = self.plot_file
+            if run_dir is not None:
+                save_path = os.path.join(run_dir, self.plot_file)
+            self.fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        except Exception as e:
+            pass  # Don't crash training for a file write error
 
     # ── Refresh helper ──────────────────────────────────────────────────
     def _refresh(self):
         if not self.enabled:
             return
+
+        # Check if user requested reopen (main-thread safe)
+        if not self.suppress_window:
+            self._check_reopen()
+
         _suppress_c_stderr()
         try:
             for ax in self.axes.flat:
                 ax.relim()
                 ax.autoscale_view()
-            self.fig.canvas.draw_idle()
-            self.fig.canvas.flush_events()
+
+            if not self.suppress_window and self._is_window_alive():
+                self.fig.canvas.draw_idle()
+                self.fig.canvas.flush_events()
+            else:
+                # Even if window is closed/suppressed, redraw for file saving
+                self.fig.canvas.draw()
         finally:
             _restore_c_stderr()
 
@@ -957,16 +1087,15 @@ class LivePlotter:
 
         self._refresh()
 
+        # Always save to file after each epoch
+        self._save_to_file()
+
     # ════════════════════════════════════════════════════════════════════
-    # TDA: Topological Data Analysis — integrated into the same window
+    # TDA methods (unchanged from original)
     # ════════════════════════════════════════════════════════════════════
 
     @torch.no_grad()
     def update_topo(self, model: nn.Module, input_ids: torch.Tensor):
-        """
-        Call every training batch. Computes persistent homology every
-        `topo_every` steps and updates the barcode + birth/death panels.
-        """
         if not self.topo_enabled:
             return
 
@@ -981,13 +1110,11 @@ class LivePlotter:
         model.eval()
 
         try:
-            # 1. Extract hidden states from the model
             output = model(input_ids=input_ids, output_hidden_states=True)
             hidden_states = output.hidden_states
             if hidden_states is None:
                 return
 
-            # Pick the middle layer for a representative view, plus embedding
             n_layers = len(hidden_states)
             if n_layers >= 3:
                 layer_idx = n_layers // 2
@@ -996,16 +1123,14 @@ class LivePlotter:
                 layer_idx = n_layers - 1
                 layer_name = "Embed+Pos" if layer_idx == 0 else f"Block {layer_idx - 1}"
 
-            hs = hidden_states[layer_idx]  # (batch, seq, d_model)
+            hs = hidden_states[layer_idx]
             points = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
 
-            # Subsample
             if points.shape[0] > self.topo_max_points:
                 idx = np.random.choice(points.shape[0],
                                        self.topo_max_points, replace=False)
                 points = points[idx]
 
-            # 2. Optional PCA
             if _HAS_SKLEARN and points.shape[1] > self.topo_pca_dim:
                 scaler = _StandardScaler()
                 points = scaler.fit_transform(points)
@@ -1013,7 +1138,6 @@ class LivePlotter:
                 pca = _PCA(n_components=n_comp)
                 points = pca.fit_transform(points)
 
-            # 3. Compute persistence
             if points.shape[0] > 100:
                 sample = points[np.random.choice(points.shape[0], 100, replace=False)]
             else:
@@ -1028,23 +1152,18 @@ class LivePlotter:
             self._topo_dgms = dgms
             self._topo_layer_name = layer_name
 
-            # 4. Draw barcode
             self._draw_barcode(dgms, layer_name)
-
-            # 5. Draw birth/death
             self._draw_birth_death(dgms, layer_name)
 
             self._refresh()
 
-        except Exception as e:
-            # Silently skip — don't crash training for a visualization bug
+        except Exception:
             pass
         finally:
             if was_training:
                 model.train()
 
     def _draw_barcode(self, dgms: list, layer_name: str):
-        """Draw persistence barcode on self.ax_barcode."""
         ax = self.ax_barcode
         if ax is None:
             return
@@ -1068,7 +1187,6 @@ class LivePlotter:
             if len(finite) == 0:
                 continue
 
-            # Sort by persistence (longest bars on top)
             persistences = finite[:, 1] - finite[:, 0]
             order = np.argsort(-persistences)
             finite = finite[order]
@@ -1100,7 +1218,6 @@ class LivePlotter:
         ax.tick_params(axis="x", labelsize=7)
 
     def _draw_birth_death(self, dgms: list, layer_name: str):
-        """Draw birth/death persistence diagram on self.ax_bd."""
         ax = self.ax_bd
         if ax is None:
             return
@@ -1152,8 +1269,14 @@ class LivePlotter:
     def finalize(self):
         if not self.enabled:
             return
-        self.plt.ioff()
-        self.plt.show()
+
+        # Always save final plot to file
+        self._save_to_file()
+        console.print(f"[bold green]📊 Final plot saved to: {self.plot_file}[/]")
+
+        if not self.suppress_window:
+            self.plt.ioff()
+            self.plt.show()
 
 # ════════════════════════════════════════════════════════════════════════════
 # 8.  TIME ESTIMATOR
@@ -1226,6 +1349,8 @@ def train(args: argparse.Namespace):
         topo_every=args.topo_every,
         topo_max_points=args.topo_max_points,
         topo_pca_dim=30,
+        suppress_window=args.no_plot_window,
+        plot_file=args.plot_file,
     )
 
     # ── Tokenizer ───────────────────────────────────────────────────────
@@ -1336,6 +1461,7 @@ def train(args: argparse.Namespace):
     config_table.add_row("Controls", "+ / =", "Add 10 epochs")
     config_table.add_row("", "-", "Remove 10 epochs")
     config_table.add_row("", "q", "Finish after current epoch")
+    config_table.add_row("Controls", "r", "Reopen closed plot window")
 
     console.print(config_table)
 
@@ -1353,7 +1479,7 @@ def train(args: argparse.Namespace):
     is_plateau = args.scheduler == "plateau"
 
     # ── Epoch controller (keyboard) ─────────────────────────────────────
-    epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10)
+    epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10, plotter=plotter)
     epoch_ctrl.start()
 
     # ── Time estimator ──────────────────────────────────────────────────
@@ -1785,6 +1911,10 @@ def parse_args() -> argparse.Namespace:
                    help="Update plot every N batches")
     g.add_argument("--save-every", type=int, default=0,
                    help="Checkpoint every N epochs (0 = off)")
+    g.add_argument("--no-plot-window", action="store_true", default=False,
+                   help="Suppress the matplotlib window but still write plots to file")
+    g.add_argument("--plot-file", type=str, default="training_plot.png",
+                   help="Filename for the saved plot image (written every epoch)")
 
     g.add_argument("--run-dir", type=str, default="runs",
                    help="Base directory for run logs")
