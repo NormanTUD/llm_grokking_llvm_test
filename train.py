@@ -1268,7 +1268,7 @@ def train(args: argparse.Namespace):
         # ── Update epoch plot ───────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
-        save_path = f"{run_dir}/final.pt"
+        save_path = f"{run_dir}/"
 
         # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
         epoch_ckpt_path = os.path.join(save_path, f"model_epoch_{epoch}.pt")
@@ -1348,7 +1348,7 @@ def train(args: argparse.Namespace):
     summary_table.add_row("Total Time", timer.elapsed_total())
     summary_table.add_row("Avg Epoch Time", f"{timer.avg_epoch_time:.1f}s")
 
-    save_path = f"{run_dir}/final.pt"
+    save_path = f"{run_dir}/"
 
     summary_table.add_row("Save Path", save_path)
 
