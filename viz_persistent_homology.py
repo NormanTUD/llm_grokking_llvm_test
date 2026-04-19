@@ -2,6 +2,16 @@
 """
 Persistent Homology of Jacobian Fibre Structure.
 
+Usage:
+    python3 viz_persistent_homology.py runs/my_run_folder/
+
+The script will:
+  1. Auto-discover the checkpoint (.pt/.pth) and config in the run folder
+  2. Load the TRAINED model weights
+  3. Compute Jacobian SVD point clouds per layer
+  4. Compute persistent homology (Vietoris-Rips filtration)
+  5. Save visualization to <run_folder>/jacobian_persistent_homology.png
+
 Interpretation:
   For each layer k, the Jacobian J_k(x) at token position x has a
   singular value spectrum σ(x) = (σ_1, ..., σ_d). The collection
@@ -16,16 +26,17 @@ Interpretation:
   These are the REAL topological structures living in the Jacobian.
 
 Dependencies:
-    pip install ripser persim scikit-learn
-
-Saves to: jacobian_persistent_homology.png
+    pip install ripser persim scikit-learn scipy
 """
 
 import os
 import sys
+import glob
+import json
 import math
 import random
 from typing import List, Dict, Tuple, Optional
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -52,39 +63,23 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# MISSING FUNCTIONS — these were in viz_fibre_bundle.py but not here
+# Topological helper functions
 # ═══════════════════════════════════════════════════════════════════════
 
 def spectral_entropy(sigma: np.ndarray) -> float:
-    """Compute spectral entropy of singular values (normalized).
-    
-    This measures the "spread" of the singular value distribution.
-    High entropy = singular values are uniformly distributed (full-rank-like).
-    Low entropy = singular values are concentrated (low-rank-like).
-    """
+    """Compute spectral entropy of singular values (normalized)."""
     s = sigma / (sigma.sum() + 1e-12)
     s = s[s > 1e-12]
     return -np.sum(s * np.log(s + 1e-12))
 
 
 def effective_rank(sigma: np.ndarray) -> float:
-    """Effective rank = exp(spectral_entropy).
-    
-    This gives a continuous estimate of the "intrinsic dimensionality"
-    of the linear map described by the singular values. It equals the
-    true rank when all nonzero singular values are equal, and is < rank
-    when the spectrum is skewed.
-    """
+    """Effective rank = exp(spectral_entropy)."""
     return np.exp(spectral_entropy(sigma))
 
 
 def condition_number(sigma: np.ndarray) -> float:
-    """Condition number = max(sigma) / min(sigma).
-    
-    This is a proxy for the Lipschitz distortion of the layer map:
-    how much the map stretches the most-stretched direction relative
-    to the most-compressed direction.
-    """
+    """Condition number = max(sigma) / min(sigma)."""
     s_min = sigma[sigma > 1e-10]
     if len(s_min) == 0:
         return float('inf')
@@ -92,55 +87,257 @@ def condition_number(sigma: np.ndarray) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Run folder discovery and model loading
+# ═══════════════════════════════════════════════════════════════════════
 
-def load_trained_model(
-    checkpoint_path: str = "runs/latest/checkpoint.pt",
-    vocab_size: int = 80,
-    d_model: int = 32,
-    n_heads: int = 4,
-    n_layers: int = 4,
-    max_seq_len: int = 256,
-) -> TinyGPT:
-    """Load a trained TinyGPT from a checkpoint file."""
-    config = LLVMGPTConfig(
-        vocab_size=vocab_size,
-        d_model=d_model,
-        n_heads=n_heads,
-        n_layers=n_layers,
-        max_seq_len=max_seq_len,
-        dropout=0.0,
-    )
-    model = TinyGPT(config)
+def discover_run_folder(run_dir: str) -> Dict:
+    """
+    Auto-discover checkpoint, config, and metadata from a run folder.
 
-    # Load trained weights
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    # Handle different checkpoint formats:
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["model_state_dict"])
-    elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["state_dict"])
+    Searches for:
+      - Checkpoint: *.pt, *.pth (prefers 'best_model', then 'checkpoint', then latest)
+      - Config: config.json, hparams.json, *.json
+      - Tokenizer vocab or sample text files
+
+    Returns dict with discovered paths and metadata.
+    """
+    run_path = Path(run_dir).resolve()
+    if not run_path.exists():
+        print(f"ERROR: Run folder does not exist: {run_path}")
+        sys.exit(1)
+
+    print(f"  Scanning run folder: {run_path}")
+
+    discovered = {
+        "run_dir": str(run_path),
+        "checkpoint": None,
+        "config": None,
+        "config_data": {},
+    }
+
+    # ── Find checkpoint ─────────────────────────────────────────────
+    checkpoint_patterns = [
+        "best_model*.pt", "best_model*.pth",
+        "best*.pt", "best*.pth",
+        "checkpoint*.pt", "checkpoint*.pth",
+        "model*.pt", "model*.pth",
+        "*.pt", "*.pth",
+    ]
+
+    all_checkpoints = []
+    for pattern in checkpoint_patterns:
+        # Search recursively
+        found = sorted(run_path.rglob(pattern))
+        all_checkpoints.extend(found)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_checkpoints = []
+    for cp in all_checkpoints:
+        if cp not in seen:
+            seen.add(cp)
+            unique_checkpoints.append(cp)
+
+    if unique_checkpoints:
+        # Prefer by priority: best > checkpoint > model > other
+        # Also prefer larger files (more likely to be full checkpoints)
+        def checkpoint_priority(p: Path) -> Tuple[int, int]:
+            name = p.stem.lower()
+            if "best" in name:
+                priority = 0
+            elif "checkpoint" in name:
+                priority = 1
+            elif "model" in name:
+                priority = 2
+            else:
+                priority = 3
+            size = p.stat().st_size
+            return (priority, -size)
+
+        unique_checkpoints.sort(key=checkpoint_priority)
+        discovered["checkpoint"] = str(unique_checkpoints[0])
+        print(f"  Found checkpoint: {unique_checkpoints[0].name}")
+        if len(unique_checkpoints) > 1:
+            print(f"    (also found: {', '.join(c.name for c in unique_checkpoints[1:5])})")
     else:
-        model.load_state_dict(checkpoint)
+        print("  WARNING: No checkpoint (.pt/.pth) found in run folder!")
 
-    model.eval()
-    print(f"       Loaded checkpoint from: {checkpoint_path}")
-    return model
+    # ── Find config ─────────────────────────────────────────────────
+    config_patterns = ["config.json", "hparams.json", "params.json", "*.json"]
+    for pattern in config_patterns:
+        found = sorted(run_path.rglob(pattern))
+        if found:
+            discovered["config"] = str(found[0])
+            print(f"  Found config: {found[0].name}")
+            try:
+                with open(found[0], "r") as f:
+                    discovered["config_data"] = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"    WARNING: Could not parse config: {e}")
+            break
 
-def build_small_model(vocab_size: int = 80, d_model: int = 32,
-                       n_heads: int = 4, n_layers: int = 4,
-                       max_seq_len: int = 256) -> TinyGPT:
-    config = LLVMGPTConfig(
+    return discovered
+
+
+def extract_model_config(discovered: Dict, tokenizer: CharTokenizer) -> LLVMGPTConfig:
+    """
+    Extract model hyperparameters from the discovered config or checkpoint.
+    Falls back to inspecting the checkpoint's state_dict shapes.
+    """
+    config_data = discovered.get("config_data", {})
+
+    # Try to get params from config JSON
+    d_model = config_data.get("d_model", None)
+    n_heads = config_data.get("n_heads", None)
+    n_layers = config_data.get("n_layers", None)
+    max_seq_len = config_data.get("max_seq_len", None)
+    vocab_size = config_data.get("vocab_size", None)
+
+    # If config didn't have everything, try to infer from checkpoint
+    if discovered["checkpoint"] and (d_model is None or n_layers is None):
+        print("  Inferring model config from checkpoint state_dict shapes...")
+        checkpoint = torch.load(discovered["checkpoint"], map_location="cpu", weights_only=False)
+
+        if isinstance(checkpoint, dict):
+            state_dict = checkpoint.get("model_state_dict",
+                         checkpoint.get("state_dict", checkpoint))
+        else:
+            state_dict = checkpoint
+
+        if isinstance(state_dict, dict):
+            # Infer d_model from token embedding shape
+            for key in state_dict:
+                if "tok_emb" in key and "weight" in key:
+                    shape = state_dict[key].shape
+                    if vocab_size is None:
+                        vocab_size = shape[0]
+                    if d_model is None:
+                        d_model = shape[1]
+                    print(f"    tok_emb.weight: {shape} → vocab_size={vocab_size}, d_model={d_model}")
+                    break
+
+            # Infer n_layers by counting block indices
+            block_indices = set()
+            for key in state_dict:
+                if "blocks." in key:
+                    # e.g., "blocks.0.attn.qkv.weight"
+                    parts = key.split(".")
+                    try:
+                        idx = int(parts[parts.index("blocks") + 1])
+                        block_indices.add(idx)
+                    except (ValueError, IndexError):
+                        pass
+            if block_indices and n_layers is None:
+                n_layers = max(block_indices) + 1
+                print(f"    Found {n_layers} transformer blocks")
+
+            # Infer n_heads from attention weight shapes
+            if n_heads is None and d_model is not None:
+                for key in state_dict:
+                    if "attn" in key and "qkv" in key and "weight" in key:
+                        qkv_shape = state_dict[key].shape
+                        # qkv weight is [3*d_model, d_model] typically
+                        # head_dim is usually 64, 32, etc.
+                        # Try common head dims
+                        for hd in [64, 32, 16, 8]:
+                            if d_model % hd == 0:
+                                n_heads = d_model // hd
+                                print(f"    Inferred n_heads={n_heads} (head_dim={hd})")
+                                break
+                        break
+
+            # Infer max_seq_len from positional embedding
+            if max_seq_len is None:
+                for key in state_dict:
+                    if "pos_emb" in key and "weight" in key:
+                        max_seq_len = state_dict[key].shape[1]
+                        print(f"    pos_emb: max_seq_len={max_seq_len}")
+                        break
+
+    # Final defaults
+    if vocab_size is None:
+        vocab_size = tokenizer.vocab_size
+    if d_model is None:
+        d_model = 32
+    if n_heads is None:
+        n_heads = 4
+    if n_layers is None:
+        n_layers = 4
+    if max_seq_len is None:
+        max_seq_len = 256
+
+    print(f"  Model config: vocab_size={vocab_size}, d_model={d_model}, "
+          f"n_heads={n_heads}, n_layers={n_layers}, max_seq_len={max_seq_len}")
+
+    return LLVMGPTConfig(
         vocab_size=vocab_size,
         d_model=d_model,
         n_heads=n_heads,
         n_layers=n_layers,
         max_seq_len=max_seq_len,
-        dropout=0.0,
+        dropout=0.0,  # no dropout for clean Jacobians
     )
+
+
+def load_trained_model(discovered: Dict, config: LLVMGPTConfig) -> TinyGPT:
+    """Load trained model from checkpoint."""
     model = TinyGPT(config)
+
+    if discovered["checkpoint"] is None:
+        print("  ⚠ No checkpoint found — using random initialization!")
+        model.eval()
+        return model
+
+    print(f"  Loading weights from: {discovered['checkpoint']}")
+    checkpoint = torch.load(discovered["checkpoint"], map_location="cpu", weights_only=False)
+
+    if isinstance(checkpoint, dict):
+        if "model_state_dict" in checkpoint:
+            state_dict = checkpoint["model_state_dict"]
+            # Print training info if available
+            if "epoch" in checkpoint:
+                print(f"    Epoch: {checkpoint['epoch']}")
+            if "step" in checkpoint:
+                print(f"    Step: {checkpoint['step']}")
+            if "train_loss" in checkpoint:
+                print(f"    Train loss: {checkpoint['train_loss']:.4f}")
+            if "val_loss" in checkpoint:
+                print(f"    Val loss: {checkpoint['val_loss']:.4f}")
+        elif "state_dict" in checkpoint:
+            state_dict = checkpoint["state_dict"]
+        else:
+            # Maybe the dict IS the state_dict
+            # Check if keys look like model parameters
+            sample_key = next(iter(checkpoint.keys()), "")
+            if "." in sample_key and ("weight" in sample_key or "bias" in sample_key):
+                state_dict = checkpoint
+            else:
+                print(f"    Checkpoint keys: {list(checkpoint.keys())[:10]}")
+                state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+
+    # Try to load, handling potential key mismatches
+    try:
+        model.load_state_dict(state_dict, strict=True)
+        print("    ✅ Loaded weights (strict match)")
+    except RuntimeError as e:
+        print(f"    ⚠ Strict load failed: {e}")
+        print("    Trying non-strict load...")
+        result = model.load_state_dict(state_dict, strict=False)
+        if result.missing_keys:
+            print(f"    Missing keys: {result.missing_keys[:5]}...")
+        if result.unexpected_keys:
+            print(f"    Unexpected keys: {result.unexpected_keys[:5]}...")
+        print("    ✅ Loaded weights (non-strict)")
+
     model.eval()
     return model
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# Jacobian computation
+# ═══════════════════════════════════════════════════════════════════════
 
 def compute_jacobian_svd_point_clouds(
     model: TinyGPT,
@@ -150,17 +347,12 @@ def compute_jacobian_svd_point_clouds(
     """
     For each layer, compute the SVD of the Jacobian at sampled token positions.
     Returns point clouds in singular-value space.
-
-    Returns:
-        svd_clouds: list of arrays [n_tokens, d_model] per layer
-        token_indices: which token positions were sampled
     """
     B, T = input_ids.shape
     d = model.config.d_model
     n_tokens = min(T, n_token_samples)
     token_indices = np.linspace(0, T - 1, n_tokens, dtype=int)
 
-    # Get initial hidden state
     with torch.no_grad():
         pos = torch.arange(0, T, device=input_ids.device).unsqueeze(0)
         h0 = model.tok_emb(input_ids) + model.pos_emb(pos)
@@ -175,7 +367,6 @@ def compute_jacobian_svd_point_clouds(
             h_in = h.detach().clone().requires_grad_(True)
             out = block(h_in)
 
-            # Compute Jacobian row by row
             J = torch.zeros(d, d)
             for j in range(d):
                 grad_out = torch.zeros_like(out)
@@ -185,13 +376,11 @@ def compute_jacobian_svd_point_clouds(
                     J[j, :] = h_in.grad[0, t_idx, :].detach()
                     h_in.grad.zero_()
 
-            # SVD
             _, S, _ = torch.linalg.svd(J)
             J_svs[ti] = S.numpy()
 
         svd_clouds.append(J_svs)
 
-        # Advance
         with torch.no_grad():
             h = block(h).detach().clone()
 
@@ -210,16 +399,13 @@ def compute_distance_matrices(svd_clouds: List[np.ndarray]) -> List[np.ndarray]:
 
 def compute_persistent_homology_fallback(dist_matrix: np.ndarray, max_dim: int = 2):
     """
-    Simple Vietoris-Rips persistent homology fallback (H_0 only, approximate).
-    For proper computation, install ripser.
+    Simple Vietoris-Rips persistent homology fallback (H_0 only).
+    For proper H_0 + H_1 + H_2, install ripser.
     """
     n = dist_matrix.shape[0]
-    # Sort all pairwise distances
     triu_idx = np.triu_indices(n, k=1)
     distances = dist_matrix[triu_idx]
-    sorted_dists = np.sort(distances)
 
-    # H_0: track connected components via union-find
     parent = list(range(n))
 
     def find(x):
@@ -236,8 +422,6 @@ def compute_persistent_homology_fallback(dist_matrix: np.ndarray, max_dim: int =
         return False
 
     births_deaths_h0 = []
-    # All components born at 0
-    component_birth = {i: 0.0 for i in range(n)}
 
     sorted_edges = np.argsort(distances)
     for edge_idx in sorted_edges:
@@ -245,11 +429,9 @@ def compute_persistent_homology_fallback(dist_matrix: np.ndarray, max_dim: int =
         d = distances[edge_idx]
         ri, rj = find(i), find(j)
         if ri != rj:
-            # Merge: the younger component dies
             union(ri, rj)
             births_deaths_h0.append([0.0, d])
 
-    # The last surviving component has infinite death
     births_deaths_h0.append([0.0, float('inf')])
 
     return {
@@ -271,10 +453,15 @@ def compute_betti_curve(dgm: np.ndarray, filtration_values: np.ndarray) -> np.nd
     return betti
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Plotting
+# ═══════════════════════════════════════════════════════════════════════
+
 def plot_persistent_homology(
     svd_clouds: List[np.ndarray],
     dist_matrices: List[np.ndarray],
     token_indices: np.ndarray,
+    run_info: Dict,
     save_path: str = "jacobian_persistent_homology.png",
 ):
     n_layers = len(svd_clouds)
@@ -296,20 +483,16 @@ def plot_persistent_homology(
 
         all_ph_results.append(result)
 
-        # Plot persistence diagram
         dgms = result['dgms']
 
-        # H_0
         h0 = dgms[0]
         finite_h0 = h0[~np.isinf(h0[:, 1])]
-        infinite_h0 = h0[np.isinf(h0[:, 1])]
 
         if len(finite_h0) > 0:
             ax.scatter(finite_h0[:, 0], finite_h0[:, 1],
                       c='steelblue', s=40, alpha=0.7, label='H₀', edgecolors='black',
                       linewidths=0.5, zorder=5)
 
-        # H_1 (if available)
         if len(dgms) > 1:
             h1 = dgms[1]
             finite_h1 = h1[~np.isinf(h1[:, 1])]
@@ -318,7 +501,6 @@ def plot_persistent_homology(
                           c='tomato', s=40, alpha=0.7, label='H₁',
                           marker='^', edgecolors='black', linewidths=0.5, zorder=5)
 
-        # Diagonal
         all_finite = h0[~np.isinf(h0[:, 1])]
         if len(all_finite) > 0:
             max_val = all_finite.max() * 1.1
@@ -338,7 +520,6 @@ def plot_persistent_homology(
 
         dgms = all_ph_results[l]['dgms']
 
-        # Filtration range
         all_deaths = []
         for dgm in dgms:
             finite = dgm[~np.isinf(dgm[:, 1])]
@@ -347,12 +528,10 @@ def plot_persistent_homology(
         max_filt = max(all_deaths) * 1.2 if all_deaths else 1.0
         filt_vals = np.linspace(0, max_filt, 200)
 
-        # H_0 Betti curve
         betti_0 = compute_betti_curve(dgms[0], filt_vals)
         ax.plot(filt_vals, betti_0, color='steelblue', linewidth=2, label='β₀')
         ax.fill_between(filt_vals, betti_0, alpha=0.15, color='steelblue')
 
-        # H_1 Betti curve
         if len(dgms) > 1:
             betti_1 = compute_betti_curve(dgms[1], filt_vals)
             ax.plot(filt_vals, betti_1, color='tomato', linewidth=2, label='β₁')
@@ -363,14 +542,13 @@ def plot_persistent_homology(
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
 
-    # ── Row 3: SVD Point Cloud Projections (PCA to 2D) + Topological Summary
+    # ── Row 3: SVD Point Cloud Projections + Topological Summary ────────
     for l in range(n_layers):
         ax = fig.add_subplot(gs[2, l])
         ax.set_title(f"Layer {l}\nSVD Point Cloud (PCA 2D)", fontsize=10, fontweight='bold')
 
-        cloud = svd_clouds[l]  # [n_tokens, d_model]
+        cloud = svd_clouds[l]
 
-        # PCA to 2D
         cloud_centered = cloud - cloud.mean(axis=0)
         cov = np.cov(cloud_centered.T)
         eigenvalues, eigenvectors = np.linalg.eigh(cov)
@@ -378,7 +556,6 @@ def plot_persistent_homology(
         W = eigenvectors[:, idx_sort[:2]]
         coords_2d = cloud_centered @ W
 
-        # Color by spectral entropy
         entropies = np.array([spectral_entropy(cloud[t]) for t in range(cloud.shape[0])])
         eff_ranks = np.array([effective_rank(cloud[t]) for t in range(cloud.shape[0])])
 
@@ -393,9 +570,8 @@ def plot_persistent_homology(
         )
         plt.colorbar(sc, ax=ax, label="Spectral Entropy", shrink=0.8)
 
-        # Draw edges between nearby points (Rips-like connectivity)
         D = dist_matrices[l]
-        threshold = np.percentile(D[D > 0], 30)  # connect closest 30%
+        threshold = np.percentile(D[D > 0], 30)
         for i in range(cloud.shape[0]):
             for j in range(i + 1, cloud.shape[0]):
                 if D[i, j] < threshold:
@@ -405,18 +581,16 @@ def plot_persistent_homology(
                         color='gray', alpha=0.15, linewidth=0.5,
                     )
 
-        # Annotate with topological summary
         dgms = all_ph_results[l]['dgms']
         h0_finite = dgms[0][~np.isinf(dgms[0][:, 1])]
-        n_components = len(dgms[0]) - len(h0_finite)  # infinite bars = surviving components
+        n_components = len(dgms[0]) - len(h0_finite)
         if n_components == 0:
-            n_components = 1  # at least one component
+            n_components = 1
 
         h1_count = 0
         if len(dgms) > 1:
             h1 = dgms[1]
             h1_finite = h1[~np.isinf(h1[:, 1])]
-            # Filter out trivial bars
             if len(h1_finite) > 0:
                 lifetimes = h1_finite[:, 1] - h1_finite[:, 0]
                 h1_count = np.sum(lifetimes > np.median(lifetimes) * 0.5) if len(lifetimes) > 0 else 0
@@ -441,11 +615,17 @@ def plot_persistent_homology(
         ax.set_ylabel("PC2", fontsize=8)
         ax.grid(True, alpha=0.2)
 
+    # ── Title with run info ─────────────────────────────────────────────
+    run_name = os.path.basename(run_info.get("run_dir", "unknown"))
+    checkpoint_name = os.path.basename(run_info.get("checkpoint", "none"))
+    source_label = "TRAINED" if run_info.get("checkpoint") else "RANDOM INIT"
+
     fig.suptitle(
-        "Persistent Homology of Jacobian Fibre Structure\n"
-        "Point Cloud = {σ(x) : x ∈ tokens} in Singular Value Space per Layer\n"
-        "Vietoris-Rips Filtration → Persistence Diagrams, Betti Curves, Topological Invariants",
-        fontsize=13, fontweight='bold', y=1.03,
+        f"Persistent Homology of Jacobian Fibre Structure [{source_label}]\n"
+        f"Run: {run_name} | Checkpoint: {checkpoint_name}\n"
+        f"Point Cloud = {{σ(x) : x ∈ tokens}} in Singular Value Space per Layer\n"
+        f"Vietoris-Rips Filtration → Persistence Diagrams, Betti Curves, Topological Invariants",
+        fontsize=12, fontweight='bold', y=1.04,
     )
 
     plt.tight_layout()
@@ -454,35 +634,58 @@ def plot_persistent_homology(
     plt.close()
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Main
+# ═══════════════════════════════════════════════════════════════════════
+
 def main():
+    # ── Parse CLI argument ──────────────────────────────────────────
+    if len(sys.argv) < 2:
+        print("Usage: python3 viz_persistent_homology.py <run_folder>")
+        print("")
+        print("Examples:")
+        print("  python3 viz_persistent_homology.py runs/run_20250418_143022/")
+        print("  python3 viz_persistent_homology.py runs/latest/")
+        print("  python3 viz_persistent_homology.py ./my_checkpoint_dir/")
+        print("")
+        print("The script will auto-discover the checkpoint (.pt/.pth) and config")
+        print("inside the given folder, load the TRAINED model, and generate the")
+        print("persistent homology visualization of the Jacobian fibre structure.")
+        sys.exit(1)
+
+    run_dir = sys.argv[1].rstrip("/")
+
     print("=" * 70)
     print("PERSISTENT HOMOLOGY OF JACOBIAN FIBRE STRUCTURE")
-    print("Topological invariants of LLM layer maps")
+    print("Topological invariants of LLM layer maps (TRAINED model)")
     print("=" * 70)
 
-    # Build tokenizer and model
-    print("\n[1/6] Building tokenizer...")
+    # ── Discover run folder contents ────────────────────────────────
+    print(f"\n[1/6] Discovering run folder: {run_dir}")
+    discovered = discover_run_folder(run_dir)
+
+    # ── Build tokenizer ─────────────────────────────────────────────
+    print("\n[2/6] Building tokenizer...")
     tokenizer = CharTokenizer()
 
-    print("[2/6] Building model...")
-    model = load_trained_model(
-            checkpoint_path="runs/latest/checkpoint.pt",  # <-- adjust to your actual path
-            vocab_size=tokenizer.vocab_size,
-            d_model=32,
-            n_heads=4,
-            n_layers=4,
-            )
-    print(f"       Parameters: {model.count_parameters():,}")
+    # ── Extract config and load model ───────────────────────────────
+    print("\n[3/6] Extracting model config...")
+    config = extract_model_config(discovered, tokenizer)
 
-    # Create a sample input
-    print("[3/6] Creating sample input sequence...")
+    print("\n[4/6] Loading trained model...")
+    model = load_trained_model(discovered, config)
+    param_count = sum(p.numel() for p in model.parameters())
+    print(f"       Parameters: {param_count:,}")
+
+    # ── Create sample input ─────────────────────────────────────────
+    print("\n[5/6] Creating sample input sequence...")
     sample_text = "define i64 @f(i64 %p0, i64 %p1) { entry: %t0 = add i64 %p0, %p1 ret i64 %t0 }"
     encoded = tokenizer(sample_text, return_tensors="pt")
     input_ids = encoded["input_ids"]
     print(f"       Sequence length: {input_ids.shape[1]}")
 
-    # Compute Jacobian SVD point clouds
-    print("[4/6] Computing Jacobian SVD point clouds per layer...")
+    # ── Compute Jacobian SVD point clouds ───────────────────────────
+    print("\n[6/6] Computing Jacobian SVD point clouds & persistent homology...")
     svd_clouds, token_indices = compute_jacobian_svd_point_clouds(
         model, input_ids, n_token_samples=24,
     )
@@ -492,24 +695,27 @@ def main():
               f"mean σ_min = {cloud[:, -1].mean():.6f}")
 
     # Distance matrices
-    print("[5/6] Computing pairwise distance matrices...")
+    print("       Computing pairwise distance matrices...")
     dist_matrices = compute_distance_matrices(svd_clouds)
     for i, D in enumerate(dist_matrices):
         print(f"       Layer {i}: mean dist = {D[D > 0].mean():.4f}, "
               f"max dist = {D.max():.4f}")
 
-    # Plot
-    print("[6/6] Computing persistent homology and generating visualization...")
+    # Persistent homology + plot
     if not HAS_RIPSER:
         print("       ⚠ Using fallback VR computation (H_0 only).")
         print("       For full H_0 + H_1 + H_2, install: pip install ripser persim")
 
+    # Save into the run folder
+    save_path = os.path.join(run_dir, "jacobian_persistent_homology.png")
+
     plot_persistent_homology(
         svd_clouds, dist_matrices, token_indices,
-        save_path="jacobian_persistent_homology.png",
+        run_info=discovered,
+        save_path=save_path,
     )
 
-    print("\nDone! Open jacobian_persistent_homology.png to see the topology.")
+    print(f"\nDone! Open {save_path} to see the topology.")
 
 
 if __name__ == "__main__":

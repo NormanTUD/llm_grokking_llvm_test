@@ -1243,17 +1243,40 @@ def train(args: argparse.Namespace):
         # ── Update epoch plot ───────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
-        # ── Checkpoint ──────────────────────────────────────────────────
-        if args.save_every > 0 and epoch % args.save_every == 0:
-            ckpt_path = f"{args.save_path}_epoch{epoch}"
-            model.save_pretrained(ckpt_path)
-            tokenizer.save_pretrained(ckpt_path)
-            console.print(f"  [dim]💾 Checkpoint: {ckpt_path}/[/]")
+        # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
+        if args.save_path:
+            epoch_ckpt_path = os.path.join(args.save_path, f"model_epoch_{epoch}.pt")
+            os.makedirs(args.save_path, exist_ok=True)
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "best_val_loss": best_val_loss,
+            }, epoch_ckpt_path)
+            console.print(f"  [dim]💾 Saved checkpoint: {epoch_ckpt_path}[/]")
 
+        # ── Save best model (lowest val loss) ───────────────────────────
         if is_best and args.save_path:
-            best_path = f"{args.save_path}_best"
-            model.save_pretrained(best_path)
-            tokenizer.save_pretrained(best_path)
+            best_path = os.path.join(args.save_path, "model_best.pt")
+            os.makedirs(args.save_path, exist_ok=True)
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "best_val_loss": best_val_loss,
+            }, best_path)
+            # Also save in HuggingFace format for easy loading
+            best_hf_path = f"{args.save_path}_best"
+            model.save_pretrained(best_hf_path)
+            tokenizer.save_pretrained(best_hf_path)
+            console.print(f"  [bold green]⭐ New best model saved: {best_path} (val_loss={avg_val_loss:.4f})[/]")
+
 
     # ── Stop controller ─────────────────────────────────────────────────
     epoch_ctrl.stop()
