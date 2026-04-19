@@ -637,7 +637,7 @@ def plot_persistent_homology(
 
     # ── Title with run info ─────────────────────────────────────────────
     run_name = os.path.basename(run_info.get("run_dir", "unknown"))
-    checkpoint_name = os.path.basename(run_info.get("checkpoint", "none"))
+    checkpoint_name = os.path.basename(run_info.get("checkpoint") or "none")
     source_label = "TRAINED" if run_info.get("checkpoint") else "RANDOM INIT"
 
     fig.suptitle(
@@ -727,7 +727,7 @@ def main():
         print("       For full H_0 + H_1 + H_2, install: pip install ripser persim")
 
     # Save into the run folder
-    save_path = os.path.join(run_dir, "jacobian_persistent_homology.png")
+    save_path = os.path.join(discovered["run_dir"], "jacobian_persistent_homology.png")
 
     plot_persistent_homology(
         svd_clouds, dist_matrices, token_indices,

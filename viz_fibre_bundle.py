@@ -655,7 +655,7 @@ def main():
     base_coords = compute_base_manifold_coords(model, input_ids, token_indices)
 
     # Save into the run folder
-    save_path = os.path.join(run_dir, "fibre_bundle_topology.png")
+    save_path = os.path.join(discovered["run_dir"], "fibre_bundle_topology.png")
 
     print("       Generating fibre bundle visualization...")
     plot_fibre_bundle(base_coords, spectra, token_indices,
