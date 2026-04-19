@@ -956,17 +956,12 @@ class LivePlotter:
         )
 
     def _watch_window(self):
-        """Background thread: does nothing itself, reopen is triggered from
-        the EpochController key listener or a dedicated check."""
-        # This thread just periodically checks if a reopen was requested
+        """Background thread: periodically pumps the matplotlib event loop
+        so that close events are detected even between batch updates."""
         while True:
-            time.sleep(0.2)
-            with self._lock:
-                if self._reopen_requested and self._window_closed:
-                    self._reopen_requested = False
-                    self._window_closed = False
-            # Actual figure recreation must happen on the main thread,
-            # so we just set a flag and let _refresh() handle it.
+            time.sleep(0.5)
+            # We do NOT touch the flags here.
+            # The main thread's _check_reopen() is the sole consumer.
 
     def request_reopen(self):
         """Call this (e.g. from EpochController) to request window reopen."""
