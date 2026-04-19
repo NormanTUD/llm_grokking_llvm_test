@@ -260,7 +260,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     tokenizer = CharTokenizer()
 
     with Progress(transient=True) as progress:
-        task = progress.add_task("[green]Generiere Programme...", total=n_programs)
+        task = progress.add_task("[green]Generating random programs for initializing tokenizer...", total=n_programs)
 
         for i in range(n_programs):
             num_p = random.randint(2, max(2, max_params))
