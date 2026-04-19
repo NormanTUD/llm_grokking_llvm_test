@@ -4,3 +4,4 @@ llvm_gpt_model_best/
 llvm_gpt_final.pt
 fibre_bundle_topology.png
 jacobian_persistent_homology.png
+llvm_gpt_model/
