@@ -52,6 +52,61 @@ from run_logger import RunLogger
 from generate_samples import generate_example_samples
 import random
 from random_llvm_gen import generate_random_function
+import subprocess
+
+# ════════════════════════════════════════════════════════════════════════════
+# NEW: PID waiter
+# ════════════════════════════════════════════════════════════════════════════
+
+def wait_for_pid(pid: int, poll_interval: float = 2.0):
+    """Block until the given PID is no longer running."""
+    console.print(
+        Panel(
+            f"[bold yellow]⏳ Waiting for PID {pid} to finish before starting training...[/]\n"
+            f"[dim]Polling every {poll_interval}s[/]",
+            border_style="yellow",
+        )
+    )
+    while True:
+        try:
+            os.kill(pid, 0)  # signal 0: doesn't kill, just checks existence
+        except ProcessNotFoundError:
+            break
+        except PermissionError:
+            # Process exists but we don't own it — still alive
+            pass
+        else:
+            # No exception → process is alive
+            pass
+        time.sleep(poll_interval)
+
+        # Double-check with /proc on Linux or `ps` as fallback
+        if not _pid_alive(pid):
+            break
+
+    console.print(f"[bold green]✅ PID {pid} is done. Proceeding to training.[/]")
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if pid is still in the process table."""
+    # Fast path: Linux /proc
+    if os.path.isdir(f"/proc/{pid}"):
+        return True
+    # Fallback: use `ps`
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        # No `ps` available, rely on os.kill alone
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
 
 # ── Suppress X11/XIM spam ──────────────────────────────────────────────────
 # The "key event is already fabricated" messages come from libX11.
@@ -1370,8 +1425,11 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--no-run-log", action="store_true", default=False,
                    help="Disable run logging entirely")
 
-    return p.parse_args()
+    g.add_argument("--wait-pid", type=int, default=None,
+                   help="Wait for this PID to exit before starting training "
+                        "(useful for queueing CUDA jobs)")
 
+    return p.parse_args()
 
 # ════════════════════════════════════════════════════════════════════════════
 # 11.  ENTRY POINT
@@ -1389,6 +1447,10 @@ if __name__ == "__main__":
         )
     )
 
+    # ── Wait for another process to finish before claiming the GPU ──
+    if args.wait_pid is not None:
+        wait_for_pid(args.wait_pid)
+
     try:
         model, tokenizer = train(args)
     except KeyboardInterrupt:
@@ -1396,3 +1458,4 @@ if __name__ == "__main__":
     except Exception as e:
         console.print(f"\n[bold red]Error: {e}[/]")
         console.print_exception()
+
