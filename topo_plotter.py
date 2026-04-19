@@ -5,17 +5,11 @@ Live topological barcode visualization for layer activations and feature spaces.
 Computes Vietoris-Rips persistent homology (H0, H1) on hidden-state point clouds
 sampled during training, and renders barcodes + persistence diagrams in a
 dedicated matplotlib window that updates every N batches.
-
-Usage:
-    Instantiate TopoPlotter alongside your LivePlotter, call .update() with
-    the model and a sample batch, and it will handle the rest.
 """
 
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
-import threading
 from typing import List, Optional, Dict, Tuple
 import torch
 import torch.nn as nn
@@ -27,27 +21,17 @@ except ImportError:
     HAS_RIPSER = False
 
 try:
-    from persim import plot_diagrams
-    HAS_PERSIM = True
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    HAS_SKLEARN = True
 except ImportError:
-    HAS_PERSIM = False
-
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+    HAS_SKLEARN = False
 
 
 class TopoPlotter:
     """
     Second matplotlib window showing live topological barcodes of
     layer activations and feature spaces during training.
-
-    For each transformer block (+ embedding + final LN), we:
-      1. Collect hidden states for a small probe batch
-      2. Subsample tokens to keep computation tractable
-      3. Run Vietoris-Rips persistent homology (H0 and H1)
-      4. Render barcodes (left column) and persistence diagrams (right column)
-
-    The window updates every `update_every` batches.
     """
 
     def __init__(
@@ -66,15 +50,19 @@ class TopoPlotter:
         self.max_homology_dim = max_homology_dim
         self.max_layers_to_show = max_layers_to_show
         self.pca_components = pca_components
-        self.use_pca = use_pca
+        self.use_pca = use_pca and HAS_SKLEARN
 
         self._global_step = 0
-        self._lock = threading.Lock()
 
         # History: track topological summaries over time
         self.betti_history: Dict[str, List[List[int]]] = {}
         self.total_persistence_history: Dict[str, List[float]] = {}
         self._history_steps: List[int] = []
+
+        # Figure state
+        self.fig = None
+        self._axes_created = False
+        self._n_display_layers = 0
 
         if not self.enabled:
             if not HAS_RIPSER:
@@ -82,14 +70,16 @@ class TopoPlotter:
                       "Install with: pip install ripser")
             return
 
+        # Do NOT call matplotlib.use() here — the backend is already set
+        # by LivePlotter. Just create a new figure.
         self._init_figure()
 
     def _init_figure(self):
         """Create the second matplotlib figure for topological visualization."""
-        matplotlib.use("TkAgg")
+        # plt.ion() should already be active from LivePlotter, but ensure it
         plt.ion()
 
-        # We'll create a grid: rows = layers, cols = [barcode, persistence diagram, PCA scatter]
+        # Create a NEW figure — this is what gives us a second window
         self.fig = plt.figure(figsize=(20, 14))
         self.fig.suptitle(
             "Topological Barcodes — Layer Activations",
@@ -102,13 +92,14 @@ class TopoPlotter:
         except Exception:
             pass
 
-        # We'll dynamically create subplots when we know the number of layers
-        self._axes_created = False
-        self._n_display_layers = 0
+        self.axes_barcode = []
+        self.axes_persistence = []
+        self.axes_betti = []
 
+        # Force the window to appear immediately
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        plt.pause(0.001)
+        plt.pause(0.01)
 
     def _ensure_axes(self, n_layers: int):
         """Create subplot grid once we know how many layers to display."""
@@ -116,9 +107,12 @@ class TopoPlotter:
             return
 
         self.fig.clear()
+        self.fig.suptitle(
+            "Topological Barcodes — Layer Activations",
+            fontsize=14, fontweight="bold"
+        )
         self._n_display_layers = n_layers
 
-        # 3 columns: barcode, persistence diagram, Betti number evolution
         self.axes_barcode = []
         self.axes_persistence = []
         self.axes_betti = []
@@ -135,20 +129,12 @@ class TopoPlotter:
         self.fig.tight_layout(rect=[0, 0, 1, 0.95])
         self._axes_created = True
 
-    def _compute_persistence(
-        self, points: np.ndarray
-    ) -> Optional[Dict]:
-        """
-        Run Vietoris-Rips persistent homology on a point cloud.
-
-        Returns dict with 'dgms' (list of diagrams per dimension)
-        or None on failure.
-        """
+    def _compute_persistence(self, points: np.ndarray) -> Optional[Dict]:
+        """Run Vietoris-Rips persistent homology on a point cloud."""
         if points.shape[0] < 3:
             return None
 
         try:
-            # Optionally reduce dimensionality for speed
             if self.use_pca and points.shape[1] > self.pca_components:
                 scaler = StandardScaler()
                 points = scaler.fit_transform(points)
@@ -156,19 +142,24 @@ class TopoPlotter:
                 pca = PCA(n_components=n_components)
                 points = pca.fit_transform(points)
 
+            # Compute pairwise distances for threshold estimation
+            # Use a random subset for threshold calc if too many points
+            if points.shape[0] > 100:
+                idx = np.random.choice(points.shape[0], 100, replace=False)
+                sample = points[idx]
+            else:
+                sample = points
+
+            dists = np.linalg.norm(sample[:, None] - sample[None, :], axis=-1)
+            thresh = np.percentile(dists[dists > 0], 50)
+
             result = ripser(
                 points,
                 maxdim=self.max_homology_dim,
-                thresh=np.percentile(
-                    np.linalg.norm(
-                        points[:, None] - points[None, :], axis=-1
-                    ).flatten(),
-                    50  # Use median distance as threshold to keep it tractable
-                ),
+                thresh=thresh,
             )
             return result
         except Exception as e:
-            print(f"[TopoPlotter] Persistence computation failed: {e}")
             return None
 
     def _draw_barcode(self, ax, dgms: list, layer_name: str):
@@ -176,7 +167,7 @@ class TopoPlotter:
         ax.clear()
         ax.set_title(f"Barcode: {layer_name}", fontsize=9, fontweight="bold")
 
-        colors = ["#2196F3", "#FF5722", "#4CAF50"]  # H0=blue, H1=red, H2=green
+        colors = ["#2196F3", "#FF5722", "#4CAF50"]
         labels = ["H₀ (components)", "H₁ (loops)", "H₂ (voids)"]
 
         y_offset = 0
@@ -191,10 +182,10 @@ class TopoPlotter:
             if len(finite_bars) == 0:
                 continue
 
-            # Sort by birth time
             sorted_idx = np.argsort(finite_bars[:, 0])
             finite_bars = finite_bars[sorted_idx]
 
+            start_y = y_offset
             for bar in finite_bars:
                 birth, death = bar
                 ax.plot(
@@ -207,14 +198,14 @@ class TopoPlotter:
                 )
                 y_offset += 1
 
-            # Add dimension label
-            mid_y = y_offset - len(finite_bars) / 2
+            mid_y = (start_y + y_offset) / 2
             y_ticks.append(mid_y)
             y_labels.append(labels[dim] if dim < len(labels) else f"H_{dim}")
 
         ax.set_xlabel("Filtration value", fontsize=7)
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_labels, fontsize=7)
+        if y_ticks:
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels(y_labels, fontsize=7)
         ax.grid(True, alpha=0.2, axis="x")
         ax.tick_params(axis="x", labelsize=7)
 
@@ -292,15 +283,12 @@ class TopoPlotter:
     def _extract_hidden_states(
         self, model, input_ids: torch.Tensor
     ) -> List[Tuple[str, np.ndarray]]:
-        """
-        Forward pass with output_hidden_states=True, return list of
-        (layer_name, point_cloud) pairs.
-        """
+        """Forward pass with output_hidden_states=True."""
         model.eval()
         with torch.no_grad():
             output = model(input_ids=input_ids, output_hidden_states=True)
 
-        hidden_states = output.hidden_states  # tuple of tensors
+        hidden_states = output.hidden_states
         if hidden_states is None:
             return []
 
@@ -310,11 +298,8 @@ class TopoPlotter:
             layer_names.append(f"Block {i}")
 
         for idx, (name, hs) in enumerate(zip(layer_names, hidden_states)):
-            # hs shape: (batch, seq_len, d_model)
-            # Flatten batch and seq dimensions to get a point cloud
-            points = hs.reshape(-1, hs.shape[-1]).cpu().numpy()
+            points = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
 
-            # Subsample if too many points
             if points.shape[0] > self.max_points:
                 indices = np.random.choice(
                     points.shape[0], self.max_points, replace=False
@@ -327,7 +312,7 @@ class TopoPlotter:
         if output.last_hidden_state is not None:
             final = output.last_hidden_state.reshape(
                 -1, output.last_hidden_state.shape[-1]
-            ).cpu().numpy()
+            ).cpu().float().numpy()
             if final.shape[0] > self.max_points:
                 indices = np.random.choice(
                     final.shape[0], self.max_points, replace=False
@@ -337,7 +322,6 @@ class TopoPlotter:
 
         # Limit number of layers shown
         if len(results) > self.max_layers_to_show:
-            # Always show first, last, and evenly spaced middle layers
             indices = np.linspace(0, len(results) - 1,
                                   self.max_layers_to_show, dtype=int)
             results = [results[i] for i in indices]
@@ -350,13 +334,11 @@ class TopoPlotter:
         for dim, dgm in enumerate(dgms):
             if dim > self.max_homology_dim:
                 break
-            # Count bars with significant persistence
             finite = dgm[np.isfinite(dgm[:, 1])]
             if len(finite) == 0:
                 betti.append(0)
                 continue
             persistences = finite[:, 1] - finite[:, 0]
-            # Use a threshold: bars with persistence > 10% of max
             if len(persistences) > 0:
                 threshold = np.percentile(persistences, 25)
                 betti.append(int(np.sum(persistences > threshold)))
@@ -365,20 +347,10 @@ class TopoPlotter:
         return betti
 
     @torch.no_grad()
-    def update(
-        self,
-        model: nn.Module,
-        probe_input_ids: torch.Tensor,
-        force: bool = False,
-    ):
+    def update(self, model: nn.Module, probe_input_ids: torch.Tensor, force: bool = False):
         """
         Call this every training batch. Actual computation only happens
         every `update_every` steps.
-
-        Args:
-            model: The TinyGPT model
-            probe_input_ids: A small batch of input_ids to probe activations
-            force: Force update regardless of step count
         """
         if not self.enabled:
             return
@@ -387,8 +359,7 @@ class TopoPlotter:
         if not force and (self._global_step % self.update_every != 0):
             return
 
-        with self._lock:
-            self._do_update(model, probe_input_ids)
+        self._do_update(model, probe_input_ids)
 
     def _do_update(self, model, probe_input_ids):
         """Perform the actual topological computation and plot update."""
@@ -396,7 +367,6 @@ class TopoPlotter:
         model.eval()
 
         try:
-            # 1. Extract hidden states
             layer_data = self._extract_hidden_states(model, probe_input_ids)
             if not layer_data:
                 return
@@ -404,7 +374,6 @@ class TopoPlotter:
             n_layers = len(layer_data)
             self._ensure_axes(n_layers)
 
-            # 2. Compute persistence for each layer
             for i, (layer_name, points) in enumerate(layer_data):
                 result = self._compute_persistence(points)
                 if result is None:
@@ -412,17 +381,13 @@ class TopoPlotter:
 
                 dgms = result["dgms"]
 
-                # Draw barcode
                 self._draw_barcode(self.axes_barcode[i], dgms, layer_name)
-
-                # Draw persistence diagram
                 self._draw_persistence_diagram(
                     self.axes_persistence[i], dgms, layer_name
                 )
 
                 # Track Betti numbers
                 betti = self._compute_betti_numbers(dgms)
-                # Pad to consistent length
                 while len(betti) <= self.max_homology_dim:
                     betti.append(0)
 
@@ -432,7 +397,6 @@ class TopoPlotter:
 
                 self.betti_history[layer_name].append(betti)
 
-                # Total persistence
                 total_pers = sum(
                     np.sum(dgm[np.isfinite(dgm[:, 1])][:, 1] -
                            dgm[np.isfinite(dgm[:, 1])][:, 0])
@@ -440,13 +404,10 @@ class TopoPlotter:
                 )
                 self.total_persistence_history[layer_name].append(total_pers)
 
-                # Draw Betti evolution
                 self._draw_betti_evolution(self.axes_betti[i], layer_name)
 
-            # Record step
             self._history_steps.append(self._global_step)
 
-            # Update title with step info
             self.fig.suptitle(
                 f"Topological Barcodes — Layer Activations  "
                 f"(step {self._global_step})",
