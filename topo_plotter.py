@@ -13,6 +13,16 @@ import matplotlib.pyplot as plt
 from typing import List, Optional, Dict, Tuple
 import torch
 import torch.nn as nn
+import os as _os
+
+_stderr_fd = _os.dup(2)
+_devnull = _os.open(_os.devnull, _os.O_WRONLY)
+
+def _suppress_c_stderr():
+    _os.dup2(_devnull, 2)
+
+def _restore_c_stderr():
+    _os.dup2(_stderr_fd, 2)
 
 try:
     from ripser import ripser
@@ -76,11 +86,11 @@ class TopoPlotter:
 
     def _init_figure(self):
         """Create the second matplotlib figure for topological visualization."""
-        # plt.ion() should already be active from LivePlotter, but ensure it
+        # Do NOT call matplotlib.use() — backend is already set by LivePlotter
         plt.ion()
 
-        # Create a NEW figure — this is what gives us a second window
-        self.fig = plt.figure(figsize=(20, 14))
+        # Create a NEW figure with a unique number to avoid conflicts
+        self.fig = plt.figure(num="TopoPlotter", figsize=(20, 14))
         self.fig.suptitle(
             "Topological Barcodes — Layer Activations",
             fontsize=14, fontweight="bold"
@@ -96,10 +106,19 @@ class TopoPlotter:
         self.axes_persistence = []
         self.axes_betti = []
 
-        # Force the window to appear immediately
+        # Add a placeholder text so the window has content and gets raised
+        self.fig.text(
+            0.5, 0.5, "Waiting for first topological update...",
+            ha="center", va="center", fontsize=16, alpha=0.4,
+        )
+
+        # Force the window to actually appear
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        plt.pause(0.01)
+        plt.pause(0.1)  # 100ms — gives Tk time to register the window
+
+        # Explicitly show all figures (this forces both windows to appear)
+        plt.show(block=False)
 
     def _ensure_axes(self, n_layers: int):
         """Create subplot grid once we know how many layers to display."""
@@ -380,13 +399,11 @@ class TopoPlotter:
                     continue
 
                 dgms = result["dgms"]
-
                 self._draw_barcode(self.axes_barcode[i], dgms, layer_name)
                 self._draw_persistence_diagram(
                     self.axes_persistence[i], dgms, layer_name
                 )
 
-                # Track Betti numbers
                 betti = self._compute_betti_numbers(dgms)
                 while len(betti) <= self.max_homology_dim:
                     betti.append(0)
@@ -403,7 +420,6 @@ class TopoPlotter:
                     for dgm in dgms if len(dgm) > 0
                 )
                 self.total_persistence_history[layer_name].append(total_pers)
-
                 self._draw_betti_evolution(self.axes_betti[i], layer_name)
 
             self._history_steps.append(self._global_step)
@@ -415,8 +431,14 @@ class TopoPlotter:
             )
 
             self.fig.tight_layout(rect=[0, 0, 1, 0.95])
-            self.fig.canvas.draw_idle()
-            self.fig.canvas.flush_events()
+
+            # Suppress X11/XIM stderr noise during canvas operations
+            _suppress_c_stderr()
+            try:
+                self.fig.canvas.draw_idle()
+                self.fig.canvas.flush_events()
+            finally:
+                _restore_c_stderr()
 
         except Exception as e:
             print(f"[TopoPlotter] Update failed: {e}")

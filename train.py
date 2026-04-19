@@ -30,6 +30,17 @@ import ctypes
 import ctypes.util
 from typing import List, Tuple, Optional, Dict
 
+import os as _os
+
+_stderr_fd = _os.dup(2)
+_devnull = _os.open(_os.devnull, _os.O_WRONLY)
+
+def _suppress_c_stderr():
+    _os.dup2(_devnull, 2)
+
+def _restore_c_stderr():
+    _os.dup2(_stderr_fd, 2)
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1167,6 +1178,10 @@ def train(args: argparse.Namespace):
 
                 plotter.update_batch(bl)
 
+                # ── Topological barcode update ──────────────────────
+                if args.topo:
+                    topo_plotter.update(model, inp)
+
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
 
@@ -1174,8 +1189,6 @@ def train(args: argparse.Namespace):
                     task, advance=1, loss=bl, ema=ema_loss,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
                 )
-
-                plotter.update_batch(bl)
 
         avg_train_loss = epoch_loss / max(n_batches, 1)
 
