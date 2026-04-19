@@ -1,1 +1,4 @@
 llvmlite
+torch
+matplotlib
+llvmlite
