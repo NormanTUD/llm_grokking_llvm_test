@@ -51,6 +51,7 @@ from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
 import random
+from topo_plotter import TopoPlotter
 from generate_samples import generate_example_samples
 from random_llvm_gen import generate_random_function
 import subprocess
@@ -941,6 +942,13 @@ def train(args: argparse.Namespace):
     # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
     plotter = LivePlotter(enabled=args.plot, update_every=args.plot_every)
 
+    topo_plotter = TopoPlotter(
+        enabled=args.topo,
+        update_every=args.topo_every,
+        max_points=args.topo_max_points,
+        max_layers_to_show=args.topo_max_layers,
+    )
+
     # ── Tokenizer ───────────────────────────────────────────────────────
     tokenizer = build_tokenizer_from_samples(
         n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
@@ -1166,6 +1174,8 @@ def train(args: argparse.Namespace):
                     task, advance=1, loss=bl, ema=ema_loss,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
                 )
+
+                plotter.update_batch(bl)
 
         avg_train_loss = epoch_loss / max(n_batches, 1)
 
@@ -1396,7 +1406,8 @@ def train(args: argparse.Namespace):
             )
         )
 
-    console.print("Finalizing plotter")
+    console.print("Finalizing plotters")
+    topo_plotter.finalize()
     plotter.finalize()
 
     if run_logger:
@@ -1510,6 +1521,17 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--wait-pid", type=int, default=None,
                    help="Wait for this PID to exit before starting training "
                         "(useful for queueing CUDA jobs)")
+
+    g = p.add_argument_group("Topology")
+    g.add_argument("--topo", action="store_true", default=False,
+                   help="Enable live topological barcode visualization")
+    g.add_argument("--topo-every", type=int, default=50,
+                   help="Update topological barcodes every N batches")
+    g.add_argument("--topo-max-points", type=int, default=200,
+                   help="Max points to subsample for persistence computation")
+    g.add_argument("--topo-max-layers", type=int, default=6,
+                   help="Max layers to display in topo window")
+
 
     return p.parse_args()
 
