@@ -5,19 +5,20 @@ Train a tiny GPT-like transformer to predict the integer output of
 randomly generated LLVM IR functions.
 
 Dependencies:
-    pip install torch matplotlib llvmlite rich
+    pip install torch matplotlib llvmlite rich transformers
 
 Usage:
-    python train_llvm_gpt.py --target-params 100000 --epochs 30 --lr 3e-4
+    python train_llvm_gpt.py --target-params 1000 --epochs 30 --lr 3e-4
     python train_llvm_gpt.py --help
 """
 
 import argparse
+import json
 import math
+import os
 import random
 import time
-import threading
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 import torch
 import torch.nn as nn
@@ -35,8 +36,6 @@ from rich.progress import (
     MofNCompleteColumn,
 )
 from rich.panel import Panel
-from rich.live import Live
-from rich.layout import Layout
 from rich.text import Text
 from rich import box
 
@@ -46,15 +45,15 @@ console = Console()
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 1.  TOKENIZER
+# 1.  TOKENIZER  (HuggingFace-compatible save/load)
 # ════════════════════════════════════════════════════════════════════════════
 
 class CharTokenizer:
     SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
 
     def __init__(self):
-        self.char2idx: dict[str, int] = {}
-        self.idx2char: dict[int, str] = {}
+        self.char2idx: Dict[str, int] = {}
+        self.idx2char: Dict[int, str] = {}
         self._next_id = len(self.SPECIAL)
         seed_chars = (
             "abcdefghijklmnopqrstuvwxyz"
@@ -77,6 +76,18 @@ class CharTokenizer:
     def vocab_size(self) -> int:
         return self._next_id
 
+    @property
+    def pad_token_id(self) -> int:
+        return self.SPECIAL["<pad>"]
+
+    @property
+    def bos_token_id(self) -> int:
+        return self.SPECIAL["<bos>"]
+
+    @property
+    def eos_token_id(self) -> int:
+        return self.SPECIAL["<eos>"]
+
     def encode(self, text: str) -> List[int]:
         return [self._register(ch) for ch in text]
 
@@ -92,9 +103,46 @@ class CharTokenizer:
                 parts.append("?")
         return "".join(parts)
 
+    def __call__(self, text: str, return_tensors: str = None, **kwargs) -> dict:
+        """HuggingFace-compatible __call__."""
+        ids = (
+            [self.SPECIAL["<bos>"]]
+            + self.encode(text)
+            + [self.SPECIAL["<eos>"]]
+        )
+        if return_tensors == "pt":
+            return {"input_ids": torch.tensor([ids], dtype=torch.long)}
+        return {"input_ids": ids}
+
+    def save_pretrained(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        data = {
+            "char2idx": self.char2idx,
+            "idx2char": {str(k): v for k, v in self.idx2char.items()},
+            "next_id": self._next_id,
+            "special": self.SPECIAL,
+        }
+        with open(os.path.join(path, "tokenizer.json"), "w") as f:
+            json.dump(data, f, indent=2)
+        # Also write a tokenizer_config.json for HF compatibility
+        with open(os.path.join(path, "tokenizer_config.json"), "w") as f:
+            json.dump({"tokenizer_class": "CharTokenizer"}, f)
+
+    @classmethod
+    def from_pretrained(cls, path: str) -> "CharTokenizer":
+        tok = cls.__new__(cls)
+        tok.char2idx = {}
+        tok.idx2char = {}
+        with open(os.path.join(path, "tokenizer.json"), "r") as f:
+            data = json.load(f)
+        tok.char2idx = data["char2idx"]
+        tok.idx2char = {int(k): v for k, v in data["idx2char"].items()}
+        tok._next_id = data["next_id"]
+        return tok
+
 
 # ════════════════════════════════════════════════════════════════════════════
-# 2.  DYNAMIC DATA GENERATION
+# 2.  DATA GENERATION (per-batch, on the fly)
 # ════════════════════════════════════════════════════════════════════════════
 
 def generate_single_sample(
@@ -103,6 +151,7 @@ def generate_single_sample(
     max_ops: int = 6,
     allowed_ops: Optional[List[str]] = None,
     param_range: Tuple[int, int] = (-50, 50),
+    max_seq_len: int = 2048,
 ) -> Optional[List[int]]:
     if allowed_ops is None:
         allowed_ops = ["add", "sub", "mul"]
@@ -131,96 +180,31 @@ def generate_single_sample(
         + tokenizer.encode(text)
         + [tokenizer.SPECIAL["<eos>"]]
     )
+    if len(ids) > max_seq_len:
+        return None
     return ids
 
 
-class DynamicDataGenerator:
-    """
-    Generates training/validation data on-the-fly in a background thread.
-    Maintains a buffer of ready-to-use samples.
-    """
-
-    def __init__(
-        self,
-        tokenizer: CharTokenizer,
-        buffer_size: int = 1000,
-        max_params: int = 3,
-        max_ops: int = 4,
-        allowed_ops: Optional[List[str]] = None,
-        param_range: Tuple[int, int] = (-20, 20),
-        max_seq_len: int = 2048,
-    ):
-        self.tokenizer = tokenizer
-        self.buffer_size = buffer_size
-        self.max_params = max_params
-        self.max_ops = max_ops
-        self.allowed_ops = allowed_ops or ["add", "sub", "mul"]
-        self.param_range = param_range
-        self.max_seq_len = max_seq_len
-
-        self._buffer: List[List[int]] = []
-        self._lock = threading.Lock()
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._generated_count = 0
-        self._failed_count = 0
-
-    def start(self):
-        self._running = True
-        self._thread = threading.Thread(target=self._fill_loop, daemon=True)
-        self._thread.start()
-
-    def stop(self):
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=2.0)
-
-    def _fill_loop(self):
-        while self._running:
-            with self._lock:
-                current_size = len(self._buffer)
-            if current_size >= self.buffer_size:
-                time.sleep(0.01)
-                continue
-
-            sample = generate_single_sample(
-                self.tokenizer,
-                self.max_params,
-                self.max_ops,
-                self.allowed_ops,
-                self.param_range,
-            )
-            if sample is not None and len(sample) <= self.max_seq_len:
-                with self._lock:
-                    self._buffer.append(sample)
-                    self._generated_count += 1
-            else:
-                self._failed_count += 1
-
-    def get_batch(self, batch_size: int) -> List[List[int]]:
-        """Pull a batch from the buffer. Blocks briefly if buffer is low."""
-        deadline = time.time() + 5.0
-        while time.time() < deadline:
-            with self._lock:
-                if len(self._buffer) >= batch_size:
-                    batch = self._buffer[:batch_size]
-                    self._buffer = self._buffer[batch_size:]
-                    return batch
-            time.sleep(0.01)
-        # Return whatever we have
-        with self._lock:
-            batch = self._buffer[:]
-            self._buffer.clear()
-        return batch
-
-    @property
-    def stats(self) -> dict:
-        with self._lock:
-            return {
-                "buffer_size": len(self._buffer),
-                "total_generated": self._generated_count,
-                "total_failed": self._failed_count,
-            }
+def generate_batch(
+    tokenizer: CharTokenizer,
+    batch_size: int,
+    max_params: int = 3,
+    max_ops: int = 4,
+    allowed_ops: Optional[List[str]] = None,
+    param_range: Tuple[int, int] = (-20, 20),
+    max_seq_len: int = 2048,
+) -> List[List[int]]:
+    """Generate a fresh random batch. Retries on failure."""
+    samples = []
+    attempts = 0
+    while len(samples) < batch_size and attempts < batch_size * 5:
+        attempts += 1
+        s = generate_single_sample(
+            tokenizer, max_params, max_ops, allowed_ops, param_range, max_seq_len
+        )
+        if s is not None:
+            samples.append(s)
+    return samples
 
 
 def collate_batch(
@@ -239,8 +223,46 @@ def collate_batch(
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 3.  TINY GPT MODEL
+# 3.  TINY GPT MODEL  (HuggingFace-compatible save/load)
 # ════════════════════════════════════════════════════════════════════════════
+
+class LLVMGPTConfig:
+    """Minimal config object compatible with HF's config pattern."""
+    model_type = "llvm_gpt"
+
+    def __init__(
+        self,
+        vocab_size: int = 90,
+        d_model: int = 64,
+        n_heads: int = 4,
+        n_layers: int = 4,
+        max_seq_len: int = 2048,
+        dropout: float = 0.1,
+        **kwargs,
+    ):
+        self.vocab_size = vocab_size
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.max_seq_len = max_seq_len
+        self.dropout = dropout
+        self.hidden_size = d_model  # HF compat
+        self.num_attention_heads = n_heads
+        self.num_hidden_layers = n_layers
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def save_pretrained(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "config.json"), "w") as f:
+            json.dump(self.__dict__, f, indent=2)
+
+    @classmethod
+    def from_pretrained(cls, path: str) -> "LLVMGPTConfig":
+        with open(os.path.join(path, "config.json"), "r") as f:
+            data = json.load(f)
+        return cls(**data)
+
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1):
@@ -291,25 +313,26 @@ class TransformerBlock(nn.Module):
 
 
 class TinyGPT(nn.Module):
-    def __init__(
-        self,
-        vocab_size: int,
-        d_model: int = 64,
-        n_heads: int = 4,
-        n_layers: int = 4,
-        max_seq_len: int = 2048,
-        dropout: float = 0.1,
-    ):
+    """
+    Small GPT-style decoder-only transformer with HuggingFace-compatible
+    save_pretrained / from_pretrained.
+    """
+
+    def __init__(self, config: LLVMGPTConfig):
         super().__init__()
-        self.max_seq_len = max_seq_len
-        self.tok_emb = nn.Embedding(vocab_size, d_model)
-        self.pos_emb = nn.Embedding(max_seq_len, d_model)
-        self.drop = nn.Dropout(dropout)
+        self.config = config
+        self.max_seq_len = config.max_seq_len
+        self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
+        self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
+        self.drop = nn.Dropout(config.dropout)
         self.blocks = nn.Sequential(
-            *[TransformerBlock(d_model, n_heads, max_seq_len, dropout) for _ in range(n_layers)]
+            *[
+                TransformerBlock(config.d_model, config.n_heads, config.max_seq_len, config.dropout)
+                for _ in range(config.n_layers)
+            ]
         )
-        self.ln_f = nn.LayerNorm(d_model)
-        self.head = nn.Linear(d_model, vocab_size, bias=False)
+        self.ln_f = nn.LayerNorm(config.d_model)
+        self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         self.head.weight = self.tok_emb.weight
         self.apply(self._init_weights)
 
@@ -323,26 +346,81 @@ class TinyGPT(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(
-        self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        # Accept and ignore extra HF kwargs
+        attention_mask: Optional[torch.Tensor] = None,
+        output_hidden_states: bool = False,
+        **kwargs,
+    ):
+        idx = input_ids
         B, T = idx.shape
         assert T <= self.max_seq_len, f"Sequence length {T} > max {self.max_seq_len}"
         pos = torch.arange(0, T, device=idx.device).unsqueeze(0)
         x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
-        x = self.blocks(x)
+
+        hidden_states_list = [x] if output_hidden_states else None
+
+        for block in self.blocks:
+            x = block(x)
+            if output_hidden_states:
+                hidden_states_list.append(x)
+
         x = self.ln_f(x)
         logits = self.head(x)
+
         loss = None
-        if targets is not None:
+        if labels is not None:
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
-                targets.view(-1),
+                labels.view(-1),
                 ignore_index=0,
             )
-        return logits, loss
+
+        # Return a simple namespace that mimics HF output
+        return _ModelOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=tuple(hidden_states_list) if output_hidden_states else None,
+            last_hidden_state=x,
+        )
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def save_pretrained(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        self.config.save_pretrained(path)
+        torch.save(self.state_dict(), os.path.join(path, "pytorch_model.bin"))
+
+    @classmethod
+    def from_pretrained(cls, path: str, **kwargs) -> "TinyGPT":
+        config = LLVMGPTConfig.from_pretrained(path)
+        # Allow overriding config values
+        for k, v in kwargs.items():
+            if hasattr(config, k):
+                setattr(config, k, v)
+        model = cls(config)
+        state_dict = torch.load(
+            os.path.join(path, "pytorch_model.bin"),
+            map_location="cpu",
+            weights_only=True,
+        )
+        model.load_state_dict(state_dict)
+        return model
+
+
+class _ModelOutput:
+    """Minimal HuggingFace-style model output."""
+    def __init__(self, loss=None, logits=None, hidden_states=None, last_hidden_state=None):
+        self.loss = loss
+        self.logits = logits
+        self.hidden_states = hidden_states
+        self.last_hidden_state = last_hidden_state
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -358,16 +436,16 @@ def estimate_params(vocab_size: int, d_model: int, n_layers: int, max_seq_len: i
 
 def find_model_config(
     vocab_size: int,
-    target_params: int = 100_000,
+    target_params: int = 1_000,
     max_seq_len: int = 2048,
 ) -> dict:
     best = None
     best_diff = float("inf")
-    for d_model in range(16, 512, 4):
+    for d_model in range(8, 512, 2):
         for n_heads in (1, 2, 4, 8):
             if d_model % n_heads != 0:
                 continue
-            for n_layers in range(1, 16):
+            for n_layers in range(1, 24):
                 n = estimate_params(vocab_size, d_model, n_layers, max_seq_len)
                 diff = abs(n - target_params)
                 if diff < best_diff:
@@ -398,7 +476,7 @@ SCHEDULERS = {
     "step": lambda opt, ep: torch.optim.lr_scheduler.StepLR(opt, step_size=max(1, ep // 3), gamma=0.5),
     "plateau": lambda opt, ep: torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=5, factor=0.5),
     "none": lambda opt, ep: torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda e: 1.0),
-    "warmup_cosine": None,  # handled specially below
+    "warmup_cosine": None,
 }
 
 
@@ -412,12 +490,21 @@ def build_warmup_cosine(optimizer, epochs, warmup_epochs=5):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 6.  MATPLOTLIB PLOTTER (non-blocking)
+# 6.  LIVE PLOTTER — opens immediately, updates per batch
 # ════════════════════════════════════════════════════════════════════════════
 
 class LivePlotter:
-    def __init__(self, enabled: bool = True):
+    """
+    Non-blocking matplotlib plotter.
+    Opens the window immediately and updates every `update_every` batches.
+    Uses draw_idle() + flush_events() for responsive updates.
+    """
+
+    def __init__(self, enabled: bool = True, update_every: int = 10):
         self.enabled = enabled
+        self.update_every = update_every
+        self._global_batch = 0
+
         if not enabled:
             return
 
@@ -429,82 +516,120 @@ class LivePlotter:
         self.plt.ion()
         self.fig, self.axes = self.plt.subplots(2, 2, figsize=(16, 10))
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
-        self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training Monitor")
+        try:
+            self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
+        except Exception:
+            pass
 
-        self.train_losses: List[float] = []
-        self.val_losses: List[float] = []
-        self.lr_history: List[float] = []
+        # Initialize empty line objects for efficient updates
+        ax_epoch, ax_batch, ax_lr, ax_val = self.axes.flat
+
+        ax_epoch.set_title("Epoch Loss")
+        ax_epoch.set_xlabel("Epoch")
+        ax_epoch.set_ylabel("Loss")
+        ax_epoch.grid(True, alpha=0.3)
+        self.line_train_epoch, = ax_epoch.plot([], [], label="Train", color="steelblue", linewidth=2)
+        self.line_val_epoch, = ax_epoch.plot([], [], label="Val", color="tomato", linewidth=2)
+        ax_epoch.legend()
+
+        ax_batch.set_title("Batch Loss (EMA)")
+        ax_batch.set_xlabel("Batch (global)")
+        ax_batch.set_ylabel("Loss")
+        ax_batch.grid(True, alpha=0.3)
+        self.line_batch_raw, = ax_batch.plot([], [], color="mediumpurple", linewidth=0.3, alpha=0.3)
+        self.line_batch_ema, = ax_batch.plot([], [], color="mediumpurple", linewidth=2, alpha=0.9)
+
+        ax_lr.set_title("Learning Rate")
+        ax_lr.set_xlabel("Epoch")
+        ax_lr.set_ylabel("LR")
+        ax_lr.grid(True, alpha=0.3)
+        ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
+        self.line_lr, = ax_lr.plot([], [], color="seagreen", linewidth=2)
+
+        ax_val.set_title("Validation Loss per Batch")
+        ax_val.set_xlabel("Val Batch (global)")
+        ax_val.set_ylabel("Loss")
+        ax_val.grid(True, alpha=0.3)
+        self.line_val_batch, = ax_val.plot([], [], color="tomato", linewidth=1, alpha=0.7)
+        self.line_val_ema, = ax_val.plot([], [], color="tomato", linewidth=2)
+
+        self.fig.tight_layout()
+
+        # Data storage
+        self.train_epoch_losses: List[float] = []
+        self.val_epoch_losses: List[float] = []
         self.batch_losses: List[float] = []
-        self.buffer_sizes: List[int] = []
+        self.batch_ema: List[float] = []
+        self.lr_history: List[float] = []
+        self.val_batch_losses: List[float] = []
+        self.val_batch_ema: List[float] = []
+        self._ema_val = None
+        self._ema_train = None
+
+        # Force initial draw so window appears immediately
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+        self.plt.pause(0.01)
+
+    def _refresh(self):
+        """Efficiently redraw only changed artists."""
+        for ax in self.axes.flat:
+            ax.relim()
+            ax.autoscale_view()
+        self.fig.canvas.draw_idle()
+        self.fig.canvas.flush_events()
 
     def update_batch(self, batch_loss: float):
         if not self.enabled:
             return
+
+        self._global_batch += 1
         self.batch_losses.append(batch_loss)
 
-    def update_epoch(
-        self,
-        train_loss: float,
-        val_loss: float,
-        lr: float,
-        buffer_size: int,
-    ):
+        # EMA
+        alpha = 0.05
+        if self._ema_train is None:
+            self._ema_train = batch_loss
+        else:
+            self._ema_train = alpha * batch_loss + (1 - alpha) * self._ema_train
+        self.batch_ema.append(self._ema_train)
+
+        if self._global_batch % self.update_every == 0:
+            xs = list(range(len(self.batch_losses)))
+            self.line_batch_raw.set_data(xs, self.batch_losses)
+            self.line_batch_ema.set_data(xs, self.batch_ema)
+            self._refresh()
+
+    def update_val_batch(self, val_batch_loss: float):
         if not self.enabled:
             return
 
-        self.train_losses.append(train_loss)
-        self.val_losses.append(val_loss)
+        self.val_batch_losses.append(val_batch_loss)
+        alpha = 0.1
+        if self._ema_val is None:
+            self._ema_val = val_batch_loss
+        else:
+            self._ema_val = alpha * val_batch_loss + (1 - alpha) * self._ema_val
+        self.val_batch_ema.append(self._ema_val)
+
+    def update_epoch(self, train_loss: float, val_loss: float, lr: float):
+        if not self.enabled:
+            return
+
+        self.train_epoch_losses.append(train_loss)
+        self.val_epoch_losses.append(val_loss)
         self.lr_history.append(lr)
-        self.buffer_sizes.append(buffer_size)
 
-        ax_loss, ax_batch, ax_lr, ax_buf = self.axes.flat
+        epochs = list(range(1, len(self.train_epoch_losses) + 1))
+        self.line_train_epoch.set_data(epochs, self.train_epoch_losses)
+        self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
+        self.line_lr.set_data(epochs, self.lr_history)
 
-        # Epoch losses
-        ax_loss.clear()
-        ax_loss.plot(self.train_losses, label="Train", color="steelblue", linewidth=2)
-        ax_loss.plot(self.val_losses, label="Val", color="tomato", linewidth=2)
-        ax_loss.set_xlabel("Epoch")
-        ax_loss.set_ylabel("Loss")
-        ax_loss.set_title("Epoch Loss (Cross-Entropy)")
-        ax_loss.legend()
-        ax_loss.grid(True, alpha=0.3)
+        vxs = list(range(len(self.val_batch_losses)))
+        self.line_val_batch.set_data(vxs, self.val_batch_losses)
+        self.line_val_ema.set_data(vxs, self.val_batch_ema)
 
-        # Batch losses (smoothed)
-        ax_batch.clear()
-        if len(self.batch_losses) > 0:
-            # Exponential moving average
-            alpha = 0.05
-            smoothed = []
-            val = self.batch_losses[0]
-            for bl in self.batch_losses:
-                val = alpha * bl + (1 - alpha) * val
-                smoothed.append(val)
-            ax_batch.plot(smoothed, color="mediumpurple", linewidth=1, alpha=0.9)
-            ax_batch.plot(self.batch_losses, color="mediumpurple", linewidth=0.3, alpha=0.3)
-        ax_batch.set_xlabel("Batch (global)")
-        ax_batch.set_ylabel("Loss")
-        ax_batch.set_title("Batch Loss (EMA smoothed)")
-        ax_batch.grid(True, alpha=0.3)
-
-        # Learning rate
-        ax_lr.clear()
-        ax_lr.plot(self.lr_history, color="seagreen", linewidth=2)
-        ax_lr.set_xlabel("Epoch")
-        ax_lr.set_ylabel("LR")
-        ax_lr.set_title("Learning Rate")
-        ax_lr.grid(True, alpha=0.3)
-        ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
-
-        # Buffer utilization
-        ax_buf.clear()
-        ax_buf.plot(self.buffer_sizes, color="darkorange", linewidth=2, marker="o", markersize=3)
-        ax_buf.set_xlabel("Epoch")
-        ax_buf.set_ylabel("Samples")
-        ax_buf.set_title("Data Buffer Size")
-        ax_buf.grid(True, alpha=0.3)
-
-        self.fig.tight_layout()
-        self.plt.pause(0.01)
+        self._refresh()
 
     def finalize(self):
         if not self.enabled:
@@ -531,13 +656,17 @@ def train(args: argparse.Namespace):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
 
+    # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
+    plotter = LivePlotter(enabled=args.plot, update_every=args.plot_every)
+
     # ── Tokenizer ───────────────────────────────────────────────────────
     tokenizer = CharTokenizer()
-
-    console.print("\n[bold cyan]Building vocabulary from pilot samples...[/]")
+    console.print("[bold cyan]Building vocabulary from pilot samples...[/]")
     for _ in range(200):
-        generate_single_sample(tokenizer, args.max_params, args.max_ops, allowed_ops,
-                               (args.param_min, args.param_max))
+        generate_single_sample(
+            tokenizer, args.max_params, args.max_ops, allowed_ops,
+            (args.param_min, args.param_max), args.max_seq_len,
+        )
 
     # ── Model config ────────────────────────────────────────────────────
     if args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
@@ -551,18 +680,19 @@ def train(args: argparse.Namespace):
                       f"(target ~{args.target_params:,} params)...[/]")
         cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len)
 
-    model = TinyGPT(
+    model_config = LLVMGPTConfig(
         vocab_size=tokenizer.vocab_size,
         d_model=cfg["d_model"],
         n_heads=cfg["n_heads"],
         n_layers=cfg["n_layers"],
         max_seq_len=args.max_seq_len,
         dropout=args.dropout,
-    ).to(device)
+    )
 
+    model = TinyGPT(model_config).to(device)
     actual_params = model.count_parameters()
 
-    # ── Print config table ──────────────────────────────────────────────
+    # ── Config table ────────────────────────────────────────────────────
     config_table = Table(title="Configuration", box=box.ROUNDED, show_lines=True)
     config_table.add_column("Category", style="bold cyan")
     config_table.add_column("Parameter", style="bold")
@@ -574,22 +704,24 @@ def train(args: argparse.Namespace):
     config_table.add_row("", "vocab_size", str(tokenizer.vocab_size))
     config_table.add_row("", "max_seq_len", str(args.max_seq_len))
     config_table.add_row("", "dropout", str(args.dropout))
-    config_table.add_row("", "parameters", f"{actual_params:,}")
+    config_table.add_row("", "parameters", f"[bold]{actual_params:,}[/]")
     config_table.add_row("Training", "optimizer", args.optimizer)
     config_table.add_row("", "scheduler", args.scheduler)
     config_table.add_row("", "lr", str(args.lr))
     config_table.add_row("", "weight_decay", str(args.weight_decay))
     config_table.add_row("", "batch_size", str(args.batch_size))
     config_table.add_row("", "epochs", str(args.epochs))
-    config_table.add_row("", "grad_clip", str(args.grad_clip))
-    config_table.add_row("Data", "batches_per_epoch", str(args.batches_per_epoch))
+    config_table.add_row("", "batches_per_epoch", str(args.batches_per_epoch))
     config_table.add_row("", "val_batches", str(args.val_batches))
-    config_table.add_row("", "allowed_ops", ", ".join(allowed_ops))
+    config_table.add_row("", "grad_clip", str(args.grad_clip))
+    config_table.add_row("Data", "allowed_ops", ", ".join(allowed_ops))
     config_table.add_row("", "param_range", f"[{args.param_min}, {args.param_max}]")
     config_table.add_row("", "max_params", str(args.max_params))
     config_table.add_row("", "max_ops", str(args.max_ops))
     config_table.add_row("Infra", "device", device)
     config_table.add_row("", "seed", str(args.seed))
+    config_table.add_row("", "plot_every", str(args.plot_every))
+    config_table.add_row("", "save_path", args.save_path)
 
     console.print(config_table)
 
@@ -606,46 +738,6 @@ def train(args: argparse.Namespace):
         scheduler = SCHEDULERS[args.scheduler](optimizer, args.epochs)
     is_plateau = args.scheduler == "plateau"
 
-    # ── Dynamic data generators ─────────────────────────────────────────
-    console.print("\n[bold cyan]Starting dynamic data generators...[/]")
-
-    train_gen = DynamicDataGenerator(
-        tokenizer=tokenizer,
-        buffer_size=args.batch_size * 20,
-        max_params=args.max_params,
-        max_ops=args.max_ops,
-        allowed_ops=allowed_ops,
-        param_range=(args.param_min, args.param_max),
-        max_seq_len=args.max_seq_len,
-    )
-    val_gen = DynamicDataGenerator(
-        tokenizer=tokenizer,
-        buffer_size=args.batch_size * 10,
-        max_params=args.max_params,
-        max_ops=args.max_ops,
-        allowed_ops=allowed_ops,
-        param_range=(args.param_min, args.param_max),
-        max_seq_len=args.max_seq_len,
-    )
-
-    train_gen.start()
-    val_gen.start()
-
-    # Wait for initial buffer fill
-    console.print("[dim]Waiting for data buffers to fill...[/]")
-    while train_gen.stats["buffer_size"] < args.batch_size * 2:
-        time.sleep(0.1)
-    console.print(f"[green]✓ Train buffer ready "
-                  f"({train_gen.stats['buffer_size']} samples)[/]")
-
-    while val_gen.stats["buffer_size"] < args.batch_size * 2:
-        time.sleep(0.1)
-    console.print(f"[green]✓ Val buffer ready "
-                  f"({val_gen.stats['buffer_size']} samples)[/]")
-
-    # ── Plotter ─────────────────────────────────────────────────────────
-    plotter = LivePlotter(enabled=args.plot)
-
     # ── Training ────────────────────────────────────────────────────────
     console.print(
         Panel(
@@ -660,6 +752,8 @@ def train(args: argparse.Namespace):
     best_val_loss = float("inf")
     train_losses_hist: List[float] = []
     val_losses_hist: List[float] = []
+    total_samples_generated = 0
+    total_samples_failed = 0
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
@@ -677,7 +771,7 @@ def train(args: argparse.Namespace):
             TextColumn("•"),
             TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
             TextColumn("•"),
-            TextColumn("[dim]buf={task.fields[buf]}[/]"),
+            TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
             TimeElapsedColumn(),
             console=console,
             transient=True,
@@ -686,19 +780,34 @@ def train(args: argparse.Namespace):
                 "train",
                 total=args.batches_per_epoch,
                 loss=0.0,
-                buf=0,
+                ema=0.0,
             )
 
+            ema_loss = None
+
             for batch_idx in range(args.batches_per_epoch):
-                batch = train_gen.get_batch(args.batch_size)
+                # Generate a fresh random batch on the fly
+                batch = generate_batch(
+                    tokenizer,
+                    args.batch_size,
+                    args.max_params,
+                    args.max_ops,
+                    allowed_ops,
+                    (args.param_min, args.param_max),
+                    args.max_seq_len,
+                )
+                total_samples_generated += len(batch)
+
                 if len(batch) < 2:
-                    time.sleep(0.05)
+                    total_samples_failed += args.batch_size
+                    progress.update(task, advance=1, loss=0.0, ema=ema_loss or 0.0)
                     continue
 
                 inp, tgt = collate_batch(batch, pad_id=tokenizer.SPECIAL["<pad>"])
                 inp, tgt = inp.to(device), tgt.to(device)
 
-                _, loss = model(inp, tgt)
+                output = model(input_ids=inp, labels=tgt)
+                loss = output.loss
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -709,18 +818,23 @@ def train(args: argparse.Namespace):
                 epoch_loss += batch_loss
                 n_batches += 1
 
+                if ema_loss is None:
+                    ema_loss = batch_loss
+                else:
+                    ema_loss = 0.05 * batch_loss + 0.95 * ema_loss
+
                 plotter.update_batch(batch_loss)
 
                 progress.update(
                     task,
                     advance=1,
                     loss=batch_loss,
-                    buf=train_gen.stats["buffer_size"],
+                    ema=ema_loss,
                 )
 
         avg_train_loss = epoch_loss / max(n_batches, 1)
 
-        # ── Validation ──────────────────────────────────────────────
+        # ── Validation ──────────────────────────────────────────────────
         model.eval()
         val_loss = 0.0
         val_batches = 0
@@ -736,31 +850,39 @@ def train(args: argparse.Namespace):
             console=console,
             transient=True,
         ) as progress:
-            task = progress.add_task(
-                "val",
-                total=args.val_batches,
-                loss=0.0,
-            )
+            task = progress.add_task("val", total=args.val_batches, loss=0.0)
 
             with torch.no_grad():
                 for _ in range(args.val_batches):
-                    batch = val_gen.get_batch(args.batch_size)
+                    batch = generate_batch(
+                        tokenizer,
+                        args.batch_size,
+                        args.max_params,
+                        args.max_ops,
+                        allowed_ops,
+                        (args.param_min, args.param_max),
+                        args.max_seq_len,
+                    )
+                    total_samples_generated += len(batch)
+
                     if len(batch) < 2:
-                        time.sleep(0.05)
+                        progress.update(task, advance=1, loss=0.0)
                         continue
 
                     inp, tgt = collate_batch(batch, pad_id=tokenizer.SPECIAL["<pad>"])
                     inp, tgt = inp.to(device), tgt.to(device)
 
-                    _, loss = model(inp, tgt)
-                    val_loss += loss.item()
+                    output = model(input_ids=inp, labels=tgt)
+                    vl = output.loss.item()
+                    val_loss += vl
                     val_batches += 1
 
-                    progress.update(task, advance=1, loss=loss.item())
+                    plotter.update_val_batch(vl)
+                    progress.update(task, advance=1, loss=vl)
 
         avg_val_loss = val_loss / max(val_batches, 1)
 
-        # ── Scheduler step ──────────────────────────────────────────
+        # ── Scheduler step ──────────────────────────────────────────────
         if is_plateau:
             scheduler.step(avg_val_loss)
         else:
@@ -769,7 +891,7 @@ def train(args: argparse.Namespace):
         current_lr = optimizer.param_groups[0]["lr"]
         elapsed = time.time() - t0
 
-        # ── Track best ──────────────────────────────────────────────
+        # ── Track best ──────────────────────────────────────────────────
         train_losses_hist.append(avg_train_loss)
         val_losses_hist.append(avg_val_loss)
 
@@ -777,8 +899,7 @@ def train(args: argparse.Namespace):
         if is_best:
             best_val_loss = avg_val_loss
 
-        # ── Epoch summary ───────────────────────────────────────────
-        gen_stats = train_gen.stats
+        # ── Epoch summary ───────────────────────────────────────────────
         best_marker = " [bold green]★ best[/]" if is_best else ""
 
         epoch_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
@@ -797,7 +918,7 @@ def train(args: argparse.Namespace):
             "train:", f"{avg_train_loss:.4f}",
             "val:", f"{avg_val_loss:.4f}",
             "lr:", f"{current_lr:.2e}",
-            "buf:", f"{gen_stats['buffer_size']}/{gen_stats['total_generated']}",
+            "samples:", f"{total_samples_generated:,}",
             "time:", f"{elapsed:.1f}s{best_marker}",
         )
 
@@ -810,44 +931,41 @@ def train(args: argparse.Namespace):
             )
         )
 
-        # ── Update plot ─────────────────────────────────────────────
-        plotter.update_epoch(
-            avg_train_loss,
-            avg_val_loss,
-            current_lr,
-            gen_stats["buffer_size"],
-        )
+        # ── Update epoch plot ───────────────────────────────────────────
+        plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
-        # ── Checkpoint ──────────────────────────────────────────────
+        # ── Checkpoint ──────────────────────────────────────────────────
         if args.save_every > 0 and epoch % args.save_every == 0:
-            path = f"llvm_gpt_epoch{epoch}.pt"
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-                "train_loss": avg_train_loss,
-                "val_loss": avg_val_loss,
-                "config": cfg,
-                "args": vars(args),
-            }, path)
-            console.print(f"  [dim]💾 Saved checkpoint: {path}[/]")
+            ckpt_path = f"{args.save_path}_epoch{epoch}"
+            model.save_pretrained(ckpt_path)
+            tokenizer.save_pretrained(ckpt_path)
+            console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}/[/]")
 
         if is_best and args.save_path:
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "config": cfg,
-                "vocab_size": tokenizer.vocab_size,
-                "tokenizer_char2idx": tokenizer.char2idx,
-                "args": vars(args),
-                "train_losses": train_losses_hist,
-                "val_losses": val_losses_hist,
-            }, args.save_path)
+            best_path = f"{args.save_path}_best"
+            model.save_pretrained(best_path)
+            tokenizer.save_pretrained(best_path)
 
-    # ── Stop generators ─────────────────────────────────────────────────
-    train_gen.stop()
-    val_gen.stop()
+    # ── Save final model (HuggingFace-compatible) ───────────────────────
+    if args.save_path:
+        console.print(f"\n[bold cyan]Saving final model to {args.save_path}/ ...[/]")
+        model.save_pretrained(args.save_path)
+        tokenizer.save_pretrained(args.save_path)
+
+        # Also save training metadata
+        meta = {
+            "train_losses": train_losses_hist,
+            "val_losses": val_losses_hist,
+            "best_val_loss": best_val_loss,
+            "total_samples_generated": total_samples_generated,
+            "actual_params": actual_params,
+            "args": vars(args),
+        }
+        with open(os.path.join(args.save_path, "training_meta.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+
+        console.print(f"[green]✓ Model saved to {args.save_path}/[/]")
+        console.print(f"[dim]  Files: config.json, pytorch_model.bin, tokenizer.json, training_meta.json[/]")
 
     # ── Final summary ───────────────────────────────────────────────────
     summary_table = Table(
@@ -863,15 +981,25 @@ def train(args: argparse.Namespace):
     summary_table.add_row("Final Val Loss", f"{val_losses_hist[-1]:.4f}")
     summary_table.add_row("Best Val Loss", f"{best_val_loss:.4f}")
     summary_table.add_row("Model Parameters", f"{actual_params:,}")
-    summary_table.add_row("Total Samples Generated",
-                          f"{train_gen.stats['total_generated'] + val_gen.stats['total_generated']:,}")
-    summary_table.add_row("Total Failed Generations",
-                          f"{train_gen.stats['total_failed'] + val_gen.stats['total_failed']:,}")
-    if args.save_path:
-        summary_table.add_row("Best Model Saved To", args.save_path)
+    summary_table.add_row("Total Samples Generated", f"{total_samples_generated:,}")
+    summary_table.add_row("Save Path", args.save_path or "(none)")
 
     console.print()
     console.print(summary_table)
+
+    # ── Show how to load ────────────────────────────────────────────────
+    if args.save_path:
+        console.print(
+            Panel(
+                f'[bold]from train_llvm_gpt import TinyGPT, CharTokenizer\n\n'
+                f'model = TinyGPT.from_pretrained("{args.save_path}")\n'
+                f'model.eval()\n\n'
+                f'tokenizer = CharTokenizer.from_pretrained("{args.save_path}")\n'
+                f'config = model.config[/]',
+                title="[bold green]📦 Load your model",
+                border_style="green",
+            )
+        )
 
     plotter.finalize()
 
@@ -952,10 +1080,12 @@ def parse_args() -> argparse.Namespace:
                    help="Enable live matplotlib plotting")
     g.add_argument("--no-plot", action="store_false", dest="plot",
                    help="Disable live plotting")
+    g.add_argument("--plot-every", type=int, default=5,
+                   help="Update matplotlib plot every N batches")
     g.add_argument("--save-every", type=int, default=0,
                    help="Save checkpoint every N epochs (0 = disabled)")
-    g.add_argument("--save-path", type=str, default="llvm_gpt_final.pt",
-                   help="Path to save the best model")
+    g.add_argument("--save-path", type=str, default="llvm_gpt_model",
+                   help="Directory to save the model (HuggingFace format)")
 
     return p.parse_args()
 
