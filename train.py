@@ -506,11 +506,11 @@ def build_warmup_cosine(optimizer, epochs, warmup_epochs=5):
 
 class EpochController:
     """
-    Mutable epoch target. Listens for keyboard input in a background thread
-    to adjust total_epochs while training is running.
+    Mutable epoch target. Listens for keyboard input in a background thread.
 
-    Ctrl+]  →  add `step` epochs
-    Ctrl+[  →  remove `step` epochs
+    Press  +  (or =)  →  add `step` epochs
+    Press  -          →  remove `step` epochs (min: current epoch)
+    Press  q          →  finish after current epoch
     """
 
     def __init__(self, initial_epochs: int, step: int = 10):
@@ -520,6 +520,7 @@ class EpochController:
         self._lock = __import__("threading").Lock()
         self._thread = None
         self._running = False
+        self._quit = False
 
     def start(self):
         import threading
@@ -539,8 +540,12 @@ class EpochController:
         with self._lock:
             return self.total_epochs
 
+    @property
+    def should_quit(self) -> bool:
+        with self._lock:
+            return self._quit
+
     def _listen(self):
-        """Read keypresses from stdin (non-blocking on Unix)."""
         try:
             import tty
             import termios
@@ -553,33 +558,33 @@ class EpochController:
                 while self._running:
                     if select.select([sys.stdin], [], [], 0.1)[0]:
                         ch = sys.stdin.read(1)
-                        if ch == "\x1d":  # Ctrl+]
+                        if ch in ("+", "="):
                             with self._lock:
                                 self.total_epochs += self.step
                             console.print(
-                                f"\n[bold green]  ↑ Epochs increased to "
-                                f"{self.total_epochs}[/]\n"
+                                f"\n[bold green]  ↑ Epochs → "
+                                f"{self.total_epochs} (+{self.step})[/]\n"
                             )
-                        elif ch == "\x1b":  # Ctrl+[  (ESC)
-                            # Read rest of escape sequence if any
-                            if select.select([sys.stdin], [], [], 0.05)[0]:
-                                sys.stdin.read(1)  # consume
-                                if select.select([sys.stdin], [], [], 0.05)[0]:
-                                    sys.stdin.read(1)
-                            else:
-                                with self._lock:
-                                    new = max(self._min_epoch, self.total_epochs - self.step)
-                                    self.total_epochs = new
-                                console.print(
-                                    f"\n[bold red]  ↓ Epochs decreased to "
-                                    f"{self.total_epochs}[/]\n"
+                        elif ch == "-":
+                            with self._lock:
+                                self.total_epochs = max(
+                                    self._min_epoch, self.total_epochs - self.step
                                 )
+                            console.print(
+                                f"\n[bold red]  ↓ Epochs → "
+                                f"{self.total_epochs} (-{self.step})[/]\n"
+                            )
+                        elif ch == "q":
+                            with self._lock:
+                                self._quit = True
+                                self.total_epochs = self._min_epoch
+                            console.print(
+                                "\n[bold yellow]  ⏹ Finishing after current epoch...[/]\n"
+                            )
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         except Exception:
-            # Windows or non-TTY: silently skip keyboard listener
             pass
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 7.  LIVE PLOTTER
@@ -857,8 +862,9 @@ def train(args: argparse.Namespace):
     config_table.add_row("", "seed", str(args.seed))
     config_table.add_row("", "plot_every", str(args.plot_every))
     config_table.add_row("", "save_path", args.save_path)
-    config_table.add_row("Controls", "Ctrl+]", "Add 10 epochs")
-    config_table.add_row("", "Ctrl+[ (ESC)", "Remove 10 epochs")
+    config_table.add_row("Controls", "+ / =", "Add 10 epochs")
+    config_table.add_row("", "-", "Remove 10 epochs")
+    config_table.add_row("", "q", "Finish after current epoch")
 
     console.print(config_table)
 
@@ -888,7 +894,7 @@ def train(args: argparse.Namespace):
             f"[bold white]Training for {args.epochs} epochs  │  "
             f"{args.batches_per_epoch} batches/epoch  │  "
             f"batch_size={args.batch_size}  │  "
-            f"Ctrl+] / Ctrl+[ to adjust epochs[/]",
+            f"Press +/- to adjust epochs, q to stop[/]",
             title="[bold green]🚀 Starting Training",
             border_style="green",
         )
