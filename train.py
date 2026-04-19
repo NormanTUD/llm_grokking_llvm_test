@@ -199,16 +199,18 @@ def generate_single_sample(
     params_str = ",".join(str(p) for p in params)
     result_str = str(result)
     text = f"{ir_code}<sep>{params_str}<sep>{result_str}"
-
+    
     ids = (
         [tokenizer.SPECIAL["<bos>"]]
         + tokenizer.encode(text)
         + [tokenizer.SPECIAL["<eos>"]]
     )
-    if len(ids) > max_seq_len:
-        return None
-    return ids
-
+    
+    # Find where the answer starts (after second <sep>)
+    prompt_part = f"{ir_code}<sep>{params_str}<sep>"
+    prompt_len = 1 + len(tokenizer.encode(prompt_part))  # +1 for <bos>
+    
+    return ids, prompt_len
 
 def generate_batch(
     tokenizer: CharTokenizer,
@@ -231,20 +233,49 @@ def generate_batch(
     return samples
 
 
-def collate_batch(
-    batch: List[List[int]], pad_id: int = 0
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    max_len = max(len(s) for s in batch)
-    input_ids = []
-    target_ids = []
-    for s in batch:
+def collate_batch(batch, pad_id=0):
+    max_len = max(len(s) for s, _ in batch)
+    input_ids, target_ids = [], []
+    for s, prompt_len in batch:
         padded = s + [pad_id] * (max_len - len(s))
-        input_ids.append(padded[:-1])
-        target_ids.append(padded[1:])
-    return torch.tensor(input_ids, dtype=torch.long), torch.tensor(
-        target_ids, dtype=torch.long
-    )
+        inp = padded[:-1]
+        tgt = padded[1:]
+        # Mask out everything before the answer
+        for i in range(min(prompt_len - 1, len(tgt))):
+            tgt[i] = pad_id  # ignored by cross_entropy with ignore_index=0
+        input_ids.append(inp)
+        target_ids.append(tgt)
+    return torch.tensor(input_ids, dtype=torch.long), torch.tensor(target_ids, dtype=torch.long)
 
+def build_tokenizer_from_samples(n_programs=10000, allowed_ops=None, 
+                                  max_params=4, max_ops=6,
+                                  param_range=(-50, 50)) -> CharTokenizer:
+    """Generate n_programs random LLVM IR functions to seed the tokenizer."""
+    import random
+    from random_llvm_gen import generate_random_function
+
+    if allowed_ops is None:
+        allowed_ops = ["add", "sub", "mul"]
+
+    tokenizer = CharTokenizer()
+
+    for i in range(n_programs):
+        num_p = random.randint(2, max(2, max_params))
+        num_o = random.randint(1, max(1, max_ops))
+        params = [random.randint(*param_range) for _ in range(num_p)]
+        try:
+            ir_code, result = generate_random_function(
+                num_params=num_p, params=params,
+                allowed_ops=allowed_ops, num_operations=num_o,
+                func_name="f",
+            )
+            # Force-register every character
+            full_text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
+            tokenizer.encode(full_text)
+        except Exception:
+            continue
+
+    return tokenizer
 
 # ════════════════════════════════════════════════════════════════════════════
 # 3.  TINY GPT MODEL  (HuggingFace-compatible save/load)
@@ -825,7 +856,12 @@ def train(args: argparse.Namespace):
     plotter = LivePlotter(enabled=args.plot, update_every=args.plot_every)
 
     # ── Tokenizer ───────────────────────────────────────────────────────
-    tokenizer = CharTokenizer()
+    tokenizer = build_tokenizer_from_samples(
+        n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
+        max_params=args.max_params, max_ops=args.max_ops,
+        param_range=(args.param_min, args.param_max),
+    )
+
     console.print("[bold cyan]Building vocabulary from pilot samples...[/]")
     for _ in range(200):
         generate_single_sample(
@@ -1305,6 +1341,10 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--scheduler", type=str, default="cosine",
                    choices=list(SCHEDULERS.keys()),
                    help="LR scheduler")
+
+    g = p.add_argument_group("Tokenizer")
+    g.add_argument("--tokenizer_initial_nr", type=int, default=10000,
+                   help="Number of examples generated to initialize a reasonable tokenizer")
 
     g = p.add_argument_group("Infrastructure")
     g.add_argument("--device", type=str, default="auto",

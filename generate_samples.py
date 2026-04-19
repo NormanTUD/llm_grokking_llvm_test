@@ -112,7 +112,7 @@ def generate_example_samples(
             "expected": expected_str,
             "predicted": predicted_str,
             "correct": str(predicted_str == expected_str),
-            "full_prompt": prompt_text[:200],  # truncate for readability
+            "full_prompt": prompt_text,  # truncate for readability
         })
 
     return samples
