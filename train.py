@@ -16,6 +16,8 @@ Controls (while training):
     Ctrl+Down   Remove 10 epochs (minimum: current epoch)
 """
 
+run_dir = None
+
 import argparse
 import json
 import math
@@ -48,9 +50,8 @@ from rich.text import Text
 from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
-from run_logger import RunLogger
-from generate_samples import generate_example_samples
 import random
+from generate_samples import generate_example_samples
 from random_llvm_gen import generate_random_function
 import subprocess
 from run_logger import RunLogger
@@ -974,6 +975,9 @@ def train(args: argparse.Namespace):
     run_logger = None
     if not args.no_run_log:
         run_logger = RunLogger(base_dir=args.run_dir)
+        global run_dir
+        run_dir = run_logger.get_base_dir()
+
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
         run_logger.log_config(args)
         run_logger.log_model_summary(
@@ -1018,7 +1022,6 @@ def train(args: argparse.Namespace):
     config_table.add_row("Infra", "device", device)
     config_table.add_row("", "seed", str(args.seed))
     config_table.add_row("", "plot_every", str(args.plot_every))
-    config_table.add_row("", "save_path", args.save_path)
     config_table.add_row("Controls", "+ / =", "Add 10 epochs")
     config_table.add_row("", "-", "Remove 10 epochs")
     config_table.add_row("", "q", "Finish after current epoch")
@@ -1265,25 +1268,26 @@ def train(args: argparse.Namespace):
         # ── Update epoch plot ───────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
+        save_path = f"{run_dir}/final.pt"
+
         # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
-        if args.save_path:
-            epoch_ckpt_path = os.path.join(args.save_path, f"model_epoch_{epoch}.pt")
-            os.makedirs(args.save_path, exist_ok=True)
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-                "train_loss": avg_train_loss,
-                "val_loss": avg_val_loss,
-                "best_val_loss": best_val_loss,
-            }, epoch_ckpt_path)
-            console.print(f"  [dim]💾 Saved checkpoint: {epoch_ckpt_path}[/]")
+        epoch_ckpt_path = os.path.join(save_path, f"model_epoch_{epoch}.pt")
+        os.makedirs(save_path, exist_ok=True)
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "train_loss": avg_train_loss,
+            "val_loss": avg_val_loss,
+            "best_val_loss": best_val_loss,
+        }, epoch_ckpt_path)
+        console.print(f"  [dim]💾 Saved checkpoint: {epoch_ckpt_path}[/]")
 
         # ── Save best model (lowest val loss) ───────────────────────────
-        if is_best and args.save_path:
-            best_path = os.path.join(args.save_path, "model_best.pt")
-            os.makedirs(args.save_path, exist_ok=True)
+        if is_best and save_path:
+            best_path = os.path.join(save_path, "model_best.pt")
+            os.makedirs(save_path, exist_ok=True)
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -1294,7 +1298,7 @@ def train(args: argparse.Namespace):
                 "best_val_loss": best_val_loss,
             }, best_path)
             # Also save in HuggingFace format for easy loading
-            best_hf_path = f"{args.save_path}_best"
+            best_hf_path = f"{save_path}_best"
             model.save_pretrained(best_hf_path)
             tokenizer.save_pretrained(best_hf_path)
             console.print(f"  [bold green]⭐ New best model saved: {best_path} (val_loss={avg_val_loss:.4f})[/]")
@@ -1304,10 +1308,10 @@ def train(args: argparse.Namespace):
     epoch_ctrl.stop()
 
     # ── Save final model ────────────────────────────────────────────────
-    if args.save_path:
-        console.print(f"\n[bold cyan]Saving final model to {args.save_path}/ ...[/]")
-        model.save_pretrained(args.save_path)
-        tokenizer.save_pretrained(args.save_path)
+    if save_path:
+        console.print(f"\n[bold cyan]Saving final model to {save_path}/ ...[/]")
+        model.save_pretrained(save_path)
+        tokenizer.save_pretrained(save_path)
 
         meta = {
             "train_losses": train_losses_hist,
@@ -1319,10 +1323,10 @@ def train(args: argparse.Namespace):
             "elapsed": timer.elapsed_total(),
             "args": vars(args),
         }
-        with open(os.path.join(args.save_path, "training_meta.json"), "w") as f:
+        with open(os.path.join(save_path, "training_meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
 
-        console.print(f"[green]✓ Saved: {args.save_path}/[/]")
+        console.print(f"[green]✓ Saved: {save_path}/[/]")
         console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
 
     # ── Final summary ───────────────────────────────────────────────────
@@ -1343,19 +1347,21 @@ def train(args: argparse.Namespace):
     summary_table.add_row("Total Epochs", str(epoch))
     summary_table.add_row("Total Time", timer.elapsed_total())
     summary_table.add_row("Avg Epoch Time", f"{timer.avg_epoch_time:.1f}s")
-    if args.save_path:
-        summary_table.add_row("Save Path", args.save_path)
+
+    save_path = f"{run_dir}/final.pt"
+
+    summary_table.add_row("Save Path", save_path)
 
     console.print()
     console.print(summary_table)
 
-    if args.save_path:
+    if save_path:
         console.print(
             Panel(
                 f'[bold]from train_llvm_gpt import TinyGPT, CharTokenizer\n\n'
-                f'model = TinyGPT.from_pretrained("{args.save_path}")\n'
+                f'model = TinyGPT.from_pretrained("{save_path}")\n'
                 f'model.eval()\n\n'
-                f'tokenizer = CharTokenizer.from_pretrained("{args.save_path}")\n'
+                f'tokenizer = CharTokenizer.from_pretrained("{save_path}")\n'
                 f'config = model.config[/]',
                 title="[bold green]📦 Load your model",
                 border_style="green",
@@ -1373,7 +1379,7 @@ def train(args: argparse.Namespace):
             total_epochs=epoch,
             total_time=timer.elapsed_total(),
             param_count=actual_params,
-            save_path=args.save_path,
+            save_path=save_path,
         )
         console.print(f"[bold green]📁 Run data saved to: {run_logger.path}[/]")
 
@@ -1462,8 +1468,6 @@ def parse_args() -> argparse.Namespace:
                    help="Update plot every N batches")
     g.add_argument("--save-every", type=int, default=0,
                    help="Checkpoint every N epochs (0 = off)")
-    g.add_argument("--save-path", type=str, default="llvm_gpt_model",
-                   help="Save directory (HuggingFace format)")
 
     g.add_argument("--run-dir", type=str, default="runs",
                    help="Base directory for run logs")
