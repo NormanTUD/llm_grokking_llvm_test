@@ -53,6 +53,14 @@ from generate_samples import generate_example_samples
 import random
 from random_llvm_gen import generate_random_function
 import subprocess
+from run_logger import RunLogger
+from generate_samples import generate_example_samples
+import threading
+import tty
+import termios
+import select
+import matplotlib
+import matplotlib.pyplot as plt
 
 # ════════════════════════════════════════════════════════════════════════════
 # NEW: PID waiter
@@ -616,7 +624,6 @@ class EpochController:
         self._quit = False
 
     def start(self):
-        import threading
         self._running = True
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
@@ -640,10 +647,6 @@ class EpochController:
 
     def _listen(self):
         try:
-            import tty
-            import termios
-            import select
-
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
@@ -695,9 +698,7 @@ class LivePlotter:
 
         _suppress_c_stderr()
         try:
-            import matplotlib
             matplotlib.use("TkAgg")
-            import matplotlib.pyplot as plt
             self.plt = plt
         finally:
             _restore_c_stderr()
@@ -969,10 +970,6 @@ def train(args: argparse.Namespace):
         _resumed_checkpoint = checkpoint
     else:
         _resumed_checkpoint = None
-
-    # ── Run Logger ──────────────────────────────────────────────────────
-    from run_logger import RunLogger
-    from generate_samples import generate_example_samples
 
     run_logger = None
     if not args.no_run_log:
