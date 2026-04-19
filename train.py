@@ -48,6 +48,8 @@ from rich.text import Text
 from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
+from run_logger import RunLogger
+from generate_samples import generate_example_samples
 
 # ── Suppress X11/XIM spam ──────────────────────────────────────────────────
 # The "key event is already fabricated" messages come from libX11.
@@ -595,6 +597,7 @@ class LivePlotter:
         self.enabled = enabled
         self.update_every = update_every
         self._global_batch = 0
+        self._ema_train = None  # ← THIS WAS MISSING
 
         if not enabled:
             return
@@ -627,8 +630,8 @@ class LivePlotter:
         self.line_val_epoch, = ax_epoch.plot([], [], label="Val", color="tomato", linewidth=2)
         ax_epoch.legend(loc="upper right")
 
-        # Top-right: Batch loss EMA
-        ax_batch.set_title("Batch Loss (Train)")
+        # Top-right: Batch loss EMA (train)
+        ax_batch.set_title("Batch Loss (Train EMA)")
         ax_batch.set_xlabel("Batch")
         ax_batch.set_ylabel("Loss")
         ax_batch.grid(True, alpha=0.3)
@@ -644,24 +647,33 @@ class LivePlotter:
         self.line_lr, = ax_lr.plot([], [], label="LR", color="seagreen", linewidth=2)
         ax_lr.legend(loc="upper right")
 
-        # Bottom-right: Val batch loss EMA
+        # Bottom-right: Val batch loss — raw per-batch + epoch average markers
         ax_val.set_title("Batch Loss (Val)")
-        ax_val.set_xlabel("Batch")
+        ax_val.set_xlabel("Global Val Batch")
         ax_val.set_ylabel("Loss")
         ax_val.grid(True, alpha=0.3)
-        self.line_val_ema, = ax_val.plot([], [], label="Val EMA", color="tomato", linewidth=2)
+        self.line_val_raw, = ax_val.plot(
+            [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
+        )
+        self.line_val_epoch_avg, = ax_val.plot(
+            [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
+            marker="o", markersize=4,
+        )
         ax_val.legend(loc="upper right")
 
         self.fig.tight_layout()
 
-        # Data
+        # ── Data stores ─────────────────────────────────────────────────
         self.train_epoch_losses: List[float] = []
         self.val_epoch_losses: List[float] = []
         self.batch_ema: List[float] = []
         self.lr_history: List[float] = []
-        self.val_batch_ema: List[float] = []
-        self._ema_val = None
-        self._ema_train = None
+
+        # Val batch: raw losses + epoch averages
+        self.val_batch_raw: List[float] = []
+        self._val_epoch_batch_buf: List[float] = []
+        self._val_epoch_avg_xs: List[float] = []
+        self._val_epoch_avg_ys: List[float] = []
 
         # Force window to appear
         self.fig.canvas.draw()
@@ -699,14 +711,29 @@ class LivePlotter:
             self._refresh()
 
     def update_val_batch(self, val_batch_loss: float):
+        """Record a single raw val batch loss."""
         if not self.enabled:
             return
-        alpha = 0.1
-        if self._ema_val is None:
-            self._ema_val = val_batch_loss
-        else:
-            self._ema_val = alpha * val_batch_loss + (1 - alpha) * self._ema_val
-        self.val_batch_ema.append(self._ema_val)
+        self.val_batch_raw.append(val_batch_loss)
+        self._val_epoch_batch_buf.append(val_batch_loss)
+
+    def finish_val_epoch(self):
+        """Call after all val batches in an epoch. Computes epoch avg and updates plot."""
+        if not self.enabled:
+            return
+        if self._val_epoch_batch_buf:
+            avg = sum(self._val_epoch_batch_buf) / len(self._val_epoch_batch_buf)
+            end_x = len(self.val_batch_raw) - 1
+            start_x = end_x - len(self._val_epoch_batch_buf) + 1
+            mid_x = (start_x + end_x) / 2.0
+            self._val_epoch_avg_xs.append(mid_x)
+            self._val_epoch_avg_ys.append(avg)
+            self._val_epoch_batch_buf = []
+
+        # Update plot lines
+        vxs = list(range(len(self.val_batch_raw)))
+        self.line_val_raw.set_data(vxs, self.val_batch_raw)
+        self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs, self._val_epoch_avg_ys)
 
     def update_epoch(self, train_loss: float, val_loss: float, lr: float):
         if not self.enabled:
@@ -721,9 +748,8 @@ class LivePlotter:
         self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
         self.line_lr.set_data(epochs, self.lr_history)
 
-        vxs = list(range(len(self.val_batch_ema)))
-        self.line_val_ema.set_data(vxs, self.val_batch_ema)
-
+        # finish_val_epoch already updated the val batch plot,
+        # just refresh everything
         self._refresh()
 
     def finalize(self):
@@ -731,7 +757,6 @@ class LivePlotter:
             return
         self.plt.ioff()
         self.plt.show()
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 8.  TIME ESTIMATOR
@@ -831,6 +856,28 @@ def train(args: argparse.Namespace):
 
     model = TinyGPT(model_config).to(device)
     actual_params = model.count_parameters()
+
+    # ── Run Logger ──────────────────────────────────────────────────────
+    from run_logger import RunLogger
+    from generate_samples import generate_example_samples
+
+    run_logger = None
+    if not args.no_run_log:
+        run_logger = RunLogger(base_dir=args.run_dir)
+        console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
+        run_logger.log_config(args)
+        run_logger.log_model_summary(
+            model_name="TinyGPT",
+            param_count=actual_params,
+            config_dict={
+                "d_model": cfg["d_model"],
+                "n_heads": cfg["n_heads"],
+                "n_layers": cfg["n_layers"],
+                "max_seq_len": args.max_seq_len,
+                "dropout": args.dropout,
+            },
+            vocab_size=tokenizer.vocab_size,
+        )
 
     # ── Config table ────────────────────────────────────────────────────
     config_table = Table(title="Configuration", box=box.ROUNDED, show_lines=True)
@@ -974,6 +1021,9 @@ def train(args: argparse.Namespace):
 
                 plotter.update_batch(bl)
 
+                if run_logger:
+                    run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
+
                 progress.update(
                     task, advance=1, loss=bl, ema=ema_loss,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
@@ -1020,9 +1070,14 @@ def train(args: argparse.Namespace):
                     val_batches += 1
 
                     plotter.update_val_batch(vl)
+                    if run_logger:
+                        run_logger.log_batch_loss_val(epoch, val_batches, vl)
+
                     progress.update(task, advance=1, loss=vl)
 
         avg_val_loss = val_loss / max(val_batches, 1)
+
+        plotter.finish_val_epoch()
 
         # ── Scheduler step ──────────────────────────────────────────────
         if is_plateau:
@@ -1069,6 +1124,32 @@ def train(args: argparse.Namespace):
                 width=min(console.width, 120),
             )
         )
+
+        # ── Run Logger: epoch + samples ─────────────────────────────────
+        if run_logger:
+            run_logger.log_epoch(
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                lr=current_lr,
+                elapsed_secs=elapsed,
+                total_samples=total_samples,
+                is_best=is_best,
+            )
+
+            n_to_log = None if args.log_all_samples else args.log_samples
+            example_samples = generate_example_samples(
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                num_samples=n_to_log if n_to_log else 999999,
+                max_params=args.max_params,
+                max_ops=args.max_ops,
+                allowed_ops=allowed_ops,
+                param_range=(args.param_min, args.param_max),
+            )
+            run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
+            run_logger.flush_losses()
 
         # ── Update epoch plot ───────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
@@ -1148,6 +1229,20 @@ def train(args: argparse.Namespace):
         )
 
     plotter.finalize()
+
+    if run_logger:
+        run_logger.log_final_summary(
+            train_losses=train_losses_hist,
+            val_losses=val_losses_hist,
+            best_val_loss=best_val_loss,
+            total_samples=total_samples,
+            total_epochs=epoch,
+            total_time=timer.elapsed_total(),
+            param_count=actual_params,
+            save_path=args.save_path,
+        )
+        console.print(f"[bold green]📁 Run data saved to: {run_logger.path}[/]")
+
     return model, tokenizer
 
 
@@ -1227,6 +1322,15 @@ def parse_args() -> argparse.Namespace:
                    help="Checkpoint every N epochs (0 = off)")
     g.add_argument("--save-path", type=str, default="llvm_gpt_model",
                    help="Save directory (HuggingFace format)")
+
+    g.add_argument("--run-dir", type=str, default="runs",
+                   help="Base directory for run logs")
+    g.add_argument("--log-samples", type=int, default=5,
+                   help="Number of example sentences to log per epoch (first N)")
+    g.add_argument("--log-all-samples", action="store_true", default=False,
+                   help="Log ALL generated samples per epoch (overrides --log-samples)")
+    g.add_argument("--no-run-log", action="store_true", default=False,
+                   help="Disable run logging entirely")
 
     return p.parse_args()
 
