@@ -249,7 +249,7 @@ def collate_batch(batch, pad_id=0):
         target_ids.append(tgt)
     return torch.tensor(input_ids, dtype=torch.long), torch.tensor(target_ids, dtype=torch.long)
 
-def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None, 
+def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                   max_params=4, max_ops=6,
                                   param_range=(-50, 50)) -> CharTokenizer:
     """Generate n_programs random LLVM IR functions to seed the tokenizer."""
@@ -259,21 +259,26 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
 
     tokenizer = CharTokenizer()
 
-    for i in range(n_programs):
-        num_p = random.randint(2, max(2, max_params))
-        num_o = random.randint(1, max(1, max_ops))
-        params = [random.randint(*param_range) for _ in range(num_p)]
-        try:
-            ir_code, result = generate_random_function(
-                num_params=num_p, params=params,
-                allowed_ops=allowed_ops, num_operations=num_o,
-                func_name="f",
-            )
-            # Force-register every character
-            full_text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
-            tokenizer.encode(full_text)
-        except Exception:
-            continue
+    with Progress(transient=True) as progress:
+        task = progress.add_task("[green]Generiere Programme...", total=n_programs)
+
+        for i in range(n_programs):
+            num_p = random.randint(2, max(2, max_params))
+            num_o = random.randint(1, max(1, max_ops))
+            params = [random.randint(*param_range) for _ in range(num_p)]
+            try:
+                ir_code, result = generate_random_function(
+                    num_params=num_p, params=params,
+                    allowed_ops=allowed_ops, num_operations=num_o,
+                    func_name="f",
+                )
+                full_text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
+                tokenizer.encode(full_text)
+            except Exception:
+                pass # Fehler ignorieren
+
+            # Fortschritt aktualisieren
+            progress.update(task, advance=1)
 
     return tokenizer
 
