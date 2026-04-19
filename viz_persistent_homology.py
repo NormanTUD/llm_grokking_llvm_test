@@ -51,6 +51,49 @@ except ImportError:
     print("Install with: pip install ripser persim")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# MISSING FUNCTIONS — these were in viz_fibre_bundle.py but not here
+# ═══════════════════════════════════════════════════════════════════════
+
+def spectral_entropy(sigma: np.ndarray) -> float:
+    """Compute spectral entropy of singular values (normalized).
+    
+    This measures the "spread" of the singular value distribution.
+    High entropy = singular values are uniformly distributed (full-rank-like).
+    Low entropy = singular values are concentrated (low-rank-like).
+    """
+    s = sigma / (sigma.sum() + 1e-12)
+    s = s[s > 1e-12]
+    return -np.sum(s * np.log(s + 1e-12))
+
+
+def effective_rank(sigma: np.ndarray) -> float:
+    """Effective rank = exp(spectral_entropy).
+    
+    This gives a continuous estimate of the "intrinsic dimensionality"
+    of the linear map described by the singular values. It equals the
+    true rank when all nonzero singular values are equal, and is < rank
+    when the spectrum is skewed.
+    """
+    return np.exp(spectral_entropy(sigma))
+
+
+def condition_number(sigma: np.ndarray) -> float:
+    """Condition number = max(sigma) / min(sigma).
+    
+    This is a proxy for the Lipschitz distortion of the layer map:
+    how much the map stretches the most-stretched direction relative
+    to the most-compressed direction.
+    """
+    s_min = sigma[sigma > 1e-10]
+    if len(s_min) == 0:
+        return float('inf')
+    return sigma.max() / s_min.min()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+
+
 def build_small_model(vocab_size: int = 80, d_model: int = 32,
                        n_heads: int = 4, n_layers: int = 4,
                        max_seq_len: int = 256) -> TinyGPT:
