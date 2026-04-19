@@ -62,6 +62,30 @@ import termios
 import select
 import matplotlib
 import matplotlib.pyplot as plt
+import tkinter
+
+def _tk_report_callback_exception(self, exc_type, exc_value, exc_tb):
+    if exc_type is KeyboardInterrupt:
+        return  # silently ignore
+    # Fall back to default for real errors
+    sys.__stderr__.write(f"Exception in Tkinter callback\n")
+    import traceback
+    traceback.print_exception(exc_type, exc_value, exc_tb)
+
+tkinter.Tk.report_callback_exception = _tk_report_callback_exception
+
+_interrupt_count = 0
+
+def _sigint_handler(signum, frame):
+    global _interrupt_count
+    _interrupt_count += 1
+    if _interrupt_count == 1:
+        console.print("\n[bold yellow]⏳ Will stop after this epoch (Ctrl+C again to stop now)...[/]")
+    else:
+        console.print("\n[bold red]Stopping immediately.[/]")
+        raise KeyboardInterrupt
+
+signal.signal(signal.SIGINT, _sigint_handler)
 
 # ════════════════════════════════════════════════════════════════════════════
 # NEW: PID waiter
@@ -1302,6 +1326,10 @@ def train(args: argparse.Namespace):
             model.save_pretrained(best_hf_path)
             tokenizer.save_pretrained(best_hf_path)
             console.print(f"  [bold green]⭐ New best model saved: {best_path} (val_loss={avg_val_loss:.4f})[/]")
+
+        if _interrupt_count >= 1:
+            console.print("[bold yellow]Graceful stop after epoch.[/]")
+            break
 
 
     # ── Stop controller ─────────────────────────────────────────────────
