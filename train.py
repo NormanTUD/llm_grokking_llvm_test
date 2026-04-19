@@ -50,6 +50,8 @@ from rich import box
 from random_llvm_gen import generate_random_function, list_supported_ops
 from run_logger import RunLogger
 from generate_samples import generate_example_samples
+import random
+from random_llvm_gen import generate_random_function
 
 # ── Suppress X11/XIM spam ──────────────────────────────────────────────────
 # The "key event is already fabricated" messages come from libX11.
@@ -251,8 +253,6 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                   max_params=4, max_ops=6,
                                   param_range=(-50, 50)) -> CharTokenizer:
     """Generate n_programs random LLVM IR functions to seed the tokenizer."""
-    import random
-    from random_llvm_gen import generate_random_function
 
     if allowed_ops is None:
         allowed_ops = ["add", "sub", "mul"]
