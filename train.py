@@ -1396,6 +1396,7 @@ def train(args: argparse.Namespace):
             )
         )
 
+    console.print("Finalizing plotter")
     plotter.finalize()
 
     if run_logger:
