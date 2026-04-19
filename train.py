@@ -943,8 +943,32 @@ def train(args: argparse.Namespace):
         dropout=args.dropout,
     )
 
+    # ── Create model ────────────────────────────────────────────────────
     model = TinyGPT(model_config).to(device)
     actual_params = model.count_parameters()
+
+    # ── Resume from checkpoint ──────────────────────────────────────────
+    start_epoch = 0
+    resumed_train_losses = []
+    resumed_val_losses = []
+    resumed_best_val_loss = float("inf")
+    resumed_total_samples = 0
+
+    if args.resume is not None:
+        if not os.path.isfile(args.resume):
+            console.print(f"[bold red]❌ Checkpoint not found: {args.resume}[/]")
+            sys.exit(1)
+
+        console.print(f"[bold yellow]🔄 Resuming from checkpoint: {args.resume}[/]")
+        checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+
+        model.load_state_dict(checkpoint["model_state_dict"])
+        console.print("  [green]✓ Model weights loaded[/]")
+
+        # We'll load optimizer & scheduler state AFTER they're created below
+        _resumed_checkpoint = checkpoint
+    else:
+        _resumed_checkpoint = None
 
     # ── Run Logger ──────────────────────────────────────────────────────
     from run_logger import RunLogger
@@ -1036,14 +1060,15 @@ def train(args: argparse.Namespace):
         )
     )
 
-    best_val_loss = float("inf")
-    train_losses_hist: List[float] = []
-    val_losses_hist: List[float] = []
-    total_samples = 0
+    best_val_loss = resumed_best_val_loss
+    train_losses_hist: List[float] = list(resumed_train_losses)
+    val_losses_hist: List[float] = list(resumed_val_losses)
+    total_samples = resumed_total_samples
 
-    epoch = 0
+    epoch = start_epoch
     while True:
         epoch += 1
+
         total_epochs = epoch_ctrl.epochs
         if epoch > total_epochs:
             break
@@ -1417,6 +1442,10 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--scheduler", type=str, default="none",
                    choices=list(SCHEDULERS.keys()),
                    help="LR scheduler")
+    g.add_argument("--resume", type=str, default=None,
+                   help="Path to a .pt checkpoint to resume training from "
+                        "(e.g. llvm_gpt_model/model_epoch_15.pt)")
+
 
     g = p.add_argument_group("Tokenizer")
     g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
