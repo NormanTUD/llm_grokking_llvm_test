@@ -2,3 +2,4 @@ __pycache__/
 runs
 llvm_gpt_model_best/
 llvm_gpt_final.pt
+fibre_bundle_topology.png
