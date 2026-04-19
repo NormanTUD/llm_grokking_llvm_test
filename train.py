@@ -1336,7 +1336,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--optimizer", type=str, default="adamw",
                    choices=list(OPTIMIZERS.keys()),
                    help="Optimizer")
-    g.add_argument("--scheduler", type=str, default="cosine",
+    g.add_argument("--scheduler", type=str, default="none",
                    choices=list(SCHEDULERS.keys()),
                    help="LR scheduler")
 
