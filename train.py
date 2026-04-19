@@ -247,7 +247,7 @@ def collate_batch(batch, pad_id=0):
         target_ids.append(tgt)
     return torch.tensor(input_ids, dtype=torch.long), torch.tensor(target_ids, dtype=torch.long)
 
-def build_tokenizer_from_samples(n_programs=10000, allowed_ops=None, 
+def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None, 
                                   max_params=4, max_ops=6,
                                   param_range=(-50, 50)) -> CharTokenizer:
     """Generate n_programs random LLVM IR functions to seed the tokenizer."""
@@ -1343,7 +1343,7 @@ def parse_args() -> argparse.Namespace:
                    help="LR scheduler")
 
     g = p.add_argument_group("Tokenizer")
-    g.add_argument("--tokenizer_initial_nr", type=int, default=10000,
+    g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
                    help="Number of examples generated to initialize a reasonable tokenizer")
 
     g = p.add_argument_group("Infrastructure")
