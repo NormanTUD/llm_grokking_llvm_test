@@ -967,11 +967,9 @@ class LivePlotter:
             return
 
         self._topo_step += 1
-        # Fire on the FIRST step AND every topo_every steps thereafter
         if self._topo_step != 1 and self._topo_step % self.topo_every != 0:
             return
 
-        self._topo_step += 1
         if self._topo_step % self.topo_every != 0:
             return
 
