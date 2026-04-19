@@ -439,17 +439,21 @@ class CausalSelfAttention(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, T, C = x.shape
-        qkv = self.qkv(x).reshape(B, T, 3, self.n_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-        scale = math.sqrt(self.head_dim)
-        attn = (q @ k.transpose(-2, -1)) / scale
-        attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        attn = F.softmax(attn, dim=-1)
-        attn = self.attn_drop(attn)
-        out = (attn @ v).transpose(1, 2).reshape(B, T, C)
-        return self.proj_drop(self.proj(out))
+        try:
+            B, T, C = x.shape
+            qkv = self.qkv(x).reshape(B, T, 3, self.n_heads, self.head_dim)
+            qkv = qkv.permute(2, 0, 3, 1, 4)
+            q, k, v = qkv[0], qkv[1], qkv[2]
+            scale = math.sqrt(self.head_dim)
+            attn = (q @ k.transpose(-2, -1)) / scale
+            attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
+            attn = F.softmax(attn, dim=-1)
+            attn = self.attn_drop(attn)
+            out = (attn @ v).transpose(1, 2).reshape(B, T, C)
+            return self.proj_drop(self.proj(out))
+        except torch.cuda.OutOfMemoryError:
+            console.print(f"[bold red]❌ Memory error. This can be caused by having a too large batch size or too little parameters.[/]")
+            sys.exit(1)
 
 
 class TransformerBlock(nn.Module):
