@@ -867,13 +867,6 @@ def train(args: argparse.Namespace):
         param_range=(args.param_min, args.param_max),
     )
 
-    console.print("[bold cyan]Building vocabulary from pilot samples...[/]")
-    for _ in range(200):
-        generate_single_sample(
-            tokenizer, args.max_params, args.max_ops, allowed_ops,
-            (args.param_min, args.param_max), args.max_seq_len,
-        )
-
     # ── Model config ────────────────────────────────────────────────────
     if args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
         cfg = {
