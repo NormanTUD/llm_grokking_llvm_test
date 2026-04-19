@@ -7,3 +7,4 @@ ripser
 persim
 scikit-learn
 scipy
+ripser
