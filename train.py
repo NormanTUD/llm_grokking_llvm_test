@@ -29,6 +29,7 @@ import time
 import ctypes
 import ctypes.util
 from typing import List, Tuple, Optional, Dict
+import numpy as np
 
 import os as _os
 
@@ -963,6 +964,11 @@ class LivePlotter:
         `topo_every` steps and updates the barcode + birth/death panels.
         """
         if not self.topo_enabled:
+            return
+
+        self._topo_step += 1
+        # Fire on the FIRST step AND every topo_every steps thereafter
+        if self._topo_step != 1 and self._topo_step % self.topo_every != 0:
             return
 
         self._topo_step += 1
