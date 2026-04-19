@@ -92,20 +92,40 @@ def condition_number(sigma: np.ndarray) -> float:
 
 def discover_run_folder(run_dir: str) -> Dict:
     """
-    Auto-discover checkpoint, config, and metadata from a run folder.
-
-    Searches for:
-      - Checkpoint: *.pt, *.pth (prefers 'best_model', then 'checkpoint', then latest)
-      - Config: config.json, hparams.json, *.json
-      - Tokenizer vocab or sample text files
-
-    Returns dict with discovered paths and metadata.
+    Auto-discover checkpoint, config, and metadata from a run folder
+    OR a direct checkpoint file path.
     """
     run_path = Path(run_dir).resolve()
     if not run_path.exists():
-        print(f"ERROR: Run folder does not exist: {run_path}")
+        print(f"ERROR: Path does not exist: {run_path}")
         sys.exit(1)
 
+    # ── If the user passed a file, use it as the checkpoint directly ──
+    if run_path.is_file() and run_path.suffix in ('.pt', '.pth'):
+        print(f"  Detected direct checkpoint file: {run_path.name}")
+        parent_dir = run_path.parent
+        discovered = {
+            "run_dir": str(parent_dir),
+            "checkpoint": str(run_path),
+            "config": None,
+            "config_data": {},
+        }
+        # Still try to find a config in the parent directory
+        config_patterns = ["config.json", "hparams.json", "params.json", "*.json"]
+        for pattern in config_patterns:
+            found = sorted(parent_dir.rglob(pattern))
+            if found:
+                discovered["config"] = str(found[0])
+                print(f"  Found config: {found[0].name}")
+                try:
+                    with open(found[0], "r") as f:
+                        discovered["config_data"] = json.load(f)
+                except (json.JSONDecodeError, IOError) as e:
+                    print(f"    WARNING: Could not parse config: {e}")
+                break
+        return discovered
+
+    # ── Otherwise, treat it as a directory (existing behavior) ────────
     print(f"  Scanning run folder: {run_path}")
 
     discovered = {
