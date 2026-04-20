@@ -911,6 +911,21 @@ class LivePlotter:
             )
             self._window_watch_thread.start()
 
+    def accumulate_predictions(self, predictions: list):
+        """Accumulate predictions across batches (call clear_predictions() at epoch start)."""
+        if not self.enabled:
+            return
+        self._last_predictions.extend(predictions)
+        # Keep only the most recent 20 for display
+        if len(self._last_predictions) > 20:
+            self._last_predictions = self._last_predictions[-20:]
+        self._draw_predictions()
+        self._refresh()
+
+    def clear_predictions(self):
+        """Clear accumulated predictions (call at start of each epoch)."""
+        self._last_predictions = []
+
     def _create_figure(self):
         """Create (or recreate) the matplotlib figure and axes."""
 
@@ -940,14 +955,13 @@ class LivePlotter:
             ax_batch = self.fig.add_subplot(gs[0, 1])
             ax_lr    = self.fig.add_subplot(gs[0, 2])
             ax_val   = self.fig.add_subplot(gs[1, 0])
-            ax_diffs = self.fig.add_subplot(gs[1, 1])   # NEW: absolute diffs
+            ax_diffs = self.fig.add_subplot(gs[1, 1])
             ax_preds = self.fig.add_subplot(gs[1, 2])
-            ax_info  = self.fig.add_subplot(gs[2, 0:2])
-            # gs[2,2] left empty or used for something else
+            ax_info  = self.fig.add_subplot(gs[2, :])
 
             ax_diffs.set_title("Absolute Prediction Error (outliers removed)")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Mean |expected - predicted|")
+            ax_diffs.set_ylabel("|expected - predicted|")
             ax_diffs.grid(True, alpha=0.3)
             self.line_diffs_mean, = ax_diffs.plot(
                 [], [], label="Mean |diff|", color="darkorange", linewidth=2,
@@ -957,6 +971,9 @@ class LivePlotter:
             )
             ax_diffs.legend(loc="upper right", fontsize=8)
             self.ax_diffs = ax_diffs
+
+            self.ax_barcode = None
+            self.ax_bd = None
 
         self.ax_barcode = None
         self.ax_bd = None
@@ -968,6 +985,12 @@ class LivePlotter:
         # _plot_axes: only axes that have actual data lines (used by _refresh
         # for relim / autoscale_view).  Text-only panels are excluded.
         self._plot_axes = [ax_epoch, ax_batch, ax_lr, ax_val]
+        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
+            self._plot_axes.append(self.ax_diffs)
+        if self.ax_barcode is not None:
+            self._plot_axes.append(self.ax_barcode)
+        if self.ax_bd is not None:
+            self._plot_axes.append(self.ax_bd)
         if self.ax_barcode is not None:
             self._plot_axes.append(self.ax_barcode)
         if self.ax_bd is not None:
@@ -1113,6 +1136,14 @@ class LivePlotter:
 
         self._draw_predictions()
         self._draw_model_info()
+
+        # Restore diff plot
+        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
+            means = [np.mean(d) for d in self._abs_diffs_history]
+            medians = [np.median(d) for d in self._abs_diffs_history]
+            xs = list(range(len(means)))
+            self.line_diffs_mean.set_data(xs, means)
+            self.line_diffs_median.set_data(xs, medians)
 
     def _on_close(self, event):
         """Called when the user closes the matplotlib window."""
@@ -1333,16 +1364,7 @@ class LivePlotter:
         if not self.enabled:
             return
 
-        # Update the diff plot lines
-        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
-            means = [np.mean(d) for d in self._abs_diffs_history]
-            medians = [np.median(d) for d in self._abs_diffs_history]
-            xs = list(range(len(means)))
-            self.line_diffs_mean.set_data(xs, means)
-            self.line_diffs_median.set_data(xs, medians)
-            self._refresh()
-
-
+        # 1) Collect diffs from this batch
         diffs = []
         for expected, predicted, _ in predictions:
             try:
@@ -1350,12 +1372,12 @@ class LivePlotter:
                 pred_val = int(predicted.strip())
                 diffs.append(abs(exp_val - pred_val))
             except (ValueError, TypeError):
-                continue  # skip NaN / non-numeric
+                continue
 
         if not diffs:
             return
 
-        # Remove extreme outliers (beyond 95th percentile)
+        # 2) Remove extreme outliers (beyond 95th percentile)
         diffs_arr = np.array(diffs, dtype=float)
         if len(diffs_arr) > 2:
             p95 = np.percentile(diffs_arr, 95)
@@ -1364,8 +1386,22 @@ class LivePlotter:
         # Remove any remaining NaN/inf
         diffs_arr = diffs_arr[np.isfinite(diffs_arr)]
 
-        if len(diffs_arr) > 0:
-            self._abs_diffs_history.append(diffs_arr.tolist())
+        if len(diffs_arr) == 0:
+            return
+
+        # 3) Append FIRST, then plot
+        self._abs_diffs_history.append(diffs_arr.tolist())
+
+        # 4) Update the diff plot lines
+        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
+            means = [np.mean(d) for d in self._abs_diffs_history]
+            medians = [np.median(d) for d in self._abs_diffs_history]
+            xs = list(range(len(means)))
+            self.line_diffs_mean.set_data(xs, means)
+            self.line_diffs_median.set_data(xs, medians)
+            self.ax_diffs.relim()
+            self.ax_diffs.autoscale_view()
+            self._refresh()
 
 
     def _draw_predictions(self):
@@ -1375,7 +1411,10 @@ class LivePlotter:
             return
         ax.clear()
         ax.axis("off")
-        ax.set_title("Last Batch Predictions (Expected → Got → Diff)", fontsize=10, fontweight="bold")
+        ax.set_title(
+            "Predictions (Training + Validation samples)",
+            fontsize=10, fontweight="bold",
+        )
 
         if not self._last_predictions:
             ax.text(0.5, 0.5, "Waiting for predictions...",
@@ -1383,14 +1422,15 @@ class LivePlotter:
                     transform=ax.transAxes)
             return
 
-        n_show = min(len(self._last_predictions), 10)
-        y_positions = np.linspace(0.92, 0.08, n_show)
+        n_show = min(len(self._last_predictions), 16)
+        y_positions = np.linspace(0.95, 0.05, n_show)
 
-        for i, (expected, predicted, is_correct) in enumerate(self._last_predictions[:n_show]):
+        for i, (expected, predicted, is_correct) in enumerate(
+            self._last_predictions[-n_show:]
+        ):
             color = "green" if is_correct else "red"
             marker = "✓" if is_correct else "✗"
 
-            # Try to compute numeric difference
             try:
                 exp_val = int(expected.strip())
                 pred_val = int(predicted.strip())
@@ -1401,20 +1441,20 @@ class LivePlotter:
                 )
             except (ValueError, TypeError):
                 text = (
-                    f"{marker}  expected: {expected:>8s}  │  "
-                    f"got: {predicted:>8s}  │  diff: N/A"
+                    f"{marker}  expected: {expected[:12]:>12s}  │  "
+                    f"got: {predicted[:12]:>12s}"
                 )
 
-            ax.text(0.05, y_positions[i], text,
-                    fontsize=9, fontfamily="monospace",
+            ax.text(0.02, y_positions[i], text,
+                    fontsize=8, fontfamily="monospace",
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
-        # Accuracy summary
         n_correct = sum(1 for _, _, c in self._last_predictions if c)
         n_total = len(self._last_predictions)
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
-        ax.text(0.95, 0.02, f"Batch accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)",
+        ax.text(0.98, 0.01,
+                f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)",
                 ha="right", va="bottom", fontsize=9, fontweight="bold",
                 transform=ax.transAxes, alpha=0.7)
 
@@ -1944,7 +1984,7 @@ def train(args: argparse.Namespace):
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
 
-                if batch == 0 || batch % args.plot_preview == 0:
+                if batch:
                     preds = get_batch_predictions(model, tokenizer, batch, device)
                     plotter.update_predictions(preds)
                     plotter.update_prediction_diffs(preds)
@@ -2288,8 +2328,6 @@ def parse_args() -> argparse.Namespace:
                    help="Suppress the matplotlib window but still write plots to file")
     g.add_argument("--plot-file", type=str, default="training_plot.png",
                    help="Filename for the saved plot image (written every epoch)")
-    g.add_argument("--plot-preview", type=int, default=5,
-                   help="Update plot of preview texts every N batches")
     g.add_argument("--run-dir", type=str, default="runs",
                    help="Base directory for run logs")
     g.add_argument("--log-samples", type=int, default=5,
