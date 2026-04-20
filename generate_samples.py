@@ -31,7 +31,7 @@ def generate_example_samples(
         - expected: the correct integer result
         - predicted: the model's greedy-decoded output after <sep>
         - correct: whether predicted == expected
-        - full_input: the full text fed to the model
+        - full_prompt: the full text fed to the model
     """
     import random
 
@@ -41,6 +41,11 @@ def generate_example_samples(
     model.eval()
     samples = []
     attempts = 0
+
+    # Pre-compute special token IDs from the tokenizer
+    eos_id = tokenizer.eos_token_id
+    pad_id = tokenizer.pad_token_id
+    bos_id = tokenizer.bos_token_id
 
     while len(samples) < num_samples and attempts < num_samples * 10:
         attempts += 1
@@ -66,15 +71,12 @@ def generate_example_samples(
         # Build the prompt: IR code + <sep> + params + <sep>
         # The model should predict the result after the second <sep>
         prompt_text = f"{ir_code}<sep>{params_str}<sep>"
-        prompt_ids = (
-            [tokenizer.SPECIAL["<bos>"]]
-            + tokenizer.encode(prompt_text)
-        )
+        prompt_ids = [bos_id] + tokenizer.encode(prompt_text)
 
         # Greedy decode
         input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
 
-        predicted_chars = []
+        generated_ids = []
         with torch.no_grad():
             for _ in range(max_gen_len):
                 if input_tensor.shape[1] >= model.max_seq_len:
@@ -84,27 +86,29 @@ def generate_example_samples(
                 logits = output.logits[:, -1, :]  # last token
                 next_id = logits.argmax(dim=-1).item()
 
-                if next_id == tokenizer.SPECIAL["<eos>"]:
+                # Stop on EOS or PAD
+                if next_id == eos_id:
                     break
-                if next_id == tokenizer.SPECIAL["<pad>"]:
+                if next_id == pad_id:
                     break
 
-                # Decode the character
-                inv_special = {v: k for k, v in tokenizer.SPECIAL.items()}
-                if next_id in inv_special:
-                    predicted_chars.append(inv_special[next_id])
-                    break  # hit a special token, stop
-                elif next_id in tokenizer.idx2char:
-                    predicted_chars.append(tokenizer.idx2char[next_id])
-                else:
-                    predicted_chars.append("?")
+                generated_ids.append(next_id)
 
                 input_tensor = torch.cat(
                     [input_tensor, torch.tensor([[next_id]], device=device)],
                     dim=1,
                 )
 
-        predicted_str = "".join(predicted_chars).strip()
+        # Decode all generated token IDs at once using the BPE tokenizer
+        if generated_ids:
+            predicted_str = tokenizer.decode(generated_ids).strip()
+        else:
+            predicted_str = ""
+
+        # Clean up any special token remnants that might appear in decoded text
+        for special_tok in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+            predicted_str = predicted_str.replace(special_tok, "")
+        predicted_str = predicted_str.strip()
 
         samples.append({
             "ir_code": ir_code.strip(),
@@ -112,7 +116,7 @@ def generate_example_samples(
             "expected": expected_str,
             "predicted": predicted_str,
             "correct": str(predicted_str == expected_str),
-            "full_prompt": prompt_text,  # truncate for readability
+            "full_prompt": prompt_text,
         })
 
     return samples
