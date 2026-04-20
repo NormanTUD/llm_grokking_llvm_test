@@ -847,6 +847,7 @@ class TinyGPT(nn.Module):
 
 
 import re
+import math
 
 def compute_structured_loss(
     model: TinyGPT,
@@ -866,12 +867,18 @@ def compute_structured_loss(
     Hierarchy (low loss → high loss):
       1. Perfect integer match                          → 0 extra penalty
       2. Wrong integer, small |diff|                    → small penalty (scaled by diff)
-      3. Wrong integer, large |diff|                    → larger penalty
-      4. Float-like string (e.g. "-3.5")                → moderate penalty (close to number)
-      5. String starting with '-' or digits             → higher penalty (partially numeric)
+      3. Wrong integer, large |diff|                    → larger penalty (capped at 0.99)
+      4. Float-like string (e.g. "-3.5")                → moderate penalty [1.0, 1.99]
+      5. String starting with '-' or digits             → higher penalty [2.0, 3.99]
          Length closer to expected → slightly better
-      6. Pure garbage string ("hello", "???")            → maximum penalty
+      6. Pure garbage string ("hello", "???")            → maximum penalty [4.0, 5.99]
          Length far from expected → even worse
+      7. Empty string                                    → fixed ceiling 6.0
+
+    The structure penalty is applied as a MULTIPLICATIVE SCALE on the CE loss
+    so that gradients actually flow (a bare torch.tensor() constant contributes
+    zero gradient). When the model produces garbage, CE gradients are amplified;
+    when it produces the correct integer, gradients are unscaled (1.0×).
 
     Returns:
         total_loss, ce_loss_val, value_loss_val, structure_loss_val
@@ -903,9 +910,8 @@ def compute_structured_loss(
     # ── Structure-aware penalty on generated answer tokens ──────────────
     # We do greedy argmax decoding from the logits (no separate generation
     # pass needed — just argmax the teacher-forced logits for the answer
-    # portion). This is differentiable through the softmax.
+    # portion).
 
-    structure_loss_term = torch.tensor(0.0, device=device)
     structure_penalties = []
 
     sep_id = tokenizer._tok.token_to_id("<sep>")
@@ -930,8 +936,7 @@ def compute_structured_loss(
         expected_str = str(expected_int)
 
         # The answer tokens in target start at vp_idx (position after last <sep>)
-        # In the shifted target, this corresponds to the same index
-        answer_start = vp_idx  # in the target tensor
+        answer_start = vp_idx
 
         # Greedy decode from logits (teacher-forced)
         pred_token_ids = []
@@ -956,24 +961,28 @@ def compute_structured_loss(
         )
         structure_penalties.append(penalty)
 
+    # ── Combine: use penalty as multiplicative scale on CE loss ─────────
+    # This is the critical fix: a plain torch.tensor(mean_penalty) has NO
+    # gradient graph, so adding it contributes zero gradients to the model.
+    # Instead, we MULTIPLY the CE loss by (1 + alpha * penalty), which
+    # preserves the CE gradient graph and scales gradient magnitude:
+    #   - Perfect output (penalty=0)  → scale = 1.0 (normal gradients)
+    #   - Garbage output (penalty~5)  → scale = 1 + 0.5*5 = 3.5× amplified
     if structure_penalties:
-        # Make it differentiable: scale the CE loss by the mean penalty
-        # This way, batches with more garbage get higher total loss
         mean_penalty = sum(structure_penalties) / len(structure_penalties)
-        structure_loss_term = torch.tensor(mean_penalty, device=device, dtype=torch.float32)
+        scale = 1.0 + alpha_structure * mean_penalty
+        structure_loss_val = mean_penalty  # for logging only
+    else:
+        scale = 1.0
+        structure_loss_val = 0.0
 
-    # ── Combine ─────────────────────────────────────────────────────────
-    total_loss = (
-        ce_loss
-        + alpha_value * value_loss_term
-        + alpha_structure * structure_loss_term
-    )
+    total_loss = scale * ce_loss + alpha_value * value_loss_term
 
     return (
         total_loss,
         ce_loss.item(),
         val_loss_val,
-        structure_loss_term.item(),
+        structure_loss_val,
     )
 
 
@@ -983,64 +992,91 @@ def _compute_structure_penalty(
     predicted_str: str,
 ) -> float:
     """
-    Compute a scalar penalty for a single prediction based on the hierarchy:
+    Compute a scalar penalty for a single prediction.
 
+    Hierarchy (strictly ordered, NO overlap between levels):
       0.0          — perfect match
-      (0, ~1]      — wrong integer, penalty ∝ log(1 + |diff|)
-      ~1.0-2.0     — float-like string
-      ~2.0-4.0     — partially numeric / dash-prefixed
-      ~4.0-6.0+    — pure garbage, scaled by length mismatch
+      (0, 0.99]    — wrong integer (ALWAYS better than any non-integer)
+      [1.0, 1.99]  — float-like string (e.g. "-3.5")
+      [2.0, 3.99]  — partially numeric / dash-prefixed (e.g. "---", "-3abc")
+      [4.0, 5.99]  — pure garbage (e.g. "hello", "???")
+      6.0          — empty output (fixed ceiling)
 
-    All values are deterministic and bounded.
+    Key invariant: ANY valid integer (even wildly wrong) is ALWAYS penalized
+    less than ANY non-integer output. This ensures the model is always
+    rewarded for producing integers over garbage.
+
+    Within each level, length closeness to expected_str is a tiebreaker
+    (closer length → lower penalty).
     """
     if not predicted_str:
-        # Empty output is very bad
-        return 5.0 + abs(len(expected_str))  # length penalty
+        # Empty output is always the worst — fixed ceiling so it doesn't
+        # vary with expected length (which would confuse training)
+        return 6.0
 
     # ── Level 1: Perfect match ──────────────────────────────────────────
     if predicted_str.strip() == expected_str.strip():
         return 0.0
 
-    # ── Level 2: Valid integer ──────────────────────────────────────────
     int_pattern = re.compile(r'^-?\d+$')
     float_pattern = re.compile(r'^-?\d+\.\d+$')
-    partial_numeric = re.compile(r'^-?\d')  # starts with optional minus + digit
+    partial_numeric = re.compile(r'^-?\d')
 
+    # ── Level 2: Valid integer — range (0, 0.99] ────────────────────────
+    # Capped at 0.99 so ANY integer is ALWAYS better than ANY non-integer.
+    # Uses asymptotic formula: approaches 0.99 for huge diffs but never
+    # exceeds it.
     if int_pattern.match(predicted_str):
         try:
             pred_int = int(predicted_str)
             diff = abs(expected_int - pred_int)
-            # Log scale so huge diffs don't dominate
-            return math.log1p(diff) / math.log1p(1000)  # normalized ~[0, 1]
+            # 0.99 * (1 - 1/(1 + log(1+diff)))
+            #   diff=0  → 0.0  (perfect, but string didn't match — e.g. leading zeros)
+            #   diff=1  → 0.99 * (1 - 1/1.693) ≈ 0.41
+            #   diff=10 → 0.99 * (1 - 1/3.398) ≈ 0.70
+            #   diff=9999 → 0.99 * (1 - 1/10.21) ≈ 0.89
+            #   diff→∞  → 0.99
+            return 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
-            pass  # fall through to next level
+            pass  # fall through (e.g. integer too large for Python)
 
-    # ── Level 3: Float-like string ──────────────────────────────────────
+    # ── Level 3: Float-like string — range [1.0, 1.99] ─────────────────
+    # The model produced something like "-3.5" — it understands numeric
+    # structure but isn't producing integers. Still much better than garbage.
     if float_pattern.match(predicted_str):
         try:
             pred_float = float(predicted_str)
             diff = abs(expected_int - pred_float)
-            # Slightly worse than a correct integer, but still numeric
-            return 1.0 + math.log1p(diff) / math.log1p(1000)
+            return 1.0 + 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
-            return 1.5
+            return 1.5  # unparseable float — middle of range
 
-    # ── Level 4: Partially numeric / dash-prefixed ──────────────────────
-    # Strings like "---", "-3abc", "12xy" — they show SOME numeric structure
+    # ── Shared: length penalty (used by levels 4 and 5) ─────────────────
+    # Closer to expected length → lower penalty within the level.
+    # Capped at 0.5 so it can't push a level into the next level's range.
     len_diff = abs(len(predicted_str) - len(expected_str))
-    len_penalty = math.log1p(len_diff) * 0.3  # closer length → better
+    len_penalty = min(0.5, math.log1p(len_diff) * 0.2)
 
+    # ── Level 4: Partially numeric / dash-prefixed — range [2.0, 3.99] ──
+    # Strings like "---", "-3abc", "12xy" — they show SOME numeric structure.
+    # The model is "trying" to produce numbers. Better than pure garbage.
+    #
+    # Key insight from your spec: "-----" should be better than "hello"
+    # because "-" at the beginning could be right for a negative number.
+    #
+    # numeric_ratio measures what fraction of characters are number-like.
+    # Higher ratio → lower penalty (more number-like).
     if predicted_str.startswith('-') or partial_numeric.match(predicted_str):
-        # Has some numeric character at the start — not as bad as pure garbage
-        # Count how many leading characters are "number-like"
         numeric_chars = sum(1 for c in predicted_str if c in '-0123456789.')
         numeric_ratio = numeric_chars / max(len(predicted_str), 1)
-        # Higher ratio → lower penalty (more number-like)
-        return 2.0 + (1.0 - numeric_ratio) * 2.0 + len_penalty
+        # numeric_ratio=1.0 (all numeric chars) → 2.0 + 0.0 + len_penalty
+        # numeric_ratio=0.0 (no numeric chars)  → 2.0 + 1.5 + len_penalty
+        return 2.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
 
-    # ── Level 5: Pure garbage ───────────────────────────────────────────
-    # No numeric structure at all
-    return 4.0 + len_penalty + math.log1p(len(predicted_str)) * 0.5
+    # ── Level 5: Pure garbage — range [4.0, 5.99] ──────────────────────
+    # No numeric structure at all. The model is producing random tokens.
+    # Longer garbage is slightly worse (more tokens wasted).
+    return 4.0 + len_penalty + min(1.5, math.log1p(len(predicted_str)) * 0.4)
 
 class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None,
