@@ -45,6 +45,7 @@ def _restore_c_stderr():
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tokenizers import Tokenizer as HFTokenizer, models, trainers, pre_tokenizers, decoders
 from torchinfo import summary
 
 from rich.console import Console
@@ -178,6 +179,66 @@ console = Console()
 # 1.  TOKENIZER  (HuggingFace-compatible save/load)
 # ════════════════════════════════════════════════════════════════════════════
 
+class BPETokenizer:
+    """BPE tokenizer with the same interface as CharTokenizer."""
+
+    SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
+
+    def __init__(self, hf_tokenizer: HFTokenizer = None):
+        self._tok = hf_tokenizer
+        # Cache special token IDs after training
+        self._pad_id = None
+        self._bos_id = None
+        self._eos_id = None
+        self._sep_id = None
+        if hf_tokenizer is not None:
+            self._cache_special_ids()
+
+    def _cache_special_ids(self):
+        self._pad_id = self._tok.token_to_id("<pad>")
+        self._bos_id = self._tok.token_to_id("<bos>")
+        self._eos_id = self._tok.token_to_id("<eos>")
+        self._sep_id = self._tok.token_to_id("<sep>")
+
+    @property
+    def vocab_size(self) -> int:
+        return self._tok.get_vocab_size()
+
+    @property
+    def pad_token_id(self) -> int:
+        return self._pad_id
+
+    @property
+    def bos_token_id(self) -> int:
+        return self._bos_id
+
+    @property
+    def eos_token_id(self) -> int:
+        return self._eos_id
+
+    def encode(self, text: str) -> List[int]:
+        return self._tok.encode(text).ids
+
+    def decode(self, ids: List[int]) -> str:
+        return self._tok.decode(ids)
+
+    def __call__(self, text: str, return_tensors: str = None, **kwargs) -> dict:
+        ids = [self._bos_id] + self.encode(text) + [self._eos_id]
+        if return_tensors == "pt":
+            return {"input_ids": torch.tensor([ids], dtype=torch.long)}
+        return {"input_ids": ids}
+
+    def save_pretrained(self, path: str):
+        os.makedirs(path, exist_ok=True)
+        self._tok.save(os.path.join(path, "tokenizer.json"))
+        with open(os.path.join(path, "tokenizer_config.json"), "w") as f:
+            json.dump({"tokenizer_class": "BPETokenizer"}, f)
+
+    @classmethod
+    def from_pretrained(cls, path: str) -> "BPETokenizer":
+        hf_tok = HFTokenizer.from_file(os.path.join(path, "tokenizer.json"))
+        return cls(hf_tokenizer=hf_tok)
+
 class CharTokenizer:
     SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
 
@@ -304,15 +365,14 @@ def generate_single_sample(
     text = f"{ir_code}<sep>{params_str}<sep>{result_str}"
     
     ids = (
-        [tokenizer.SPECIAL["<bos>"]]
+        [tokenizer.bos_token_id]
         + tokenizer.encode(text)
-        + [tokenizer.SPECIAL["<eos>"]]
+        + [tokenizer.eos_token_id]
     )
-    
-    # Find where the answer starts (after second <sep>)
+
     prompt_part = f"{ir_code}<sep>{params_str}<sep>"
     prompt_len = 1 + len(tokenizer.encode(prompt_part))  # +1 for <bos>
-    
+
     return ids, prompt_len
 
 def generate_batch(
@@ -352,16 +412,34 @@ def collate_batch(batch, pad_id=0):
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                   max_params=4, max_ops=6,
-                                  param_range=(-50, 50)) -> CharTokenizer:
-    """Generate n_programs random LLVM IR functions to seed the tokenizer."""
-
+                                  param_range=(-50, 50),
+                                  use_bpe=False,
+                                  bpe_vocab_size=512) -> "CharTokenizer | BPETokenizer":
+    """
+    Generate n_programs random LLVM IR functions to build a tokenizer.
+    If use_bpe=True, trains a BPE tokenizer; otherwise builds a CharTokenizer.
+    """
     if allowed_ops is None:
         allowed_ops = ["add", "sub", "mul"]
 
-    tokenizer = CharTokenizer()
+    # ── Step 1: Generate corpus ─────────────────────────────────────────
+    corpus: List[str] = []
 
-    with Progress(transient=True) as progress:
-        task = progress.add_task("[green]Generating random programs for initializing tokenizer...", total=n_programs)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold green]Generating LLVM IR corpus for tokenizer..."),
+        BarColumn(bar_width=40),
+        MofNCompleteColumn(),
+        TextColumn("• [cyan]{task.fields[status]}[/]"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task(
+            "gen_corpus", total=n_programs, status="starting..."
+        )
+        success = 0
+        fail = 0
 
         for i in range(n_programs):
             num_p = random.randint(2, max(2, max_params))
@@ -373,13 +451,93 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                     allowed_ops=allowed_ops, num_operations=num_o,
                     func_name="f",
                 )
-                full_text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
-                tokenizer.encode(full_text)
+                text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
+                corpus.append(text)
+                success += 1
             except Exception:
-                pass # Fehler ignorieren
+                fail += 1
 
-            # Fortschritt aktualisieren
-            progress.update(task, advance=1)
+            progress.update(
+                task, advance=1,
+                status=f"{success} ok, {fail} failed"
+            )
+
+    console.print(
+        f"  [green]✓[/] Corpus ready: [bold]{len(corpus)}[/] programs "
+        f"([dim]{fail} generation failures skipped[/])"
+    )
+
+    if not use_bpe:
+        # ── CharTokenizer path ──────────────────────────────────────────
+        console.print("  [cyan]Building CharTokenizer...[/]")
+        tokenizer = CharTokenizer()
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Registering characters..."),
+            BarColumn(bar_width=40),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("register", total=len(corpus))
+            for text in corpus:
+                tokenizer.encode(text)
+                progress.update(task, advance=1)
+
+        console.print(
+            f"  [green]✓[/] CharTokenizer built — "
+            f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
+        )
+        return tokenizer
+
+    # ── BPE path ────────────────────────────────────────────────────────
+    console.print(
+        f"  [cyan]Training BPE tokenizer "
+        f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
+    )
+
+    hf_tokenizer = HFTokenizer(models.BPE())
+    hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    hf_tokenizer.decoder = decoders.ByteLevel()
+
+    special_tokens = ["<pad>", "<bos>", "<eos>", "<sep>"]
+
+    trainer_obj = trainers.BpeTrainer(
+        vocab_size=bpe_vocab_size,
+        special_tokens=special_tokens,
+        min_frequency=2,
+        show_progress=True,
+        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+    )
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold magenta]Training BPE merges..."),
+        TextColumn("(this may take a moment)"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("bpe_train", total=None)  # indeterminate
+        hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
+        progress.update(task, completed=True)
+
+    tokenizer = BPETokenizer(hf_tokenizer=hf_tokenizer)
+
+    console.print(
+        f"  [green]✓[/] BPE tokenizer trained — "
+        f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
+    )
+
+    # Show a sample encoding
+    if corpus:
+        sample = corpus[0][:80]
+        encoded = tokenizer.encode(sample)
+        console.print(
+            f"  [dim]Sample: \"{sample}...\"[/]\n"
+            f"  [dim]→ {len(encoded)} tokens (vs {len(sample)} chars)[/]"
+        )
 
     return tokenizer
 
@@ -1297,9 +1455,6 @@ class LivePlotter:
         if self._topo_step != 1 and self._topo_step % self.topo_every != 0:
             return
 
-        if self._topo_step % self.topo_every != 0:
-            return
-
         was_training = model.training
         model.eval()
 
@@ -1761,6 +1916,8 @@ def train(args: argparse.Namespace):
         n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
         max_params=args.max_params, max_ops=args.max_ops,
         param_range=(args.param_min, args.param_max),
+        use_bpe=args.use_bpe,
+        bpe_vocab_size=args.bpe_vocab_size,
     )
 
     # ── Model config ────────────────────────────────────────────────────
@@ -2340,6 +2497,10 @@ def parse_args() -> argparse.Namespace:
     g = p.add_argument_group("Tokenizer")
     g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
                    help="Number of examples generated to initialize a reasonable tokenizer")
+    g.add_argument("--use-bpe", action="store_true", default=False,
+                   help="Use BPE tokenizer instead of character-level")
+    g.add_argument("--bpe-vocab-size", type=int, default=512,
+                   help="BPE vocabulary size (only used with --use-bpe)")
 
     g = p.add_argument_group("Infrastructure")
     g.add_argument("--device", type=str, default="auto",
