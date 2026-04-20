@@ -759,6 +759,89 @@ try:
 except ImportError:
     _HAS_SKLEARN = False
 
+@torch.no_grad()
+def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
+    """
+    Given a batch of (token_ids, prompt_len) pairs, generate predictions
+    and compare to expected outputs.
+    Returns: List of (expected_str, predicted_str, is_correct)
+    """
+    model.eval()
+    predictions = []
+
+    for token_ids, prompt_len in batch[:8]:
+        full_text = tokenizer.decode(token_ids[1:])  # skip <bos>
+
+        parts = full_text.split("<sep>")
+        if len(parts) < 3:
+            continue
+        expected_answer = parts[2].replace("<eos>", "").strip()
+
+        prompt_ids = token_ids[:prompt_len]
+
+        # Greedy decode
+        generated = list(prompt_ids)
+        for _ in range(max_gen_len):
+            inp = torch.tensor(
+                [generated[-model.max_seq_len:]],
+                dtype=torch.long, device=device,
+            )
+            output = model(input_ids=inp)
+            logits = output.logits[0, -1, :]
+            next_token = logits.argmax().item()
+
+            if next_token == tokenizer.eos_token_id:
+                break
+            generated.append(next_token)
+
+        generated_answer = tokenizer.decode(generated[prompt_len:])
+        generated_answer = (
+            generated_answer.replace("<eos>", "").replace("<pad>", "").strip()
+        )
+
+        is_correct = generated_answer.strip() == expected_answer.strip()
+        predictions.append((expected_answer, generated_answer, is_correct))
+
+    model.train()
+    return predictions
+
+def get_gpu_info() -> dict:
+    """Query nvidia-smi for current GPU memory and utilization."""
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.used,memory.total,memory.free,utilization.gpu,gpu_name,temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return {}
+        line = result.stdout.strip().split("\n")[0]
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 7:
+            return {
+                "gpu_mem_used_mb": int(parts[0]),
+                "gpu_mem_total_mb": int(parts[1]),
+                "gpu_mem_free_mb": int(parts[2]),
+                "gpu_util_pct": int(parts[3]),
+                "gpu_name": parts[4],
+                "gpu_temp_c": parts[5],
+                "gpu_power_w": parts[6],
+            }
+        elif len(parts) >= 4:
+            return {
+                "gpu_mem_used_mb": int(parts[0]),
+                "gpu_mem_total_mb": int(parts[1]),
+                "gpu_mem_free_mb": int(parts[2]),
+                "gpu_util_pct": int(parts[3]),
+            }
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        pass
+    return {}
 
 class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
@@ -777,6 +860,7 @@ class LivePlotter:
         self._window_closed = False
         self._reopen_requested = False
         self._lock = threading.Lock()
+        self._abs_diffs_history: List[List[int]] = []  # per-update list of abs diffs
 
         # ── TDA config ──────────────────────────────────────────────────
         self.topo_enabled = topo_enabled and _HAS_RIPSER and enabled
@@ -849,21 +933,33 @@ class LivePlotter:
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
         else:
-            # 3 rows × 2 cols: top row = epoch/batch,
-            #                   mid row = lr/val,
-            #                   bot row = predictions + model info
-            self.fig = self.plt.figure(figsize=(18, 14))
-            gs = self.fig.add_gridspec(3, 2, hspace=0.45, wspace=0.35)
+            self.fig = self.plt.figure(figsize=(22, 14))
+            gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
 
             ax_epoch = self.fig.add_subplot(gs[0, 0])
             ax_batch = self.fig.add_subplot(gs[0, 1])
-            ax_lr    = self.fig.add_subplot(gs[1, 0])
-            ax_val   = self.fig.add_subplot(gs[1, 1])
-            ax_preds = self.fig.add_subplot(gs[2, 0])
-            ax_info  = self.fig.add_subplot(gs[2, 1])
+            ax_lr    = self.fig.add_subplot(gs[0, 2])
+            ax_val   = self.fig.add_subplot(gs[1, 0])
+            ax_diffs = self.fig.add_subplot(gs[1, 1])   # NEW: absolute diffs
+            ax_preds = self.fig.add_subplot(gs[1, 2])
+            ax_info  = self.fig.add_subplot(gs[2, 0:2])
+            # gs[2,2] left empty or used for something else
 
-            self.ax_barcode = None
-            self.ax_bd = None
+            ax_diffs.set_title("Absolute Prediction Error (outliers removed)")
+            ax_diffs.set_xlabel("Prediction Update #")
+            ax_diffs.set_ylabel("Mean |expected - predicted|")
+            ax_diffs.grid(True, alpha=0.3)
+            self.line_diffs_mean, = ax_diffs.plot(
+                [], [], label="Mean |diff|", color="darkorange", linewidth=2,
+            )
+            self.line_diffs_median, = ax_diffs.plot(
+                [], [], label="Median |diff|", color="purple", linewidth=1.5, linestyle="--",
+            )
+            ax_diffs.legend(loc="upper right", fontsize=8)
+            self.ax_diffs = ax_diffs
+
+        self.ax_barcode = None
+        self.ax_bd = None
 
         # Store references to the new text-only axes
         self.ax_preds = ax_preds
@@ -1229,62 +1325,57 @@ class LivePlotter:
             if was_training:
                 model.train()
 
-    @torch.no_grad()
-    def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
+    def update_prediction_diffs(self, predictions: list):
         """
-        Given a batch of (token_ids, prompt_len) pairs, generate predictions
-        and compare to expected outputs.
-
-        Returns: List of (expected_str, predicted_str, is_correct)
+        Collect absolute differences from predictions, remove NaN/extreme outliers,
+        and update the diff plot.
         """
-        model.eval()
-        predictions = []
+        if not self.enabled:
+            return
 
-        for token_ids, prompt_len in batch[:8]:
-            full_text = tokenizer.decode(token_ids[1:])  # skip <bos>
+        # Update the diff plot lines
+        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
+            means = [np.mean(d) for d in self._abs_diffs_history]
+            medians = [np.median(d) for d in self._abs_diffs_history]
+            xs = list(range(len(means)))
+            self.line_diffs_mean.set_data(xs, means)
+            self.line_diffs_median.set_data(xs, medians)
+            self._refresh()
 
-            parts = full_text.split("<sep>")
-            if len(parts) < 3:
-                continue
-            expected_answer = parts[2].replace("<eos>", "").strip()
 
-            prompt_ids = token_ids[:prompt_len]
+        diffs = []
+        for expected, predicted, _ in predictions:
+            try:
+                exp_val = int(expected.strip())
+                pred_val = int(predicted.strip())
+                diffs.append(abs(exp_val - pred_val))
+            except (ValueError, TypeError):
+                continue  # skip NaN / non-numeric
 
-            # Greedy decode
-            generated = list(prompt_ids)
-            for _ in range(max_gen_len):
-                inp = torch.tensor(
-                    [generated[-model.max_seq_len:]],
-                    dtype=torch.long, device=device,
-                )
-                output = model(input_ids=inp)
-                logits = output.logits[0, -1, :]
-                next_token = logits.argmax().item()
+        if not diffs:
+            return
 
-                if next_token == tokenizer.eos_token_id:
-                    break
-                generated.append(next_token)
+        # Remove extreme outliers (beyond 95th percentile)
+        diffs_arr = np.array(diffs, dtype=float)
+        if len(diffs_arr) > 2:
+            p95 = np.percentile(diffs_arr, 95)
+            diffs_arr = diffs_arr[diffs_arr <= p95]
 
-            generated_answer = tokenizer.decode(generated[prompt_len:])
-            generated_answer = (
-                generated_answer.replace("<eos>", "").replace("<pad>", "").strip()
-            )
+        # Remove any remaining NaN/inf
+        diffs_arr = diffs_arr[np.isfinite(diffs_arr)]
 
-            is_correct = generated_answer.strip() == expected_answer.strip()
-            predictions.append((expected_answer, generated_answer, is_correct))
-
-        model.train()
-        return predictions
+        if len(diffs_arr) > 0:
+            self._abs_diffs_history.append(diffs_arr.tolist())
 
 
     def _draw_predictions(self):
-        """Draw the last batch's expected vs predicted outputs."""
+        """Draw the last batch's expected vs predicted with differences."""
         ax = self.ax_preds
         if ax is None:
             return
         ax.clear()
         ax.axis("off")
-        ax.set_title("Last Batch Predictions (Expected → Got)", fontsize=10, fontweight="bold")
+        ax.set_title("Last Batch Predictions (Expected → Got → Diff)", fontsize=10, fontweight="bold")
 
         if not self._last_predictions:
             ax.text(0.5, 0.5, "Waiting for predictions...",
@@ -1292,20 +1383,34 @@ class LivePlotter:
                     transform=ax.transAxes)
             return
 
-        n_show = min(len(self._last_predictions), 8)  # Show up to 8 examples
+        n_show = min(len(self._last_predictions), 10)
         y_positions = np.linspace(0.92, 0.08, n_show)
 
         for i, (expected, predicted, is_correct) in enumerate(self._last_predictions[:n_show]):
             color = "green" if is_correct else "red"
             marker = "✓" if is_correct else "✗"
 
-            text = f"{marker}  Expected: {expected:>8s}  │  Got: {predicted:>8s}"
+            # Try to compute numeric difference
+            try:
+                exp_val = int(expected.strip())
+                pred_val = int(predicted.strip())
+                diff = abs(exp_val - pred_val)
+                text = (
+                    f"{marker}  expected: {exp_val:>6d}  │  "
+                    f"got: {pred_val:>6d}  │  diff: {diff}"
+                )
+            except (ValueError, TypeError):
+                text = (
+                    f"{marker}  expected: {expected:>8s}  │  "
+                    f"got: {predicted:>8s}  │  diff: N/A"
+                )
+
             ax.text(0.05, y_positions[i], text,
                     fontsize=9, fontfamily="monospace",
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
-        # Show accuracy summary
+        # Accuracy summary
         n_correct = sum(1 for _, _, c in self._last_predictions if c)
         n_total = len(self._last_predictions)
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
@@ -1315,7 +1420,7 @@ class LivePlotter:
 
 
     def _draw_model_info(self):
-        """Draw basic model information."""
+        """Draw basic model information + GPU stats."""
         ax = self.ax_info
         if ax is None:
             return
@@ -1344,14 +1449,30 @@ class LivePlotter:
             f"device:        {self._model_info.get('device', '?')}",
         ]
 
-        y_positions = np.linspace(0.92, 0.08, len(info_lines))
+        # Add GPU info if available
+        gpu = get_gpu_info()
+        if gpu:
+            info_lines.append(f"───────────────────────────")
+            if "gpu_name" in gpu:
+                info_lines.append(f"GPU:           {gpu['gpu_name']}")
+            info_lines.append(
+                f"GPU Mem:       {gpu.get('gpu_mem_used_mb', '?')} / "
+                f"{gpu.get('gpu_mem_total_mb', '?')} MB "
+                f"({gpu.get('gpu_mem_free_mb', '?')} MB free)"
+            )
+            info_lines.append(f"GPU Util:      {gpu.get('gpu_util_pct', '?')}%")
+            if "gpu_temp_c" in gpu:
+                info_lines.append(f"GPU Temp:      {gpu['gpu_temp_c']}°C")
+            if "gpu_power_w" in gpu:
+                info_lines.append(f"GPU Power:     {gpu['gpu_power_w']} W")
+
+        y_positions = np.linspace(0.95, 0.02, len(info_lines))
         for i, line in enumerate(info_lines):
             ax.text(0.05, y_positions[i], line,
-                    fontsize=9, fontfamily="monospace",
-                    color="black",  # <-- FIXED: was "white", invisible on white bg
+                    fontsize=8, fontfamily="monospace",
+                    color="black",
                     transform=ax.transAxes,
                     verticalalignment="center")
-
 
     def update_predictions(self, predictions: list):
         """
@@ -1875,7 +1996,7 @@ def train(args: argparse.Namespace):
                     if batch:
                         preds = get_batch_predictions(model, tokenizer, batch, device)
                         plotter.update_predictions(preds)
-
+                        plotter.update_prediction_diffs(preds)
 
                     progress.update(task, advance=1, loss=vl)
 
