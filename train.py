@@ -16,6 +16,8 @@ Controls (while training):
     Ctrl+Down   Remove 10 epochs (minimum: current epoch)
 """
 
+args = None
+
 run_dir = None
 
 import argparse
