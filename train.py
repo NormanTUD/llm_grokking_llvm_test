@@ -923,7 +923,7 @@ class LivePlotter:
                  topo_enabled: bool = False, topo_every: int = 50,
                  topo_max_points: int = 200, topo_pca_dim: int = 30,
                  suppress_window: bool = False, plot_file: str = "training_plot.png",
-                 model_info: dict = None, kelp_every: int = 25):
+                 model_info: dict = None, kelp_every: int = args.kelp_every):
         self.enabled = enabled
         self._model_info = model_info or {}
         self._last_predictions = []
@@ -2809,6 +2809,8 @@ def parse_args() -> argparse.Namespace:
     g = p.add_argument_group("Topology")
     g.add_argument("--topo", action="store_true", default=False,
                    help="Enable live topological barcode visualization")
+    g.add_argument("--kelp-every", type=int, default=25,
+                   help="Update topological kelp every N batches")
     g.add_argument("--topo-every", type=int, default=50,
                    help="Update topological barcodes every N batches")
     g.add_argument("--topo-max-points", type=int, default=200,
