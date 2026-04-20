@@ -218,6 +218,13 @@ def parse_args() -> argparse.Namespace:
 
 args = parse_args()
 
+def _is_int_str(s: str) -> bool:
+    """Return True if s can be parsed as an integer."""
+    try:
+        int(s.strip())
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 def _tk_report_callback_exception(self, exc_type, exc_value, exc_tb):
     if exc_type is KeyboardInterrupt:
@@ -454,7 +461,9 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
         input_ids:       (B, T)  — input tokens (shifted right)
         target_ids:      (B, T)  — target tokens (shifted left, prompt masked to pad_id)
         value_positions: (B,)    — index of the last <sep> in input_ids (for value head)
+                                   Set to 0 for unparseable answers (masked out in loss).
         value_targets:   (B,)    — float tensor of expected integer results
+                                   Set to NaN for unparseable answers.
     """
     max_len = max(len(s) for s, _ in batch)
     input_ids, target_ids = [], []
@@ -480,11 +489,8 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
         target_ids.append(tgt)
 
         # ── Find value_position: last <sep> in inp ──────────────────────
-        # The answer tokens start right after the last <sep>.
-        # We read the hidden state AT the last <sep> position for the
-        # value head (it has seen the full prompt context at that point).
         vp = 0
-        vt = 0.0
+        vt = float("nan")  # Default: unparseable → NaN
         if sep_id is not None:
             sep_positions = [i for i, tid in enumerate(inp) if tid == sep_id]
             if len(sep_positions) >= 2:
@@ -499,7 +505,9 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
                     answer_str = tokenizer.decode(answer_ids).strip()
                     vt = float(int(answer_str))
                 except (ValueError, TypeError):
-                    vt = 0.0
+                    # Answer is not a valid integer — mark as invalid
+                    vp = 0          # will be masked out in loss
+                    vt = float("nan")
 
         value_positions.append(vp)
         value_targets.append(vt)
@@ -848,24 +856,23 @@ def compute_value_aware_loss(
     """
     Combined loss: cross-entropy (token-level) + alpha * value loss (regression).
 
-    The value loss is FULLY DIFFERENTIABLE because it uses a dedicated
-    regression head (value_head) that maps the hidden state at the last
-    <sep> position to a scalar prediction of the integer result.
+    Samples where value_targets is NaN or value_positions == 0 are excluded
+    from the value regression loss entirely — they contribute no gradient
+    to the value head, preventing misleading signals from unparseable answers.
 
     Args:
         model:           The TinyGPT model (must have value_head)
         inp:             (B, T) input token IDs
         tgt:             (B, T) target token IDs
         value_positions: (B,) index of last <sep> in inp for each sample
-        value_targets:   (B,) float tensor of expected integer results
+        value_targets:   (B,) float tensor of expected integer results (NaN = invalid)
         alpha:           Weight for the value regression loss
         use_log_scale:   If True, use log(1 + |pred - target|) instead of
                          raw L1 to prevent huge gradients from large diffs.
-                         Recommended for integer ranges like [-1000, 1000].
 
     Returns:
-        total_loss:  Combined loss (differentiable)
-        ce_loss_val: Cross-entropy loss value (float, for logging)
+        total_loss:   Combined loss (differentiable)
+        ce_loss_val:  Cross-entropy loss value (float, for logging)
         val_loss_val: Value regression loss value (float, for logging)
     """
     output = model(
@@ -878,23 +885,18 @@ def compute_value_aware_loss(
     value_preds = output.value_preds  # (B,) predicted integer values
 
     # ── Value regression loss ───────────────────────────────────────────
-    if value_preds is not None:
-        # Create a mask for valid samples (value_positions > 0 means we
-        # found a valid <sep> and extracted a real answer)
-        valid_mask = value_positions > 0  # (B,)
+    if value_preds is not None and alpha > 0:
+        # Valid = position found AND target is a real number (not NaN)
+        valid_mask = (value_positions > 0) & (~torch.isnan(value_targets))  # (B,)
 
         if valid_mask.any():
             vp = value_preds[valid_mask]       # (N,)
             vt = value_targets[valid_mask]     # (N,)
 
             if use_log_scale:
-                # log(1 + |pred - target|) — smooth, bounded gradients
-                # This is differentiable everywhere (log1p + abs are both
-                # differentiable, and abs has subgradient at 0)
                 raw_diff = vp - vt
                 value_loss = torch.log1p(torch.abs(raw_diff)).mean()
             else:
-                # Standard L1 (MAE) — also differentiable (subgradient at 0)
                 value_loss = F.l1_loss(vp, vt)
 
             total_loss = ce_loss + alpha * value_loss
@@ -2208,41 +2210,81 @@ class LivePlotter:
 
     def update_prediction_diffs(self, predictions: list):
         """
-        Collect absolute differences from predictions, remove NaN/extreme outliers,
-        and update the diff plot.
+        Collect absolute differences from predictions and update the diff plot.
+
+        When a prediction is not parseable as an integer (e.g. "-------",
+        "abc", empty string), it is assigned a PENALTY value equal to the
+        maximum of:
+          - The current param_range span (|param_max - param_min| * max_ops)
+          - The largest valid |diff| seen so far in this history
+          - A hard floor of 1000
+
+        This ensures unparseable outputs are always visible as the worst
+        possible result on the plot, signaling to the user (and any
+        downstream metric) that the model produced garbage.
         """
         if not self.enabled:
             return
 
+        # ── Determine the penalty value for unparseable predictions ─────
+        # Use the worst plausible numeric error as the penalty.
+        # This is "the highest useful value" — not infinity (which would
+        # break the plot scale), but large enough to dominate the chart.
+        historical_max = 0
+        if self._abs_diffs_history:
+            historical_max = max(max(d) for d in self._abs_diffs_history if d)
+
+        # Hard floor: even if all diffs so far are 0, garbage is still bad
+        PENALTY_FLOOR = 1000
+        penalty = max(PENALTY_FLOOR, historical_max)
+
         # 1) Collect diffs from this batch
         diffs = []
+        n_unparseable = 0
         for expected, predicted, _ in predictions:
             try:
                 exp_val = int(expected.strip())
+            except (ValueError, TypeError):
+                # If even the EXPECTED value is unparseable, skip entirely
+                # (this would be a data generation bug, not a model error)
+                continue
+
+            try:
                 pred_val = int(predicted.strip())
                 diffs.append(abs(exp_val - pred_val))
             except (ValueError, TypeError):
-                continue
+                # Model output is garbage — assign the penalty
+                diffs.append(penalty)
+                n_unparseable += 1
 
         if not diffs:
             return
 
-        # 2) Remove extreme outliers (beyond 95th percentile)
+        # 2) Remove extreme outliers ONLY from valid numeric diffs,
+        #    but KEEP all penalty values (they ARE the signal we want)
         diffs_arr = np.array(diffs, dtype=float)
-        if len(diffs_arr) > 2:
-            p95 = np.percentile(diffs_arr, 95)
-            diffs_arr = diffs_arr[diffs_arr <= p95]
 
-        # Remove any remaining NaN/inf
-        diffs_arr = diffs_arr[np.isfinite(diffs_arr)]
+        # Separate penalties from real diffs for outlier removal
+        real_mask = diffs_arr < penalty
+        real_diffs = diffs_arr[real_mask]
+        penalty_diffs = diffs_arr[~real_mask]
 
-        if len(diffs_arr) == 0:
+        if len(real_diffs) > 2:
+            p95 = np.percentile(real_diffs, 95)
+            real_diffs = real_diffs[real_diffs <= p95]
+
+        # Recombine: cleaned real diffs + all penalty values
+        cleaned = np.concatenate([real_diffs, penalty_diffs])
+
+        # Remove any NaN/inf (safety net)
+        cleaned = cleaned[np.isfinite(cleaned)]
+
+        if len(cleaned) == 0:
             return
 
-        # 3) Append FIRST, then plot
-        self._abs_diffs_history.append(diffs_arr.tolist())
+        # 3) Append and update plot
+        self._abs_diffs_history.append(cleaned.tolist())
 
-        # 4) Update the diff plot lines
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
             means = [np.mean(d) for d in self._abs_diffs_history]
             medians = [np.median(d) for d in self._abs_diffs_history]
@@ -2281,18 +2323,42 @@ class LivePlotter:
             color = "green" if is_correct else "red"
             marker = "✓" if is_correct else "✗"
 
+            # Try to parse both as integers
+            exp_parseable = True
+            pred_parseable = True
             try:
                 exp_val = int(expected.strip())
+            except (ValueError, TypeError):
+                exp_parseable = False
+
+            try:
                 pred_val = int(predicted.strip())
+            except (ValueError, TypeError):
+                pred_parseable = False
+
+            if exp_parseable and pred_parseable:
                 diff = abs(exp_val - pred_val)
                 text = (
                     f"{marker}  expected: {exp_val:>6d}  │  "
                     f"got: {pred_val:>6d}  │  diff: {diff}"
                 )
-            except (ValueError, TypeError):
+            elif exp_parseable and not pred_parseable:
+                # Model produced garbage — show it in bright red with a warning
+                color = "red"
+                marker = "✗"
+                # Truncate garbage output for display
+                pred_display = predicted.strip()[:20]
+                if len(predicted.strip()) > 20:
+                    pred_display += "…"
+                text = (
+                    f"{marker}  expected: {exp_val:>6d}  │  "
+                    f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
+                )
+            else:
+                # Both unparseable (shouldn't happen in normal operation)
                 text = (
                     f"{marker}  expected: {expected[:12]:>12s}  │  "
-                    f"got: {predicted[:12]:>12s}"
+                    f"got: {predicted[:12]:>12s}  │  ⚠ BOTH INVALID"
                 )
 
             ax.text(0.02, y_positions[i], text,
@@ -2300,13 +2366,23 @@ class LivePlotter:
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
+        # Summary stats
         n_correct = sum(1 for _, _, c in self._last_predictions if c)
         n_total = len(self._last_predictions)
+        n_garbage = sum(
+            1 for _, pred, _ in self._last_predictions
+            if not _is_int_str(pred)
+        )
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
-        ax.text(0.98, 0.01,
-                f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)",
+
+        summary = f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)"
+        if n_garbage > 0:
+            summary += f"  │  ⚠ {n_garbage} unparseable"
+
+        ax.text(0.98, 0.01, summary,
                 ha="right", va="bottom", fontsize=9, fontweight="bold",
                 transform=ax.transAxes, alpha=0.7)
+
 
     def _draw_model_info(self):
         """Draw basic model information + GPU/system stats."""
