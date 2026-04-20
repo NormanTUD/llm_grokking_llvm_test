@@ -1,4 +1,5 @@
 llvmlite
+torchinfo
 rich
 torch
 matplotlib
