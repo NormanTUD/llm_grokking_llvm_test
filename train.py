@@ -923,10 +923,10 @@ class LivePlotter:
                  topo_enabled: bool = False, topo_every: int = 50,
                  topo_max_points: int = 200, topo_pca_dim: int = 30,
                  suppress_window: bool = False, plot_file: str = "training_plot.png",
-                 model_info: dict = None):
+                 model_info: dict = None, kelp_every: int = 25):
         self.enabled = enabled
         self._model_info = model_info or {}
-        self._last_predictions = []  # Store last batch predictions
+        self._last_predictions = []
         self.update_every = update_every
         self._global_batch = 0
         self._ema_train = None
@@ -935,7 +935,13 @@ class LivePlotter:
         self._window_closed = False
         self._reopen_requested = False
         self._lock = threading.Lock()
-        self._abs_diffs_history: List[List[int]] = []  # per-update list of abs diffs
+        self._abs_diffs_history: List[List[int]] = []
+
+        # ── Kelp forest config ──────────────────────────────────────────
+        self.kelp_every = kelp_every
+        self._kelp_step = 0
+        self._kelp_data = None
+        self._kelp_time_offset = 0.0
 
         # ── TDA config ──────────────────────────────────────────────────
         self.topo_enabled = topo_enabled and _HAS_RIPSER and enabled
@@ -980,11 +986,335 @@ class LivePlotter:
         self._create_figure()
 
         if not suppress_window:
-            # Start a thread that watches for window close events
             self._window_watch_thread = threading.Thread(
                 target=self._watch_window, daemon=True
             )
             self._window_watch_thread.start()
+
+    def _draw_kelp_forest(self):
+        """
+        Render the kelp forest visualization onto self.ax_kelp.
+
+        Layout:
+          - X axis = token index (the "base manifold" / sea floor)
+          - Y axis = layer depth (0 = sea floor / input, 1 = top / output)
+          - Each kelp strand = one layer, rooted at each token position
+          - Sway amplitude ∝ mean activation norm of that layer
+          - Sway frequency ∝ std of activation norms
+          - Twist/lean ∝ cosine drift from previous layer
+          - Color intensity ∝ per-token norm at that layer
+        """
+        ax = self.ax_kelp
+        if ax is None or self._kelp_data is None:
+            return
+
+        ax.clear()
+        ax.set_facecolor("#020a1a")
+        ax.set_title(
+            f"Kelp Forest — Embedding Space Dynamics  (step {self._kelp_data['step']})",
+            fontsize=10, fontweight="bold", color="#c0d8e8",
+        )
+
+        data = self._kelp_data
+        n_layers = data["n_layers"]
+        n_tokens = data["n_tokens"]
+        layer_stats = data["layer_stats"]
+        t_anim = self._kelp_time_offset
+
+        if n_tokens == 0 or n_layers < 2:
+            ax.text(0.5, 0.5, "Not enough data",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            return
+
+        # Normalize stats for visual mapping
+        all_mean_norms = [s["mean_norm"] for s in layer_stats]
+        max_mean_norm = max(all_mean_norms) if max(all_mean_norms) > 0 else 1.0
+        all_std_norms = [s["std_norm"] for s in layer_stats]
+        max_std_norm = max(all_std_norms) if max(all_std_norms) > 0 else 1.0
+
+        # Collect all token norms for global normalization
+        all_token_norms = []
+        for s in layer_stats:
+            all_token_norms.extend(s["token_norms"].tolist())
+        global_max_tnorm = max(all_token_norms) if all_token_norms and max(all_token_norms) > 0 else 1.0
+
+        # Layout parameters
+        x_margin = 0.08
+        y_floor = 0.05   # sea floor
+        y_top = 0.92     # top of kelp
+        token_spacing = (1.0 - 2 * x_margin) / max(n_tokens - 1, 1)
+
+        # Number of segments per kelp strand (for smooth curves)
+        n_segments = 40
+
+        # ── Draw sea floor ──────────────────────────────────────────────
+        floor_xs = np.linspace(0, 1, 200)
+        floor_ys = y_floor + 0.008 * np.sin(floor_xs * 15 + t_anim * 0.3) + \
+                   0.004 * np.sin(floor_xs * 37 + t_anim * 0.7)
+        ax.fill_between(floor_xs, 0, floor_ys, color="#1a0a30", alpha=0.8)
+        ax.plot(floor_xs, floor_ys, color="#4a2a6a", linewidth=1.0, alpha=0.6)
+
+        # ── Draw light rays from top ────────────────────────────────────
+        for ray_i in range(4):
+            ray_x = 0.15 + ray_i * 0.22 + 0.05 * np.sin(t_anim * 0.2 + ray_i)
+            ray_width = 0.03
+            from matplotlib.patches import Polygon as MplPolygon
+            ray_verts = [
+                (ray_x - ray_width, 1.0),
+                (ray_x + ray_width, 1.0),
+                (ray_x + ray_width * 2 + 0.02 * np.sin(t_anim * 0.15 + ray_i), 0.0),
+                (ray_x - ray_width * 2 + 0.02 * np.sin(t_anim * 0.15 + ray_i), 0.0),
+            ]
+            ray_patch = MplPolygon(ray_verts, closed=True,
+                                    facecolor="#4080b0", alpha=0.03)
+            ax.add_patch(ray_patch)
+
+        # ── Draw kelp strands ───────────────────────────────────────────
+        # For each token position, draw one kelp that passes through all layers.
+        # The kelp's sway at each height is determined by the layer at that height.
+
+        # Limit tokens drawn to avoid clutter
+        max_display_tokens = min(n_tokens, 32)
+        if n_tokens > max_display_tokens:
+            token_indices = np.linspace(0, n_tokens - 1, max_display_tokens, dtype=int)
+        else:
+            token_indices = np.arange(n_tokens)
+
+        actual_spacing = (1.0 - 2 * x_margin) / max(len(token_indices) - 1, 1)
+
+        for ti_display, ti in enumerate(token_indices):
+            base_x = x_margin + ti_display * actual_spacing
+            base_y = y_floor
+
+            # Build the kelp path from floor to top
+            # Each segment interpolates between layers
+            seg_ys = np.linspace(0, 1, n_segments + 1)  # 0=floor, 1=top
+            seg_xs = np.zeros(n_segments + 1)
+            seg_colors = np.zeros(n_segments + 1)
+
+            # Phase unique to this token
+            phase = ti * 1.618 + ti_display * 0.37
+
+            for si, frac in enumerate(seg_ys):
+                # Which layer does this fraction correspond to?
+                layer_frac = frac * (n_layers - 1)
+                layer_lo = int(np.floor(layer_frac))
+                layer_hi = min(layer_lo + 1, n_layers - 1)
+                layer_alpha = layer_frac - layer_lo
+
+                # Interpolate stats
+                def _lerp(a, b, t):
+                    return a * (1 - t) + b * t
+
+                mean_n = _lerp(layer_stats[layer_lo]["mean_norm"],
+                               layer_stats[layer_hi]["mean_norm"], layer_alpha)
+                std_n = _lerp(layer_stats[layer_lo]["std_norm"],
+                              layer_stats[layer_hi]["std_norm"], layer_alpha)
+                drift = _lerp(layer_stats[layer_lo]["cosine_drift"],
+                              layer_stats[layer_hi]["cosine_drift"], layer_alpha)
+
+                # Token norm at this layer (use lower layer)
+                tn_lo = layer_stats[layer_lo]["token_norms"]
+                tok_norm = tn_lo[min(ti, len(tn_lo) - 1)] if len(tn_lo) > 0 else 0
+
+                # Sway calculation
+                # Amplitude grows with height (like real kelp) and with mean_norm
+                amplitude = (mean_n / max_mean_norm) * 0.04 * (0.3 + frac * 0.7)
+                # Frequency driven by std
+                freq = 1.0 + 2.0 * (std_n / max_std_norm)
+                # Drift adds a lean
+                lean = drift * 0.03 * frac
+
+                sway = (amplitude * np.sin(t_anim * freq * 0.8 + phase + frac * 3.0)
+                        + amplitude * 0.4 * np.sin(t_anim * freq * 1.3 + phase * 2 + frac * 5.0)
+                        + lean * np.sin(t_anim * 0.5 + phase))
+
+                seg_xs[si] = base_x + sway
+                seg_colors[si] = tok_norm / global_max_tnorm
+
+            # Convert fractions to plot coordinates
+            plot_ys = y_floor + seg_ys * (y_top - y_floor)
+
+            # Draw the kelp strand as a colored line
+            # Use LineCollection for per-segment coloring
+            from matplotlib.collections import LineCollection
+
+            points = np.array([seg_xs, plot_ys]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+            # Color: green hue, brightness from token norm
+            # Map seg_colors to RGBA
+            base_hue_shift = (ti * 25) % 60
+            colors_rgba = []
+            for ci in range(len(segments)):
+                intensity = 0.25 + 0.75 * seg_colors[ci]
+                # HSL-ish: green with slight variation
+                r = 0.05 + 0.15 * (base_hue_shift / 60)
+                g = 0.3 * intensity + 0.15
+                b = 0.1 + 0.05 * intensity
+                a = 0.4 + 0.5 * intensity
+                colors_rgba.append((r, g, b, a))
+
+            # Strand thickness: thicker at base, thinner at top
+            linewidths = 2.5 - 1.5 * seg_ys[:-1]
+
+            lc = LineCollection(segments, colors=colors_rgba, linewidths=linewidths,
+                                capstyle="round", joinstyle="round")
+            ax.add_collection(lc)
+
+            # Draw small fronds at intervals
+            for fi in range(4, n_segments, 6):
+                frac_f = seg_ys[fi]
+                fx = seg_xs[fi]
+                fy = y_floor + frac_f * (y_top - y_floor)
+                frond_angle = np.sin(t_anim * 1.2 + ti + fi * 0.5) * 0.4
+                frond_angle += (0.6 if ti_display % 2 == 0 else -0.6)
+                frond_len = 0.015 + 0.005 * np.sin(t_anim * 0.7 + fi)
+                frond_dx = np.cos(frond_angle) * frond_len
+                frond_dy = np.sin(frond_angle) * frond_len
+                ax.plot([fx, fx + frond_dx], [fy, fy + frond_dy],
+                        color=(0.15, 0.45, 0.25, 0.4), linewidth=1.0)
+
+            # Root anchor
+            from matplotlib.patches import Ellipse
+            anchor = Ellipse((base_x, base_y), width=0.012, height=0.008,
+                             facecolor="#2a1540", edgecolor="#4a2a6a",
+                             linewidth=0.5, alpha=0.7)
+            ax.add_patch(anchor)
+
+        # ── Layer markers (horizontal dashed lines) ─────────────────────────
+        for li in range(n_layers):
+            frac = li / (n_layers - 1) if n_layers > 1 else 0.5
+            y_line = y_floor + frac * (y_top - y_floor)
+            ax.axhline(y=y_line, color="#3a5a7a", linewidth=0.5,
+                       linestyle=":", alpha=0.2)
+            label = f"L{li}" if li > 0 else "Input"
+            if li == n_layers - 1:
+                label = "Output"
+            ax.text(0.995, y_line + 0.008, label,
+                    fontsize=6, color="#4a7a9a", alpha=0.4,
+                    ha="right", va="bottom", transform=ax.get_yaxis_transform())
+
+        # ── Water caustics (subtle moving highlights) ───────────────────────
+        for ci in range(6):
+            cx = 0.1 + ci * 0.15 + 0.03 * np.sin(t_anim * 0.4 + ci * 1.7)
+            cy = 0.3 + 0.2 * np.sin(t_anim * 0.25 + ci * 2.3)
+            caustic_alpha = 0.015 + 0.01 * np.sin(t_anim * 0.6 + ci)
+            from matplotlib.patches import Circle
+            caustic = Circle((cx, cy), radius=0.06, facecolor="#60b0d0",
+                             alpha=max(0, caustic_alpha), edgecolor="none")
+            ax.add_patch(caustic)
+
+        # ── Floating particles (plankton / spores) ──────────────────────────
+        np_rng = np.random.RandomState(int(t_anim * 10) % 2**31)
+        n_particles = 30
+        px = np_rng.uniform(0.02, 0.98, n_particles)
+        py = np_rng.uniform(y_floor + 0.02, y_top + 0.03, n_particles)
+        # Drift particles slightly based on time
+        px = (px + 0.005 * np.sin(t_anim * 0.3 + np.arange(n_particles) * 0.7)) % 1.0
+        py = (py + 0.003 * np.cos(t_anim * 0.2 + np.arange(n_particles) * 1.1))
+        py = np.clip(py, y_floor, y_top)
+        p_alpha = 0.15 + 0.1 * np.sin(t_anim * 0.5 + np.arange(n_particles) * 0.9)
+        p_sizes = 0.5 + 1.0 * np_rng.uniform(0, 1, n_particles)
+        ax.scatter(px, py, s=p_sizes, c="#80c0e0", alpha=p_alpha.clip(0.05, 0.3),
+                   edgecolors="none", zorder=5)
+
+        # ── Stats annotation ────────────────────────────────────────────────
+        # Show summary stats in the corner
+        mean_norms_str = ", ".join(f"{s['mean_norm']:.1f}" for s in layer_stats[:4])
+        if n_layers > 4:
+            mean_norms_str += "..."
+        ax.text(0.01, 0.98,
+                f"Layers: {n_layers}  Tokens: {n_tokens}  "
+                f"Mean‖h‖: [{mean_norms_str}]",
+                fontsize=5.5, color="#5a8aaa", alpha=0.5,
+                ha="left", va="top", transform=ax.transAxes,
+                fontfamily="monospace")
+
+        # ── Axis limits and cleanup ─────────────────────────────────────────
+        ax.set_xlim(-0.02, 1.02)
+        ax.set_ylim(-0.02, 1.02)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    @torch.no_grad()
+    def update_kelp_forest(self, model: nn.Module, input_ids: torch.Tensor):
+        """
+        Extract hidden-state statistics from the model and render the kelp forest.
+
+        Each kelp strand = one layer's embedding space.
+        The strand is rooted at the "index manifold" (bottom axis = token position).
+        Sway is driven by per-layer statistics:
+          - mean activation magnitude  → lateral sway amplitude
+          - std of activations         → sway frequency multiplier
+          - cross-layer cosine drift   → additional twist
+        """
+        if not self.enabled:
+            return
+
+        self._kelp_step += 1
+        if self._kelp_step != 1 and self._kelp_step % self.kelp_every != 0:
+            return
+
+        was_training = model.training
+        model.eval()
+
+        try:
+            output = model(input_ids=input_ids, output_hidden_states=True)
+            hidden_states = output.hidden_states
+            if hidden_states is None or len(hidden_states) < 2:
+                return
+
+            # Gather per-layer statistics
+            layer_stats = []
+            prev_mean_vec = None
+            for li, hs in enumerate(hidden_states):
+                # hs shape: (B, T, D)
+                flat = hs.float().reshape(-1, hs.shape[-1])  # (B*T, D)
+                norms = flat.norm(dim=-1)  # (B*T,)
+                mean_norm = norms.mean().item()
+                std_norm = norms.std().item()
+                mean_vec = flat.mean(dim=0)  # (D,)
+
+                # Cosine similarity to previous layer's mean vector
+                cosine_drift = 0.0
+                if prev_mean_vec is not None:
+                    cos = F.cosine_similarity(
+                        mean_vec.unsqueeze(0), prev_mean_vec.unsqueeze(0)
+                    ).item()
+                    cosine_drift = 1.0 - cos  # 0 = identical, ~2 = opposite
+
+                # Per-token norms for this layer (take first batch element)
+                token_norms = hs[0].float().norm(dim=-1).cpu().numpy()  # (T,)
+
+                layer_stats.append({
+                    "mean_norm": mean_norm,
+                    "std_norm": std_norm,
+                    "cosine_drift": cosine_drift,
+                    "token_norms": token_norms,
+                })
+                prev_mean_vec = mean_vec
+
+            self._kelp_data = {
+                "layer_stats": layer_stats,
+                "n_layers": len(hidden_states),
+                "n_tokens": hidden_states[0].shape[1],
+                "step": self._kelp_step,
+            }
+
+            # Advance the sway "time" so animation progresses between updates
+            self._kelp_time_offset += 1.0
+
+            self._draw_kelp_forest()
+            self._refresh()
+
+        except Exception:
+            pass
+        finally:
+            if was_training:
+                model.train()
+
 
     def accumulate_predictions(self, predictions: list):
         """Accumulate predictions across batches (call clear_predictions() at epoch start)."""
@@ -1005,11 +1335,8 @@ class LivePlotter:
         """Create (or recreate) the matplotlib figure and axes."""
 
         if self.topo_enabled:
-            # 3 rows × 3 cols: top row = epoch/batch/lr,
-            #                   mid row = val/barcode/birth-death,
-            #                   bot row = predictions (wide) + model info
-            self.fig = self.plt.figure(figsize=(24, 16))
-            gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
+            self.fig = self.plt.figure(figsize=(26, 22))
+            gs = self.fig.add_gridspec(4, 3, hspace=0.50, wspace=0.35)
 
             ax_epoch   = self.fig.add_subplot(gs[0, 0])
             ax_batch   = self.fig.add_subplot(gs[0, 1])
@@ -1017,14 +1344,31 @@ class LivePlotter:
             ax_val     = self.fig.add_subplot(gs[1, 0])
             ax_barcode = self.fig.add_subplot(gs[1, 1])
             ax_bd      = self.fig.add_subplot(gs[1, 2])
-            ax_preds   = self.fig.add_subplot(gs[2, 0:2])   # spans 2 columns
-            ax_info    = self.fig.add_subplot(gs[2, 2])
+            ax_kelp    = self.fig.add_subplot(gs[2, 0:2])
+            ax_diffs   = self.fig.add_subplot(gs[2, 2])
+            ax_preds   = self.fig.add_subplot(gs[3, 0:2])
+            ax_info    = self.fig.add_subplot(gs[3, 2])
 
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
-            self.ax_diffs = None
+
+            ax_diffs.set_title("Absolute Prediction Error (outliers removed)",
+                               fontsize=10, fontweight="bold")
+            ax_diffs.set_xlabel("Prediction Update #")
+            ax_diffs.set_ylabel("|expected - predicted|")
+            ax_diffs.grid(True, alpha=0.3)
+            self.line_diffs_mean, = ax_diffs.plot(
+                [], [], label="Mean |diff|", color="darkorange", linewidth=2,
+            )
+            self.line_diffs_median, = ax_diffs.plot(
+                [], [], label="Median |diff|", color="purple", linewidth=1.5,
+                linestyle="--",
+            )
+            ax_diffs.legend(loc="upper right", fontsize=8)
+            self.ax_diffs = ax_diffs
+
         else:
-            self.fig = self.plt.figure(figsize=(22, 14))
+            self.fig = self.plt.figure(figsize=(24, 18))
             gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
 
             ax_epoch = self.fig.add_subplot(gs[0, 0])
@@ -1032,8 +1376,9 @@ class LivePlotter:
             ax_lr    = self.fig.add_subplot(gs[0, 2])
             ax_val   = self.fig.add_subplot(gs[1, 0])
             ax_diffs = self.fig.add_subplot(gs[1, 1])
-            ax_preds = self.fig.add_subplot(gs[1, 2])
-            ax_info  = self.fig.add_subplot(gs[2, :])
+            ax_kelp  = self.fig.add_subplot(gs[1, 2])
+            ax_preds = self.fig.add_subplot(gs[2, 0:2])
+            ax_info  = self.fig.add_subplot(gs[2, 2])
 
             ax_diffs.set_title("Absolute Prediction Error (outliers removed)",
                                fontsize=10, fontweight="bold")
@@ -1053,10 +1398,18 @@ class LivePlotter:
             self.ax_barcode = None
             self.ax_bd = None
 
-        # ── REMOVED the unconditional overwrite that was here ──
-        # These two lines were killing the topo axes even when topo was enabled:
-        #   self.ax_barcode = None
-        #   self.ax_bd = None
+        # ── Kelp forest axes ────────────────────────────────────────────────
+        self.ax_kelp = ax_kelp
+        ax_kelp.set_title("Kelp Forest — Embedding Space Dynamics",
+                           fontsize=10, fontweight="bold")
+        ax_kelp.set_facecolor("#020a1a")
+        ax_kelp.set_xlim(0, 1)
+        ax_kelp.set_ylim(0, 1)
+        ax_kelp.set_xticks([])
+        ax_kelp.set_yticks([])
+        ax_kelp.text(0.5, 0.5, "Waiting for hidden states...",
+                     ha="center", va="center", fontsize=11, alpha=0.4,
+                     color="#6a9ab8", transform=ax_kelp.transAxes)
 
         # Store references to the text-only axes
         self.ax_preds = ax_preds
@@ -1073,14 +1426,14 @@ class LivePlotter:
 
         self.axes = np.array(self._plot_axes)
 
-        # ── Window title ────────────────────────────────────────────────
+        # ── Window title ────────────────────────────────────────────────────
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
         try:
             self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
         except Exception:
             pass
 
-        # ── Top-left: Epoch losses ──────────────────────────────────────
+        # ── Top-left: Epoch losses ──────────────────────────────────────────
         ax_epoch.set_title("Epoch Loss", fontsize=10, fontweight="bold")
         ax_epoch.set_xlabel("Epoch")
         ax_epoch.set_ylabel("Loss")
@@ -1093,7 +1446,7 @@ class LivePlotter:
         )
         ax_epoch.legend(loc="upper right", fontsize=8)
 
-        # ── Top-center: Batch loss EMA ──────────────────────────────────
+        # ── Top-center: Batch loss EMA ──────────────────────────────────────
         ax_batch.set_title("Batch Loss (Train EMA)", fontsize=10, fontweight="bold")
         ax_batch.set_xlabel("Batch")
         ax_batch.set_ylabel("Loss")
@@ -1103,7 +1456,7 @@ class LivePlotter:
         )
         ax_batch.legend(loc="upper right", fontsize=8)
 
-        # ── Top-right: Learning Rate ────────────────────────────────────
+        # ── Top-right: Learning Rate ────────────────────────────────────────
         ax_lr.set_title("Learning Rate", fontsize=10, fontweight="bold")
         ax_lr.set_xlabel("Epoch")
         ax_lr.set_ylabel("LR")
@@ -1114,7 +1467,7 @@ class LivePlotter:
         )
         ax_lr.legend(loc="upper right", fontsize=8)
 
-        # ── Mid-left: Val batch loss ────────────────────────────────────
+        # ── Mid-left: Val batch loss ────────────────────────────────────────
         ax_val.set_title("Batch Loss (Val)", fontsize=10, fontweight="bold")
         ax_val.set_xlabel("Global Val Batch")
         ax_val.set_ylabel("Loss")
@@ -1128,7 +1481,7 @@ class LivePlotter:
         )
         ax_val.legend(loc="upper right", fontsize=8)
 
-        # ── TDA panels (only when topo_enabled) ─────────────────────────
+        # ── TDA panels (only when topo_enabled) ─────────────────────────────
         if self.ax_barcode is not None:
             self.ax_barcode.set_title("TDA Barcode (Embedding Space)",
                                        fontsize=10, fontweight="bold")
@@ -1151,7 +1504,7 @@ class LivePlotter:
             )
             self.ax_bd.grid(True, alpha=0.2)
 
-        # ── Predictions panel (text only) ───────────────────────────────
+        # ── Predictions panel (text only) ───────────────────────────────────
         ax_preds.set_xlim(0, 1)
         ax_preds.set_ylim(0, 1)
         ax_preds.axis("off")
@@ -1161,24 +1514,24 @@ class LivePlotter:
         )
         self._draw_predictions()
 
-        # ── Model Info panel (text only) ────────────────────────────────
+        # ── Model Info panel (text only) ────────────────────────────────────
         ax_info.set_xlim(0, 1)
         ax_info.set_ylim(0, 1)
         ax_info.axis("off")
         ax_info.set_title("Model / System Info", fontsize=10, fontweight="bold")
         self._draw_model_info()
 
-        # ── Layout ──────────────────────────────────────────────────────
+        # ── Layout ──────────────────────────────────────────────────────────
         self.fig.tight_layout()
 
-        # ── Restore existing data onto the new figure ───────────────────
+        # ── Restore existing data onto the new figure ───────────────────────
         self._restore_data()
 
-        # ── Register close event ────────────────────────────────────────
+        # ── Register close event ────────────────────────────────────────────
         if not self.suppress_window:
             self.fig.canvas.mpl_connect("close_event", self._on_close)
 
-        # ── Force window to appear ──────────────────────────────────────
+        # ── Force window to appear ──────────────────────────────────────────
         if not self.suppress_window:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
@@ -1209,6 +1562,10 @@ class LivePlotter:
         if self._topo_dgms is not None and self.ax_barcode is not None:
             self._draw_barcode(self._topo_dgms, self._topo_layer_name)
             self._draw_birth_death(self._topo_dgms, self._topo_layer_name)
+
+        # Redraw kelp forest if we have cached data
+        if self._kelp_data is not None:
+            self._draw_kelp_forest()
 
         self._draw_predictions()
         self._draw_model_info()
@@ -2083,6 +2440,7 @@ def train(args: argparse.Namespace):
 
                 plotter.update_batch(bl)
                 plotter.update_topo(model, inp)
+                plotter.update_kelp_forest(model, inp)
 
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
