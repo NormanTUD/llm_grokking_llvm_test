@@ -162,7 +162,9 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--resume", type=str, default=None,
                    help="Path to a .pt checkpoint to resume training from "
                         "(e.g. llvm_gpt_model/model_epoch_15.pt)")
-
+    g.add_argument("--structure-loss-alpha", type=float, default=0.5,
+               help="Weight for the structure-aware penalty loss term. "
+                    "0 = disabled, higher = more emphasis on producing valid numbers.")
 
     g = p.add_argument_group("Tokenizer")
     g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
@@ -844,36 +846,35 @@ class TinyGPT(nn.Module):
         return model
 
 
-def compute_value_aware_loss(
+import re
+
+def compute_structured_loss(
     model: TinyGPT,
     inp: torch.Tensor,
     tgt: torch.Tensor,
     value_positions: torch.Tensor,
     value_targets: torch.Tensor,
-    alpha: float = 0.1,
+    tokenizer: 'BPETokenizer',
+    device: str,
+    alpha_value: float = 0.1,
+    alpha_structure: float = 0.5,
     use_log_scale: bool = True,
-) -> Tuple[torch.Tensor, float, float]:
+) -> Tuple[torch.Tensor, float, float, float]:
     """
-    Combined loss: cross-entropy (token-level) + alpha * value loss (regression).
+    Combined loss with structure-aware penalty for generated answers.
 
-    Samples where value_targets is NaN or value_positions == 0 are excluded
-    from the value regression loss entirely — they contribute no gradient
-    to the value head, preventing misleading signals from unparseable answers.
-
-    Args:
-        model:           The TinyGPT model (must have value_head)
-        inp:             (B, T) input token IDs
-        tgt:             (B, T) target token IDs
-        value_positions: (B,) index of last <sep> in inp for each sample
-        value_targets:   (B,) float tensor of expected integer results (NaN = invalid)
-        alpha:           Weight for the value regression loss
-        use_log_scale:   If True, use log(1 + |pred - target|) instead of
-                         raw L1 to prevent huge gradients from large diffs.
+    Hierarchy (low loss → high loss):
+      1. Perfect integer match                          → 0 extra penalty
+      2. Wrong integer, small |diff|                    → small penalty (scaled by diff)
+      3. Wrong integer, large |diff|                    → larger penalty
+      4. Float-like string (e.g. "-3.5")                → moderate penalty (close to number)
+      5. String starting with '-' or digits             → higher penalty (partially numeric)
+         Length closer to expected → slightly better
+      6. Pure garbage string ("hello", "???")            → maximum penalty
+         Length far from expected → even worse
 
     Returns:
-        total_loss:   Combined loss (differentiable)
-        ce_loss_val:  Cross-entropy loss value (float, for logging)
-        val_loss_val: Value regression loss value (float, for logging)
+        total_loss, ce_loss_val, value_loss_val, structure_loss_val
     """
     output = model(
         input_ids=inp,
@@ -881,30 +882,165 @@ def compute_value_aware_loss(
         value_positions=value_positions,
     )
 
-    ce_loss = output.loss  # standard cross-entropy on tokens
-    value_preds = output.value_preds  # (B,) predicted integer values
+    ce_loss = output.loss
+    value_preds = output.value_preds
+    logits = output.logits  # (B, T, V)
 
-    # ── Value regression loss ───────────────────────────────────────────
-    if value_preds is not None and alpha > 0:
-        # Valid = position found AND target is a real number (not NaN)
-        valid_mask = (value_positions > 0) & (~torch.isnan(value_targets))  # (B,)
-
+    # ── Value regression loss (same as before) ──────────────────────────
+    val_loss_val = 0.0
+    value_loss_term = torch.tensor(0.0, device=device)
+    if value_preds is not None and alpha_value > 0:
+        valid_mask = (value_positions > 0) & (~torch.isnan(value_targets))
         if valid_mask.any():
-            vp = value_preds[valid_mask]       # (N,)
-            vt = value_targets[valid_mask]     # (N,)
-
+            vp = value_preds[valid_mask]
+            vt = value_targets[valid_mask]
             if use_log_scale:
-                raw_diff = vp - vt
-                value_loss = torch.log1p(torch.abs(raw_diff)).mean()
+                value_loss_term = torch.log1p(torch.abs(vp - vt)).mean()
             else:
-                value_loss = F.l1_loss(vp, vt)
+                value_loss_term = F.l1_loss(vp, vt)
+            val_loss_val = value_loss_term.item()
 
-            total_loss = ce_loss + alpha * value_loss
-            return total_loss, ce_loss.item(), value_loss.item()
-        else:
-            return ce_loss, ce_loss.item(), 0.0
-    else:
-        return ce_loss, ce_loss.item(), 0.0
+    # ── Structure-aware penalty on generated answer tokens ──────────────
+    # We do greedy argmax decoding from the logits (no separate generation
+    # pass needed — just argmax the teacher-forced logits for the answer
+    # portion). This is differentiable through the softmax.
+
+    structure_loss_term = torch.tensor(0.0, device=device)
+    structure_penalties = []
+
+    sep_id = tokenizer._tok.token_to_id("<sep>")
+    eos_id = tokenizer.eos_token_id
+    pad_id = tokenizer.pad_token_id
+
+    B, T, V = logits.shape
+
+    # For each sample in the batch, decode the answer portion
+    for b in range(B):
+        # Find answer region in target
+        # value_positions[b] gives the last <sep> position in input
+        vp_idx = value_positions[b].item()
+        if vp_idx == 0:
+            continue  # skip invalid samples
+
+        vt = value_targets[b].item()
+        if math.isnan(vt):
+            continue
+
+        expected_int = int(vt)
+        expected_str = str(expected_int)
+
+        # The answer tokens in target start at vp_idx (position after last <sep>)
+        # In the shifted target, this corresponds to the same index
+        answer_start = vp_idx  # in the target tensor
+
+        # Greedy decode from logits (teacher-forced)
+        pred_token_ids = []
+        for t_idx in range(answer_start, T):
+            target_tok = tgt[b, t_idx].item()
+            if target_tok == pad_id or target_tok == eos_id:
+                break
+            pred_tok = logits[b, t_idx].argmax(dim=-1).item()
+            pred_token_ids.append(pred_tok)
+
+        if not pred_token_ids:
+            continue
+
+        predicted_str = tokenizer.decode(pred_token_ids).strip()
+        for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+            predicted_str = predicted_str.replace(special, "")
+        predicted_str = predicted_str.strip()
+
+        # ── Compute structure penalty ───────────────────────────────────
+        penalty = _compute_structure_penalty(
+            expected_str, expected_int, predicted_str
+        )
+        structure_penalties.append(penalty)
+
+    if structure_penalties:
+        # Make it differentiable: scale the CE loss by the mean penalty
+        # This way, batches with more garbage get higher total loss
+        mean_penalty = sum(structure_penalties) / len(structure_penalties)
+        structure_loss_term = torch.tensor(mean_penalty, device=device, dtype=torch.float32)
+
+    # ── Combine ─────────────────────────────────────────────────────────
+    total_loss = (
+        ce_loss
+        + alpha_value * value_loss_term
+        + alpha_structure * structure_loss_term
+    )
+
+    return (
+        total_loss,
+        ce_loss.item(),
+        val_loss_val,
+        structure_loss_term.item(),
+    )
+
+
+def _compute_structure_penalty(
+    expected_str: str,
+    expected_int: int,
+    predicted_str: str,
+) -> float:
+    """
+    Compute a scalar penalty for a single prediction based on the hierarchy:
+
+      0.0          — perfect match
+      (0, ~1]      — wrong integer, penalty ∝ log(1 + |diff|)
+      ~1.0-2.0     — float-like string
+      ~2.0-4.0     — partially numeric / dash-prefixed
+      ~4.0-6.0+    — pure garbage, scaled by length mismatch
+
+    All values are deterministic and bounded.
+    """
+    if not predicted_str:
+        # Empty output is very bad
+        return 5.0 + abs(len(expected_str))  # length penalty
+
+    # ── Level 1: Perfect match ──────────────────────────────────────────
+    if predicted_str.strip() == expected_str.strip():
+        return 0.0
+
+    # ── Level 2: Valid integer ──────────────────────────────────────────
+    int_pattern = re.compile(r'^-?\d+$')
+    float_pattern = re.compile(r'^-?\d+\.\d+$')
+    partial_numeric = re.compile(r'^-?\d')  # starts with optional minus + digit
+
+    if int_pattern.match(predicted_str):
+        try:
+            pred_int = int(predicted_str)
+            diff = abs(expected_int - pred_int)
+            # Log scale so huge diffs don't dominate
+            return math.log1p(diff) / math.log1p(1000)  # normalized ~[0, 1]
+        except (ValueError, OverflowError):
+            pass  # fall through to next level
+
+    # ── Level 3: Float-like string ──────────────────────────────────────
+    if float_pattern.match(predicted_str):
+        try:
+            pred_float = float(predicted_str)
+            diff = abs(expected_int - pred_float)
+            # Slightly worse than a correct integer, but still numeric
+            return 1.0 + math.log1p(diff) / math.log1p(1000)
+        except (ValueError, OverflowError):
+            return 1.5
+
+    # ── Level 4: Partially numeric / dash-prefixed ──────────────────────
+    # Strings like "---", "-3abc", "12xy" — they show SOME numeric structure
+    len_diff = abs(len(predicted_str) - len(expected_str))
+    len_penalty = math.log1p(len_diff) * 0.3  # closer length → better
+
+    if predicted_str.startswith('-') or partial_numeric.match(predicted_str):
+        # Has some numeric character at the start — not as bad as pure garbage
+        # Count how many leading characters are "number-like"
+        numeric_chars = sum(1 for c in predicted_str if c in '-0123456789.')
+        numeric_ratio = numeric_chars / max(len(predicted_str), 1)
+        # Higher ratio → lower penalty (more number-like)
+        return 2.0 + (1.0 - numeric_ratio) * 2.0 + len_penalty
+
+    # ── Level 5: Pure garbage ───────────────────────────────────────────
+    # No numeric structure at all
+    return 4.0 + len_penalty + math.log1p(len(predicted_str)) * 0.5
 
 class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None,
@@ -2934,9 +3070,12 @@ def train(args: argparse.Namespace):
                 val_tgt = val_tgt.to(device)
 
                 # ── Combined loss: CE + alpha * value regression ────────
-                loss, ce_val, vloss_val = compute_value_aware_loss(
+                loss, ce_val, vloss_val, struct_val = compute_structured_loss(
                     model, inp, tgt, val_pos, val_tgt,
-                    alpha=value_loss_alpha,
+                    tokenizer=tokenizer,
+                    device=device,
+                    alpha_value=value_loss_alpha,
+                    alpha_structure=0.5,  # tune this — new CLI arg recommended
                     use_log_scale=True,
                 )
 
@@ -3017,9 +3156,12 @@ def train(args: argparse.Namespace):
                     val_tgt = val_tgt.to(device)
 
                     # Use the same combined loss for validation metrics
-                    vl_total, vl_ce, vl_value = compute_value_aware_loss(
+                    vl_total, vl_ce, vl_value, vl_struct = compute_structured_loss(
                         model, inp, tgt, val_pos, val_tgt,
-                        alpha=value_loss_alpha,
+                        tokenizer=tokenizer,
+                        device=device,
+                        alpha_value=value_loss_alpha,
+                        alpha_structure=0.5,
                         use_log_scale=True,
                     )
                     vl = vl_total.item()
