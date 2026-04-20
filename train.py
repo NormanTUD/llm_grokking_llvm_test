@@ -180,7 +180,7 @@ console = Console()
 # ════════════════════════════════════════════════════════════════════════════
 
 class BPETokenizer:
-    """BPE tokenizer with the same interface as CharTokenizer."""
+    """BPE tokenizer with the same interface as BPETokenizer."""
 
     SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
 
@@ -239,103 +239,12 @@ class BPETokenizer:
         hf_tok = HFTokenizer.from_file(os.path.join(path, "tokenizer.json"))
         return cls(hf_tokenizer=hf_tok)
 
-class CharTokenizer:
-    SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
-
-    def __init__(self):
-        self.char2idx: Dict[str, int] = {}
-        self.idx2char: Dict[int, str] = {}
-        self._next_id = len(self.SPECIAL)
-        seed_chars = (
-            "abcdefghijklmnopqrstuvwxyz"
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-            "0123456789"
-            " \n\t=@%{}(),.*:;!<>_-+/\"#"
-        )
-        for ch in seed_chars:
-            self._register(ch)
-
-    def _register(self, ch: str) -> int:
-        if ch not in self.char2idx:
-            idx = self._next_id
-            self.char2idx[ch] = idx
-            self.idx2char[idx] = ch
-            self._next_id += 1
-        return self.char2idx[ch]
-
-    @property
-    def vocab_size(self) -> int:
-        return self._next_id
-
-    @property
-    def pad_token_id(self) -> int:
-        return self.SPECIAL["<pad>"]
-
-    @property
-    def bos_token_id(self) -> int:
-        return self.SPECIAL["<bos>"]
-
-    @property
-    def eos_token_id(self) -> int:
-        return self.SPECIAL["<eos>"]
-
-    def encode(self, text: str) -> List[int]:
-        return [self._register(ch) for ch in text]
-
-    def decode(self, ids: List[int]) -> str:
-        inv_special = {v: k for k, v in self.SPECIAL.items()}
-        parts = []
-        for i in ids:
-            if i in inv_special:
-                parts.append(inv_special[i])
-            elif i in self.idx2char:
-                parts.append(self.idx2char[i])
-            else:
-                parts.append("?")
-        return "".join(parts)
-
-    def __call__(self, text: str, return_tensors: str = None, **kwargs) -> dict:
-        ids = (
-            [self.SPECIAL["<bos>"]]
-            + self.encode(text)
-            + [self.SPECIAL["<eos>"]]
-        )
-        if return_tensors == "pt":
-            return {"input_ids": torch.tensor([ids], dtype=torch.long)}
-        return {"input_ids": ids}
-
-    def save_pretrained(self, path: str):
-        os.makedirs(path, exist_ok=True)
-        data = {
-            "char2idx": self.char2idx,
-            "idx2char": {str(k): v for k, v in self.idx2char.items()},
-            "next_id": self._next_id,
-            "special": self.SPECIAL,
-        }
-        with open(os.path.join(path, "tokenizer.json"), "w") as f:
-            json.dump(data, f, indent=2)
-        with open(os.path.join(path, "tokenizer_config.json"), "w") as f:
-            json.dump({"tokenizer_class": "CharTokenizer"}, f)
-
-    @classmethod
-    def from_pretrained(cls, path: str) -> "CharTokenizer":
-        tok = cls.__new__(cls)
-        tok.char2idx = {}
-        tok.idx2char = {}
-        with open(os.path.join(path, "tokenizer.json"), "r") as f:
-            data = json.load(f)
-        tok.char2idx = data["char2idx"]
-        tok.idx2char = {int(k): v for k, v in data["idx2char"].items()}
-        tok._next_id = data["next_id"]
-        return tok
-
-
 # ════════════════════════════════════════════════════════════════════════════
 # 2.  DATA GENERATION (per-batch, on the fly)
 # ════════════════════════════════════════════════════════════════════════════
 
 def generate_single_sample(
-    tokenizer: CharTokenizer,
+    tokenizer: BPETokenizer,
     max_params: int = 4,
     max_ops: int = 6,
     allowed_ops: Optional[List[str]] = None,
@@ -376,7 +285,7 @@ def generate_single_sample(
     return ids, prompt_len
 
 def generate_batch(
-    tokenizer: CharTokenizer,
+    tokenizer: BPETokenizer,
     batch_size: int,
     max_params: int = 3,
     max_ops: int = 4,
@@ -413,11 +322,9 @@ def collate_batch(batch, pad_id=0):
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                   max_params=4, max_ops=6,
                                   param_range=(-50, 50),
-                                  use_bpe=False,
-                                  bpe_vocab_size=512) -> "CharTokenizer | BPETokenizer":
+                                  bpe_vocab_size=512) -> BPETokenizer:
     """
     Generate n_programs random LLVM IR functions to build a tokenizer.
-    If use_bpe=True, trains a BPE tokenizer; otherwise builds a CharTokenizer.
     """
     if allowed_ops is None:
         allowed_ops = ["add", "sub", "mul"]
@@ -467,31 +374,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
         f"([dim]{fail} generation failures skipped[/])"
     )
 
-    if not use_bpe:
-        # ── CharTokenizer path ──────────────────────────────────────────
-        console.print("  [cyan]Building CharTokenizer...[/]")
-        tokenizer = CharTokenizer()
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold cyan]Registering characters..."),
-            BarColumn(bar_width=40),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task("register", total=len(corpus))
-            for text in corpus:
-                tokenizer.encode(text)
-                progress.update(task, advance=1)
-
-        console.print(
-            f"  [green]✓[/] CharTokenizer built — "
-            f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
-        )
-        return tokenizer
-
-    # ── BPE path ────────────────────────────────────────────────────────
+    # ── Step 2: Train BPE tokenizer ─────────────────────────────────────
     console.print(
         f"  [cyan]Training BPE tokenizer "
         f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
@@ -1916,7 +1799,6 @@ def train(args: argparse.Namespace):
         n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
         max_params=args.max_params, max_ops=args.max_ops,
         param_range=(args.param_min, args.param_max),
-        use_bpe=args.use_bpe,
         bpe_vocab_size=args.bpe_vocab_size,
     )
 
@@ -2401,10 +2283,10 @@ def train(args: argparse.Namespace):
     if save_path:
         console.print(
             Panel(
-                f'[bold]from train_llvm_gpt import TinyGPT, CharTokenizer\n\n'
+                f'[bold]from train_llvm_gpt import TinyGPT, BPETokenizer\n\n'
                 f'model = TinyGPT.from_pretrained("{save_path}")\n'
                 f'model.eval()\n\n'
-                f'tokenizer = CharTokenizer.from_pretrained("{save_path}")\n'
+                f'tokenizer = BPETokenizer.from_pretrained("{save_path}")\n'
                 f'config = model.config[/]',
                 title="[bold green]📦 Load your model",
                 border_style="green",
