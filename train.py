@@ -2163,7 +2163,6 @@ class LivePlotter:
             return
 
         info_lines = [
-            f"Architecture:  TinyGPT",
             f"Parameters:    {self._model_info.get('params', '?'):,}",
             f"d_model:       {self._model_info.get('d_model', '?')}",
             f"n_heads:       {self._model_info.get('n_heads', '?')}",
