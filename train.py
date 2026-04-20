@@ -985,73 +985,141 @@ def compute_structured_loss(
         structure_loss_val,
     )
 
-
 def _compute_structure_penalty(
     expected_str: str,
     expected_int: int,
     predicted_str: str,
 ) -> float:
     """
+    Compute a scalar penalty for a single prediction.
+
     Hierarchy (strictly ordered, NO overlap between levels):
-      0.0          — perfect match (numeric)
-      (0, 0.99]    — wrong integer (ALWAYS better than any non-integer)
-      [1.0, 1.99]  — float-like string
-      [2.0, 3.99]  — partially numeric / dash-prefixed
-      [4.0, 5.99]  — pure garbage
-      6.0          — empty output (fixed ceiling)
+      0.0            — perfect integer match (numeric comparison)
+      (0, 0.99]      — wrong integer, valid format (ALWAYS better than non-integer)
+      [1.0, 1.49]    — integer with leading/trailing whitespace (slightly worse)
+      [1.5, 1.99]    — starts with a valid integer but has trailing chars (e.g. "-5abc")
+      [2.0, 2.99]    — float-like string (e.g. "-3.5")
+      [3.0, 4.99]    — partially numeric / dash-prefixed (e.g. "---", "-3abc" without leading int)
+      [5.0, 5.99]    — pure garbage (e.g. "hello", "???")
+      6.0            — empty output (fixed ceiling)
+
+    Key invariant: ANY valid integer (even wildly wrong) is ALWAYS penalized
+    less than ANY non-integer output. Strings that START with a valid integer
+    are better than strings that merely contain numeric characters.
     """
     if not predicted_str:
         return 6.0
 
-    int_pattern = re.compile(r'^-?\d+$')
-    float_pattern = re.compile(r'^-?\d+\.\d+$')
-    partial_numeric = re.compile(r'^-?\d')
-
-    # ── Clean BPE artifacts before any comparison ───────────────────────
-    # ByteLevel BPE can produce 'Ġ' (U+0120) and similar prefixes.
-    # Strip all non-ASCII-printable characters, then strip whitespace.
+    # ── Clean BPE artifacts ─────────────────────────────────────────────
     cleaned = ''.join(c for c in predicted_str if c.isascii() and c.isprintable())
-    cleaned = cleaned.strip()
 
     if not cleaned:
         return 6.0
 
-    # ── Level 1: Perfect match — NUMERIC comparison, not string ─────────
-    # This avoids false negatives from "05" vs "5", "-0" vs "0", etc.
-    if int_pattern.match(cleaned):
+    int_pattern = re.compile(r'^-?\d+$')
+    float_pattern = re.compile(r'^-?\d+\.\d+$')
+    # Matches a leading integer, possibly followed by other stuff
+    leading_int_pattern = re.compile(r'^(\s*-?\d+)(.*)')
+    # Whitespace-padded integer
+    padded_int_pattern = re.compile(r'^\s*(-?\d+)\s*$')
+    partial_numeric = re.compile(r'^-?\d')
+
+    # ── Level 0: Perfect match (clean string, exact integer) ────────────
+    stripped = cleaned.strip()
+
+    if int_pattern.match(stripped):
         try:
-            pred_int = int(cleaned)
+            pred_int = int(stripped)
             diff = abs(expected_int - pred_int)
             if diff == 0:
                 return 0.0
-            # Level 2: Wrong integer — capped at 0.99
+            # Level 1: Wrong integer — capped at 0.99
             return 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
             pass
 
-    # ── Level 3: Float-like string — range [1.0, 1.99] ─────────────────
-    if float_pattern.match(cleaned):
+    # ── Level 1.5: Whitespace-padded integer ────────────────────────────
+    # e.g. "  -5  " or "\t-5\n" — the model got the right number but
+    # added whitespace. Slightly worse than a clean integer because we
+    # want to encourage clean output, but much better than garbage.
+    padded_match = padded_int_pattern.match(cleaned)
+    if padded_match:
         try:
-            pred_float = float(cleaned)
-            diff = abs(expected_int - pred_float)
-            if diff == 0.0:
-                return 1.0  # exact float match, but still not an int
-            return 1.0 + 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+            pred_int = int(padded_match.group(1))
+            diff = abs(expected_int - pred_int)
+            # Range [1.0, 1.49] — always worse than clean integer (max 0.99)
+            # but always better than "starts with int + garbage" (1.5+)
+            return 1.0 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
-            return 1.5
+            pass
 
-    # ── Shared: length penalty ──────────────────────────────────────────
+    # ── Level 2: Starts with valid integer + trailing stuff ─────────────
+    # e.g. "-5abc", "-5 3", "-5..", "-5---"
+    # The model got the beginning right — it's "on the right track".
+    # Much better than random garbage, but not a valid integer.
+    leading_match = leading_int_pattern.match(cleaned)
+    if leading_match:
+        int_part = leading_match.group(1).strip()
+        trailing = leading_match.group(2)
+
+        if int_part and trailing:  # has both integer prefix AND trailing stuff
+            try:
+                pred_int = int(int_part)
+                diff = abs(expected_int - pred_int)
+
+                # Base penalty: [1.5, 1.99]
+                # Closer integer prefix → lower penalty
+                base = 1.5 + 0.3 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+
+                # Trailing length penalty: more trailing garbage → worse
+                # But capped so we stay in [1.5, 1.99]
+                trailing_penalty = min(0.19, len(trailing) * 0.03)
+
+                return base + trailing_penalty
+            except (ValueError, OverflowError):
+                pass
+
+    # ── Level 3: Float-like string — range [2.0, 2.99] ─────────────────
+    if float_pattern.match(stripped):
+        try:
+            pred_float = float(stripped)
+            diff = abs(expected_int - pred_float)
+            return 2.0 + 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+        except (ValueError, OverflowError):
+            return 2.5
+
+    # ── Also check: starts with float + trailing ────────────────────────
+    leading_float_pattern = re.compile(r'^(\s*-?\d+\.\d+)(.*)')
+    leading_float_match = leading_float_pattern.match(cleaned)
+    if leading_float_match:
+        float_part = leading_float_match.group(1).strip()
+        trailing = leading_float_match.group(2)
+        if float_part and trailing:
+            try:
+                pred_float = float(float_part)
+                diff = abs(expected_int - pred_float)
+                # Slightly worse than clean float, range [2.5, 2.99]
+                return 2.5 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+            except (ValueError, OverflowError):
+                pass
+
+    # ── Shared: length penalty (used by levels 4 and 5) ─────────────────
     len_diff = abs(len(cleaned) - len(expected_str))
     len_penalty = min(0.5, math.log1p(len_diff) * 0.2)
 
-    # ── Level 4: Partially numeric / dash-prefixed — range [2.0, 3.99] ──
+    # ── Level 4: Partially numeric / dash-prefixed — range [3.0, 4.99] ──
+    # Strings like "---", "12xy" — they show SOME numeric structure.
+    # "-----" is better than "hello" because "-" could be the start of
+    # a negative number.
     if cleaned.startswith('-') or partial_numeric.match(cleaned):
         numeric_chars = sum(1 for c in cleaned if c in '-0123456789.')
         numeric_ratio = numeric_chars / max(len(cleaned), 1)
-        return 2.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
+        # numeric_ratio=1.0 (all numeric chars like "---") → 3.0 + 0.0 + len_penalty
+        # numeric_ratio=0.0 (no numeric chars) → 3.0 + 1.5 + len_penalty
+        return 3.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
 
-    # ── Level 5: Pure garbage — range [4.0, 5.99] ──────────────────────
-    return 4.0 + len_penalty + min(1.5, math.log1p(len(cleaned)) * 0.4)
+    # ── Level 5: Pure garbage — range [5.0, 5.99] ──────────────────────
+    return 5.0 + len_penalty + min(0.49, math.log1p(len(cleaned)) * 0.15)
 
 class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None,
