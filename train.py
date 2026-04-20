@@ -136,6 +136,9 @@ def parse_args() -> argparse.Namespace:
                    help="Maximum sequence length")
     g.add_argument("--dropout", type=float, default=0.1,
                    help="Dropout rate")
+    g.add_argument("--value-loss-alpha", type=float, default=0.1,
+                   help="Weight for the value regression (absolute difference) loss term. "
+                        "0 = disabled, higher = more emphasis on numeric accuracy.")
 
     g = p.add_argument_group("Training")
     g.add_argument("--epochs", type=int, default=30,
@@ -443,19 +446,70 @@ def generate_batch(
     return samples
 
 
-def collate_batch(batch, pad_id=0):
+def collate_batch(batch, pad_id=0, tokenizer=None):
+    """
+    Collate a batch of (token_ids, prompt_len) pairs into padded tensors.
+
+    Returns:
+        input_ids:       (B, T)  — input tokens (shifted right)
+        target_ids:      (B, T)  — target tokens (shifted left, prompt masked to pad_id)
+        value_positions: (B,)    — index of the last <sep> in input_ids (for value head)
+        value_targets:   (B,)    — float tensor of expected integer results
+    """
     max_len = max(len(s) for s, _ in batch)
     input_ids, target_ids = [], []
+    value_positions = []
+    value_targets = []
+
+    sep_id = None
+    eos_id = None
+    if tokenizer is not None:
+        sep_id = tokenizer._tok.token_to_id("<sep>")
+        eos_id = tokenizer.eos_token_id
+
     for s, prompt_len in batch:
         padded = s + [pad_id] * (max_len - len(s))
         inp = padded[:-1]
         tgt = padded[1:]
+
         # Mask out everything before the answer
         for i in range(min(prompt_len - 1, len(tgt))):
             tgt[i] = pad_id  # ignored by cross_entropy with ignore_index=0
+
         input_ids.append(inp)
         target_ids.append(tgt)
-    return torch.tensor(input_ids, dtype=torch.long), torch.tensor(target_ids, dtype=torch.long)
+
+        # ── Find value_position: last <sep> in inp ──────────────────────
+        # The answer tokens start right after the last <sep>.
+        # We read the hidden state AT the last <sep> position for the
+        # value head (it has seen the full prompt context at that point).
+        vp = 0
+        vt = 0.0
+        if sep_id is not None:
+            sep_positions = [i for i, tid in enumerate(inp) if tid == sep_id]
+            if len(sep_positions) >= 2:
+                vp = sep_positions[-1]  # last <sep> in input
+
+                # Extract the answer tokens between last <sep> and <eos>/pad
+                answer_start = sep_positions[-1] + 1
+                answer_end = len(s) - 1  # exclude <eos> from original s
+                answer_ids = s[answer_start:answer_end]
+
+                try:
+                    answer_str = tokenizer.decode(answer_ids).strip()
+                    vt = float(int(answer_str))
+                except (ValueError, TypeError):
+                    vt = 0.0
+
+        value_positions.append(vp)
+        value_targets.append(vt)
+
+    return (
+        torch.tensor(input_ids, dtype=torch.long),
+        torch.tensor(target_ids, dtype=torch.long),
+        torch.tensor(value_positions, dtype=torch.long),
+        torch.tensor(value_targets, dtype=torch.float),
+    )
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                   max_params=4, max_ops=6,
@@ -672,6 +726,16 @@ class TinyGPT(nn.Module):
         self.ln_f = nn.LayerNorm(config.d_model)
         self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         self.head.weight = self.tok_emb.weight
+
+        # ── Value regression head ───────────────────────────────────────
+        # Projects the last hidden state at a chosen position to a scalar
+        # predicted integer value. This is fully differentiable.
+        self.value_head = nn.Sequential(
+            nn.Linear(config.d_model, config.d_model),
+            nn.GELU(),
+            nn.Linear(config.d_model, 1),
+        )
+
         self.apply(self._init_weights)
 
     @staticmethod
@@ -688,9 +752,22 @@ class TinyGPT(nn.Module):
         input_ids: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        value_positions: Optional[torch.Tensor] = None,
         output_hidden_states: bool = False,
         **kwargs,
     ):
+        """
+        Args:
+            input_ids:       (B, T) token indices
+            labels:          (B, T) target token indices (for CE loss)
+            attention_mask:  unused, kept for API compat
+            value_positions: (B,) int tensor — index into the sequence at which
+                             to read the hidden state for the value head.
+                             Typically the position of the last <sep> token
+                             (i.e. the position just before the answer starts).
+                             If None, value_preds will be None.
+            output_hidden_states: if True, return all intermediate hidden states
+        """
         idx = input_ids
         B, T = idx.shape
         assert T <= self.max_seq_len, f"Sequence length {T} > max {self.max_seq_len}"
@@ -706,6 +783,7 @@ class TinyGPT(nn.Module):
         x = self.ln_f(x)
         logits = self.head(x)
 
+        # ── Cross-entropy loss (token-level) ────────────────────────────
         loss = None
         if labels is not None:
             loss = F.cross_entropy(
@@ -714,11 +792,24 @@ class TinyGPT(nn.Module):
                 ignore_index=0,
             )
 
+        # ── Value head prediction ───────────────────────────────────────
+        # Gather the hidden state at the specified position for each sample
+        value_preds = None
+        if value_positions is not None:
+            # value_positions: (B,) — index into T dimension
+            # x shape: (B, T, D)
+            # We want x[b, value_positions[b], :] for each b
+            gather_idx = value_positions.unsqueeze(-1).unsqueeze(-1)  # (B, 1, 1)
+            gather_idx = gather_idx.expand(-1, -1, x.shape[-1])       # (B, 1, D)
+            pooled = x.gather(1, gather_idx).squeeze(1)               # (B, D)
+            value_preds = self.value_head(pooled).squeeze(-1)         # (B,)
+
         return _ModelOutput(
             loss=loss,
             logits=logits,
             hidden_states=tuple(hidden_states_list) if output_hidden_states else None,
             last_hidden_state=x,
+            value_preds=value_preds,
         )
 
     def count_parameters(self) -> int:
@@ -744,70 +835,93 @@ class TinyGPT(nn.Module):
         model.load_state_dict(state_dict)
         return model
 
-def compute_value_aware_loss(model, inp, tgt, tokenizer, device, alpha=0.1):
+
+def compute_value_aware_loss(
+    model: TinyGPT,
+    inp: torch.Tensor,
+    tgt: torch.Tensor,
+    value_positions: torch.Tensor,
+    value_targets: torch.Tensor,
+    alpha: float = 0.1,
+    use_log_scale: bool = True,
+) -> Tuple[torch.Tensor, float, float]:
     """
-    Combined loss: cross-entropy (token-level) + alpha * MAE (value-level).
-    
-    The MAE term penalizes the absolute difference between the predicted
-    integer and the expected integer, encouraging numerically closer predictions.
+    Combined loss: cross-entropy (token-level) + alpha * value loss (regression).
+
+    The value loss is FULLY DIFFERENTIABLE because it uses a dedicated
+    regression head (value_head) that maps the hidden state at the last
+    <sep> position to a scalar prediction of the integer result.
+
+    Args:
+        model:           The TinyGPT model (must have value_head)
+        inp:             (B, T) input token IDs
+        tgt:             (B, T) target token IDs
+        value_positions: (B,) index of last <sep> in inp for each sample
+        value_targets:   (B,) float tensor of expected integer results
+        alpha:           Weight for the value regression loss
+        use_log_scale:   If True, use log(1 + |pred - target|) instead of
+                         raw L1 to prevent huge gradients from large diffs.
+                         Recommended for integer ranges like [-1000, 1000].
+
+    Returns:
+        total_loss:  Combined loss (differentiable)
+        ce_loss_val: Cross-entropy loss value (float, for logging)
+        val_loss_val: Value regression loss value (float, for logging)
     """
-    output = model(input_ids=inp, labels=tgt)
-    ce_loss = output.loss  # standard cross-entropy
-    
-    # Greedy-decode the answer for each sample in the batch
-    # and compute |expected - predicted| as an auxiliary signal
-    logits = output.logits  # (B, T, V)
-    
-    # Get greedy predictions for the answer portion
-    pred_tokens = logits.argmax(dim=-1)  # (B, T)
-    
-    mae_losses = []
-    sep_id = tokenizer._tok.token_to_id("<sep>")
-    eos_id = tokenizer.eos_token_id
-    
-    for b in range(inp.shape[0]):
-        # Find answer region in target (non-zero, non-pad tokens after prompt)
-        target_ids = tgt[b].tolist()
-        pred_ids = pred_tokens[b].tolist()
-        
-        # Extract expected answer tokens (non-pad portion of target)
-        answer_tgt = [t for t in target_ids if t != 0 and t != eos_id]
-        answer_pred = pred_ids[len(target_ids) - len(answer_tgt) - 1:len(target_ids) - 1]
-        
-        try:
-            expected_val = int(tokenizer.decode(answer_tgt).strip())
-            predicted_val = int(tokenizer.decode(answer_pred).strip())
-            mae_losses.append(abs(expected_val - predicted_val))
-        except (ValueError, TypeError):
-            continue
-    
-    if mae_losses:
-        # Normalize MAE to be on a similar scale as CE loss
-        mae_term = torch.tensor(float(np.mean(mae_losses)), device=device, requires_grad=False)
-        # Use log(1 + MAE) to prevent huge gradients from large differences
-        mae_term = torch.log1p(mae_term)
-        total_loss = ce_loss + alpha * mae_term
+    output = model(
+        input_ids=inp,
+        labels=tgt,
+        value_positions=value_positions,
+    )
+
+    ce_loss = output.loss  # standard cross-entropy on tokens
+    value_preds = output.value_preds  # (B,) predicted integer values
+
+    # ── Value regression loss ───────────────────────────────────────────
+    if value_preds is not None:
+        # Create a mask for valid samples (value_positions > 0 means we
+        # found a valid <sep> and extracted a real answer)
+        valid_mask = value_positions > 0  # (B,)
+
+        if valid_mask.any():
+            vp = value_preds[valid_mask]       # (N,)
+            vt = value_targets[valid_mask]     # (N,)
+
+            if use_log_scale:
+                # log(1 + |pred - target|) — smooth, bounded gradients
+                # This is differentiable everywhere (log1p + abs are both
+                # differentiable, and abs has subgradient at 0)
+                raw_diff = vp - vt
+                value_loss = torch.log1p(torch.abs(raw_diff)).mean()
+            else:
+                # Standard L1 (MAE) — also differentiable (subgradient at 0)
+                value_loss = F.l1_loss(vp, vt)
+
+            total_loss = ce_loss + alpha * value_loss
+            return total_loss, ce_loss.item(), value_loss.item()
+        else:
+            return ce_loss, ce_loss.item(), 0.0
     else:
-        total_loss = ce_loss
-    
-    return total_loss, ce_loss.item()
+        return ce_loss, ce_loss.item(), 0.0
 
 class _ModelOutput(dict):
-    def __init__(self, loss=None, logits=None, hidden_states=None, last_hidden_state=None):
+    def __init__(self, loss=None, logits=None, hidden_states=None,
+                 last_hidden_state=None, value_preds=None):
         super().__init__(
             loss=loss,
             logits=logits,
             hidden_states=hidden_states,
             last_hidden_state=last_hidden_state,
+            value_preds=value_preds,
         )
         self.loss = loss
         self.logits = logits
         self.hidden_states = hidden_states
         self.last_hidden_state = last_hidden_state
+        self.value_preds = value_preds
 
     def __getitem__(self, key):
         return getattr(self, key)
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 4.  ANALYTICAL MODEL CONFIG
@@ -2689,7 +2803,12 @@ def train(args: argparse.Namespace):
         # ── Train epoch ─────────────────────────────────────────────────
         model.train()
         epoch_loss = 0.0
+        epoch_value_loss = 0.0
         n_batches = 0
+
+        # Hyperparameter: weight of the value regression loss
+        # You can also expose this as a CLI arg
+        value_loss_alpha = args.value_loss_alpha
 
         with Progress(
             SpinnerColumn(),
@@ -2701,13 +2820,16 @@ def train(args: argparse.Namespace):
             TextColumn("•"),
             TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
             TextColumn("•"),
+            TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
+            TextColumn("•"),
             TextColumn("[dim]eta={task.fields[eta]}[/]"),
             TimeElapsedColumn(),
             console=console,
             transient=True,
         ) as progress:
             task = progress.add_task(
-                "train", total=args.batches_per_epoch, loss=0.0, ema=0.0, eta="..."
+                "train", total=args.batches_per_epoch,
+                loss=0.0, ema=0.0, vloss=0.0, eta="...",
             )
             ema_loss = None
 
@@ -2719,15 +2841,28 @@ def train(args: argparse.Namespace):
                 total_samples += len(batch)
 
                 if len(batch) < 2:
-                    progress.update(task, advance=1, loss=0.0, ema=ema_loss or 0.0,
+                    progress.update(task, advance=1, loss=0.0,
+                                    ema=ema_loss or 0.0, vloss=0.0,
                                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs))
                     continue
 
-                inp, tgt = collate_batch(batch, pad_id=tokenizer.SPECIAL["<pad>"])
-                inp, tgt = inp.to(device), tgt.to(device)
+                # ── Collate with value targets ──────────────────────────
+                inp, tgt, val_pos, val_tgt = collate_batch(
+                    batch,
+                    pad_id=tokenizer.SPECIAL["<pad>"],
+                    tokenizer=tokenizer,
+                )
+                inp = inp.to(device)
+                tgt = tgt.to(device)
+                val_pos = val_pos.to(device)
+                val_tgt = val_tgt.to(device)
 
-                output = model(input_ids=inp, labels=tgt)
-                loss = output.loss
+                # ── Combined loss: CE + alpha * value regression ────────
+                loss, ce_val, vloss_val = compute_value_aware_loss(
+                    model, inp, tgt, val_pos, val_tgt,
+                    alpha=value_loss_alpha,
+                    use_log_scale=True,
+                )
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -2736,6 +2871,7 @@ def train(args: argparse.Namespace):
 
                 bl = loss.item()
                 epoch_loss += bl
+                epoch_value_loss += vloss_val
                 n_batches += 1
 
                 if ema_loss is None:
@@ -2757,10 +2893,12 @@ def train(args: argparse.Namespace):
 
                 progress.update(
                     task, advance=1, loss=bl, ema=ema_loss,
+                    vloss=vloss_val,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
                 )
 
         avg_train_loss = epoch_loss / max(n_batches, 1)
+        avg_value_loss = epoch_value_loss / max(n_batches, 1)
 
         # ── Validation ──────────────────────────────────────────────────
         model.eval()
@@ -2792,11 +2930,23 @@ def train(args: argparse.Namespace):
                         progress.update(task, advance=1, loss=0.0)
                         continue
 
-                    inp, tgt = collate_batch(batch, pad_id=tokenizer.SPECIAL["<pad>"])
-                    inp, tgt = inp.to(device), tgt.to(device)
+                    inp, tgt, val_pos, val_tgt = collate_batch(
+                        batch,
+                        pad_id=tokenizer.SPECIAL["<pad>"],
+                        tokenizer=tokenizer,
+                    )
+                    inp = inp.to(device)
+                    tgt = tgt.to(device)
+                    val_pos = val_pos.to(device)
+                    val_tgt = val_tgt.to(device)
 
-                    output = model(input_ids=inp, labels=tgt)
-                    vl = output.loss.item()
+                    # Use the same combined loss for validation metrics
+                    vl_total, vl_ce, vl_value = compute_value_aware_loss(
+                        model, inp, tgt, val_pos, val_tgt,
+                        alpha=value_loss_alpha,
+                        use_log_scale=True,
+                    )
+                    vl = vl_total.item()
                     val_loss += vl
                     val_batches += 1
 
@@ -2807,8 +2957,6 @@ def train(args: argparse.Namespace):
                     progress.update(task, advance=1, loss=vl)
 
         avg_val_loss = val_loss / max(val_batches, 1)
-
-        plotter.finish_val_epoch()
 
         # ── Scheduler step ──────────────────────────────────────────────
         if is_plateau:
