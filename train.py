@@ -1989,16 +1989,21 @@ class LivePlotter:
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
 
-            ax_diffs.set_title("Absolute Prediction Error (outliers removed)",
+            ax_diffs.set_title("Batchwise Prediction Difference (squashed)",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("|expected - predicted|")
+            ax_diffs.set_ylabel("tanh(scale · (expected − predicted))")
+            ax_diffs.axhline(y=0, color="gray", linewidth=0.8, linestyle="-", alpha=0.5)
+            ax_diffs.axhline(y=1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
+            ax_diffs.axhline(y=-1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
+            ax_diffs.set_ylim(-1.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
+
             self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean |diff|", color="darkorange", linewidth=2,
+                [], [], label="Mean diff", color="darkorange", linewidth=2,
             )
             self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median |diff|", color="purple", linewidth=1.5,
+                [], [], label="Median diff", color="purple", linewidth=1.5,
                 linestyle="--",
             )
             ax_diffs.legend(loc="upper right", fontsize=8)
@@ -2017,16 +2022,21 @@ class LivePlotter:
             ax_preds = self.fig.add_subplot(gs[2, 0:2])
             ax_info  = self.fig.add_subplot(gs[2, 2])
 
-            ax_diffs.set_title("Absolute Prediction Error (outliers removed)",
+            ax_diffs.set_title("Batchwise Prediction Difference (squashed)",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("|expected - predicted|")
+            ax_diffs.set_ylabel("tanh(scale · (expected − predicted))")
+            ax_diffs.axhline(y=0, color="gray", linewidth=0.8, linestyle="-", alpha=0.5)
+            ax_diffs.axhline(y=1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
+            ax_diffs.axhline(y=-1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
+            ax_diffs.set_ylim(-1.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
+
             self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean |diff|", color="darkorange", linewidth=2,
+                [], [], label="Mean diff", color="darkorange", linewidth=2,
             )
             self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median |diff|", color="purple", linewidth=1.5,
+                [], [], label="Median diff", color="purple", linewidth=1.5,
                 linestyle="--",
             )
             ax_diffs.legend(loc="upper right", fontsize=8)
@@ -2425,80 +2435,67 @@ class LivePlotter:
 
     def update_prediction_diffs(self, predictions: list):
         """
-        Collect absolute differences from predictions and update the diff plot.
+        Collect signed differences (expected - predicted) from predictions
+        and update the diff plot.
+
+        Values are squashed via tanh so that:
+          - Large positive diffs  → near +1
+          - Large negative diffs  → near −1
+          - Small diffs (near 0)  → near 0
 
         When a prediction is not parseable as an integer (e.g. "-------",
-        "abc", empty string), it is assigned a PENALTY value equal to the
-        maximum of:
-          - The current param_range span (|param_max - param_min| * max_ops)
-          - The largest valid |diff| seen so far in this history
-          - A hard floor of 1000
-
-        This ensures unparseable outputs are always visible as the worst
-        possible result on the plot, signaling to the user (and any
-        downstream metric) that the model produced garbage.
+        "abc", empty string), that sample is SKIPPED — there is no meaningful
+        signed difference to plot for non-numeric outputs.
         """
         if not self.enabled:
             return
 
-        # ── Determine the penalty value for unparseable predictions ─────
-        # Use the worst plausible numeric error as the penalty.
-        # This is "the highest useful value" — not infinity (which would
-        # break the plot scale), but large enough to dominate the chart.
-        historical_max = 0
-        if self._abs_diffs_history:
-            historical_max = max(max(d) for d in self._abs_diffs_history if d)
-
-        # Hard floor: even if all diffs so far are 0, garbage is still bad
-        PENALTY_FLOOR = 1000
-        penalty = max(PENALTY_FLOOR, historical_max)
-
-        # 1) Collect diffs from this batch
+        # 1) Collect signed diffs from this batch (skip unparseable)
         diffs = []
         n_unparseable = 0
         for expected, predicted, _ in predictions:
             try:
                 exp_val = int(expected.strip())
             except (ValueError, TypeError):
-                # If even the EXPECTED value is unparseable, skip entirely
-                # (this would be a data generation bug, not a model error)
                 continue
 
+            pred_cleaned = ''.join(
+                c for c in predicted if c.isascii() and c.isprintable()
+            ).strip()
+
             try:
-                pred_val = int(predicted.strip())
-                diffs.append(abs(exp_val - pred_val))
+                pred_val = int(pred_cleaned)
+                diffs.append(exp_val - pred_val)
             except (ValueError, TypeError):
-                # Model output is garbage — assign the penalty
-                diffs.append(penalty)
                 n_unparseable += 1
+                continue
 
         if not diffs:
             return
 
-        # 2) Remove extreme outliers ONLY from valid numeric diffs,
-        #    but KEEP all penalty values (they ARE the signal we want)
+        # 2) Remove extreme outliers (beyond 5th/95th percentile)
         diffs_arr = np.array(diffs, dtype=float)
 
-        # Separate penalties from real diffs for outlier removal
-        real_mask = diffs_arr < penalty
-        real_diffs = diffs_arr[real_mask]
-        penalty_diffs = diffs_arr[~real_mask]
+        if len(diffs_arr) > 4:
+            p5 = np.percentile(diffs_arr, 5)
+            p95 = np.percentile(diffs_arr, 95)
+            diffs_arr = diffs_arr[(diffs_arr >= p5) & (diffs_arr <= p95)]
 
-        if len(real_diffs) > 2:
-            p95 = np.percentile(real_diffs, 95)
-            real_diffs = real_diffs[real_diffs <= p95]
+        diffs_arr = diffs_arr[np.isfinite(diffs_arr)]
 
-        # Recombine: cleaned real diffs + all penalty values
-        cleaned = np.concatenate([real_diffs, penalty_diffs])
-
-        # Remove any NaN/inf (safety net)
-        cleaned = cleaned[np.isfinite(cleaned)]
-
-        if len(cleaned) == 0:
+        if len(diffs_arr) == 0:
             return
 
-        # 3) Append and update plot
-        self._abs_diffs_history.append(cleaned.tolist())
+        # 3) Squash diffs into (-1, +1) using tanh
+        #    Scale factor controls how quickly values saturate toward ±1.
+        #    With scale=0.1:  diff=±10 → ≈±0.76,  diff=±50 → ≈±1.0
+        #    With scale=0.05: diff=±10 → ≈±0.46,  diff=±50 → ≈±0.97
+        #    Adjust to taste based on your typical diff magnitudes.
+        scale = 0.1
+        squashed = np.tanh(diffs_arr * scale)
+
+        # 4) Append and update plot
+        self._abs_diffs_history.append(squashed.tolist())
 
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
             means = [np.mean(d) for d in self._abs_diffs_history]
@@ -2506,8 +2503,9 @@ class LivePlotter:
             xs = list(range(len(means)))
             self.line_diffs_mean.set_data(xs, means)
             self.line_diffs_median.set_data(xs, medians)
+            self.ax_diffs.set_ylim(-1.05, 1.05)  # Fixed range since tanh ∈ (-1, 1)
             self.ax_diffs.relim()
-            self.ax_diffs.autoscale_view()
+            self.ax_diffs.autoscale_view(scaley=False)  # Only autoscale X
             self._refresh()
 
     def _draw_predictions(self):
