@@ -947,6 +947,7 @@ class LivePlotter:
 
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
+            self.ax_diffs = None
         else:
             self.fig = self.plt.figure(figsize=(22, 14))
             gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
@@ -959,7 +960,8 @@ class LivePlotter:
             ax_preds = self.fig.add_subplot(gs[1, 2])
             ax_info  = self.fig.add_subplot(gs[2, :])
 
-            ax_diffs.set_title("Absolute Prediction Error (outliers removed)")
+            ax_diffs.set_title("Absolute Prediction Error (outliers removed)",
+                               fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
             ax_diffs.set_ylabel("|expected - predicted|")
             ax_diffs.grid(True, alpha=0.3)
@@ -967,7 +969,8 @@ class LivePlotter:
                 [], [], label="Mean |diff|", color="darkorange", linewidth=2,
             )
             self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median |diff|", color="purple", linewidth=1.5, linestyle="--",
+                [], [], label="Median |diff|", color="purple", linewidth=1.5,
+                linestyle="--",
             )
             ax_diffs.legend(loc="upper right", fontsize=8)
             self.ax_diffs = ax_diffs
@@ -975,15 +978,16 @@ class LivePlotter:
             self.ax_barcode = None
             self.ax_bd = None
 
-        self.ax_barcode = None
-        self.ax_bd = None
+        # ── REMOVED the unconditional overwrite that was here ──
+        # These two lines were killing the topo axes even when topo was enabled:
+        #   self.ax_barcode = None
+        #   self.ax_bd = None
 
-        # Store references to the new text-only axes
+        # Store references to the text-only axes
         self.ax_preds = ax_preds
         self.ax_info = ax_info
 
-        # _plot_axes: only axes that have actual data lines (used by _refresh
-        # for relim / autoscale_view).  Text-only panels are excluded.
+        # _plot_axes: only axes that have actual data lines
         self._plot_axes = [ax_epoch, ax_batch, ax_lr, ax_val]
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
             self._plot_axes.append(self.ax_diffs)
@@ -991,12 +995,7 @@ class LivePlotter:
             self._plot_axes.append(self.ax_barcode)
         if self.ax_bd is not None:
             self._plot_axes.append(self.ax_bd)
-        if self.ax_barcode is not None:
-            self._plot_axes.append(self.ax_barcode)
-        if self.ax_bd is not None:
-            self._plot_axes.append(self.ax_bd)
 
-        # Keep a flat array for legacy compatibility (only plot axes)
         self.axes = np.array(self._plot_axes)
 
         # ── Window title ────────────────────────────────────────────────
@@ -1007,7 +1006,7 @@ class LivePlotter:
             pass
 
         # ── Top-left: Epoch losses ──────────────────────────────────────
-        ax_epoch.set_title("Epoch Loss")
+        ax_epoch.set_title("Epoch Loss", fontsize=10, fontweight="bold")
         ax_epoch.set_xlabel("Epoch")
         ax_epoch.set_ylabel("Loss")
         ax_epoch.grid(True, alpha=0.3)
@@ -1017,20 +1016,20 @@ class LivePlotter:
         self.line_val_epoch, = ax_epoch.plot(
             [], [], label="Val", color="tomato", linewidth=2,
         )
-        ax_epoch.legend(loc="upper right")
+        ax_epoch.legend(loc="upper right", fontsize=8)
 
-        # ── Top-center / top-right: Batch loss EMA ──────────────────────
-        ax_batch.set_title("Batch Loss (Train EMA)")
+        # ── Top-center: Batch loss EMA ──────────────────────────────────
+        ax_batch.set_title("Batch Loss (Train EMA)", fontsize=10, fontweight="bold")
         ax_batch.set_xlabel("Batch")
         ax_batch.set_ylabel("Loss")
         ax_batch.grid(True, alpha=0.3)
         self.line_batch_ema, = ax_batch.plot(
             [], [], label="Train EMA", color="steelblue", linewidth=2,
         )
-        ax_batch.legend(loc="upper right")
+        ax_batch.legend(loc="upper right", fontsize=8)
 
-        # ── Learning Rate ───────────────────────────────────────────────
-        ax_lr.set_title("Learning Rate")
+        # ── Top-right: Learning Rate ────────────────────────────────────
+        ax_lr.set_title("Learning Rate", fontsize=10, fontweight="bold")
         ax_lr.set_xlabel("Epoch")
         ax_lr.set_ylabel("LR")
         ax_lr.grid(True, alpha=0.3)
@@ -1038,10 +1037,10 @@ class LivePlotter:
         self.line_lr, = ax_lr.plot(
             [], [], label="LR", color="seagreen", linewidth=2,
         )
-        ax_lr.legend(loc="upper right")
+        ax_lr.legend(loc="upper right", fontsize=8)
 
-        # ── Val batch loss ──────────────────────────────────────────────
-        ax_val.set_title("Batch Loss (Val)")
+        # ── Mid-left: Val batch loss ────────────────────────────────────
+        ax_val.set_title("Batch Loss (Val)", fontsize=10, fontweight="bold")
         ax_val.set_xlabel("Global Val Batch")
         ax_val.set_ylabel("Loss")
         ax_val.grid(True, alpha=0.3)
@@ -1052,11 +1051,12 @@ class LivePlotter:
             [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
             marker="o", markersize=4,
         )
-        ax_val.legend(loc="upper right")
+        ax_val.legend(loc="upper right", fontsize=8)
 
         # ── TDA panels (only when topo_enabled) ─────────────────────────
         if self.ax_barcode is not None:
-            self.ax_barcode.set_title("TDA Barcode (Embedding Space)")
+            self.ax_barcode.set_title("TDA Barcode (Embedding Space)",
+                                       fontsize=10, fontweight="bold")
             self.ax_barcode.text(
                 0.5, 0.5, "Waiting for data...",
                 ha="center", va="center",
@@ -1066,7 +1066,8 @@ class LivePlotter:
             self.ax_barcode.grid(True, alpha=0.2, axis="x")
 
         if self.ax_bd is not None:
-            self.ax_bd.set_title("TDA Birth / Death (Persistence)")
+            self.ax_bd.set_title("TDA Birth / Death (Persistence)",
+                                  fontsize=10, fontweight="bold")
             self.ax_bd.text(
                 0.5, 0.5, "Waiting for data...",
                 ha="center", va="center",
@@ -1075,7 +1076,7 @@ class LivePlotter:
             )
             self.ax_bd.grid(True, alpha=0.2)
 
-        # ── NEW: Predictions panel (bottom-left, text only) ─────────────
+        # ── Predictions panel (text only) ───────────────────────────────
         ax_preds.set_xlim(0, 1)
         ax_preds.set_ylim(0, 1)
         ax_preds.axis("off")
@@ -1085,11 +1086,11 @@ class LivePlotter:
         )
         self._draw_predictions()
 
-        # ── NEW: Model Info panel (bottom-right, text only) ─────────────
+        # ── Model Info panel (text only) ────────────────────────────────
         ax_info.set_xlim(0, 1)
         ax_info.set_ylim(0, 1)
         ax_info.axis("off")
-        ax_info.set_title("Model Info", fontsize=10, fontweight="bold")
+        ax_info.set_title("Model / System Info", fontsize=10, fontweight="bold")
         self._draw_model_info()
 
         # ── Layout ──────────────────────────────────────────────────────
@@ -1460,13 +1461,13 @@ class LivePlotter:
 
 
     def _draw_model_info(self):
-        """Draw basic model information + GPU stats."""
+        """Draw basic model information + GPU/system stats."""
         ax = self.ax_info
         if ax is None:
             return
         ax.clear()
         ax.axis("off")
-        ax.set_title("Model Info", fontsize=10, fontweight="bold")
+        ax.set_title("Model / System Info", fontsize=10, fontweight="bold")
 
         if not self._model_info:
             ax.text(0.5, 0.5, "No model info available",
@@ -1489,10 +1490,10 @@ class LivePlotter:
             f"device:        {self._model_info.get('device', '?')}",
         ]
 
-        # Add GPU info if available
+        # Add GPU info if available, otherwise show CPU/system info
         gpu = get_gpu_info()
+        info_lines.append(f"───────────────────────────")
         if gpu:
-            info_lines.append(f"───────────────────────────")
             if "gpu_name" in gpu:
                 info_lines.append(f"GPU:           {gpu['gpu_name']}")
             info_lines.append(
@@ -1505,6 +1506,35 @@ class LivePlotter:
                 info_lines.append(f"GPU Temp:      {gpu['gpu_temp_c']}°C")
             if "gpu_power_w" in gpu:
                 info_lines.append(f"GPU Power:     {gpu['gpu_power_w']} W")
+        else:
+            # No nvidia-smi — show CPU/system info instead
+            import platform
+            info_lines.append(f"GPU:           N/A (no nvidia-smi)")
+            info_lines.append(f"Platform:      {platform.system()} {platform.release()}")
+            info_lines.append(f"Python:        {platform.python_version()}")
+            info_lines.append(f"PyTorch:       {torch.__version__}")
+            if torch.cuda.is_available():
+                info_lines.append(f"CUDA:          {torch.version.cuda}")
+                info_lines.append(
+                    f"CUDA Device:   {torch.cuda.get_device_name(0)}"
+                )
+                mem = torch.cuda.mem_get_info(0)
+                free_mb = mem[0] // (1024 * 1024)
+                total_mb = mem[1] // (1024 * 1024)
+                used_mb = total_mb - free_mb
+                info_lines.append(
+                    f"CUDA Mem:      {used_mb} / {total_mb} MB "
+                    f"({free_mb} MB free)"
+                )
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                info_lines.append(f"Backend:       MPS (Apple Silicon)")
+            else:
+                info_lines.append(f"Backend:       CPU only")
+                try:
+                    cpu_count = os.cpu_count()
+                    info_lines.append(f"CPU Cores:     {cpu_count}")
+                except Exception:
+                    pass
 
         y_positions = np.linspace(0.95, 0.02, len(info_lines))
         for i, line in enumerate(info_lines):
@@ -1513,6 +1543,7 @@ class LivePlotter:
                     color="black",
                     transform=ax.transAxes,
                     verticalalignment="center")
+
 
     def update_predictions(self, predictions: list):
         """
