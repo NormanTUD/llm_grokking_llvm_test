@@ -1,7 +1,12 @@
 #!/bin/bash
 
+# Verzeichnis als Argument übernehmen (Standard: aktuelles Verzeichnis)
+DIR="${1:-.}"
+# Trailing Slash sicherstellen
+DIR="${DIR%/}/"
+
 # 1. Daten extrahieren und relative Werte berechnen
-data=$(cat epoch_*.txt | awk -F': ' '
+data=$(cat "${DIR}"epoch_*.txt | awk -F': ' '
 /expected/ {e=$2}
 /predicted/ {
     p=$2;
@@ -27,12 +32,12 @@ echo "Berechneter Median: $median%"
 # Filter: wert > (median - 50) && wert < (median + 50)
 echo "$data" | awk -v m="$median" '
 { if ($1 > (m - 50) && $1 < (m + 50)) print $1 }
-' > filtered_data.dat
+' > "${DIR}filtered_data.dat"
 
 gnuplot -p <<EOF
 set title "Relative Abweichung (Gefiltert: Median ±50%)"
 set ylabel "Abweichung in %"
 set xlabel "Datenpunkt"
 set grid
-plot "filtered_data.dat" with linespoints title "Rel. Error"
+plot "${DIR}filtered_data.dat" with linespoints title "Rel. Error"
 EOF
