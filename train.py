@@ -1944,6 +1944,11 @@ def train(args: argparse.Namespace):
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
 
+                if batch == 0 || batch % args.plot_preview == 0:
+                    preds = get_batch_predictions(model, tokenizer, batch, device)
+                    plotter.update_predictions(preds)
+                    plotter.update_prediction_diffs(preds)
+
                 progress.update(
                     task, advance=1, loss=bl, ema=ema_loss,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
@@ -1992,11 +1997,6 @@ def train(args: argparse.Namespace):
                     plotter.update_val_batch(vl)
                     if run_logger:
                         run_logger.log_batch_loss_val(epoch, val_batches, vl)
-
-                    if batch:
-                        preds = get_batch_predictions(model, tokenizer, batch, device)
-                        plotter.update_predictions(preds)
-                        plotter.update_prediction_diffs(preds)
 
                     progress.update(task, advance=1, loss=vl)
 
@@ -2288,7 +2288,8 @@ def parse_args() -> argparse.Namespace:
                    help="Suppress the matplotlib window but still write plots to file")
     g.add_argument("--plot-file", type=str, default="training_plot.png",
                    help="Filename for the saved plot image (written every epoch)")
-
+    g.add_argument("--plot-preview", type=int, default=5,
+                   help="Update plot of preview texts every N batches")
     g.add_argument("--run-dir", type=str, default="runs",
                    help="Base directory for run logs")
     g.add_argument("--log-samples", type=int, default=5,
