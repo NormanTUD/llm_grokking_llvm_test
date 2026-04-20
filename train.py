@@ -2467,7 +2467,6 @@ class LivePlotter:
             self.ax_diffs.autoscale_view()
             self._refresh()
 
-
     def _draw_predictions(self):
         """Draw the last batch's expected vs predicted with differences."""
         ax = self.ax_preds
@@ -2492,9 +2491,6 @@ class LivePlotter:
         for i, (expected, predicted, is_correct) in enumerate(
             self._last_predictions[-n_show:]
         ):
-            color = "green" if is_correct else "red"
-            marker = "✓" if is_correct else "✗"
-
             # Try to parse both as integers
             exp_parseable = True
             pred_parseable = True
@@ -2508,17 +2504,35 @@ class LivePlotter:
             except (ValueError, TypeError):
                 pred_parseable = False
 
+            # ── Determine color and marker based on NUMERIC comparison ──
             if exp_parseable and pred_parseable:
                 diff = abs(exp_val - pred_val)
+                if diff == 0:
+                    # Perfect numeric match — always green
+                    color = "green"
+                    marker = "✓"
+                elif diff <= 5:
+                    # Close — orange/yellow (not terrible)
+                    color = "orange"
+                    marker = "≈"
+                elif diff <= 50:
+                    # Moderate error
+                    color = "darkorange"
+                    marker = "✗"
+                else:
+                    # Large error
+                    color = "red"
+                    marker = "✗"
+
                 text = (
                     f"{marker}  expected: {exp_val:>6d}  │  "
                     f"got: {pred_val:>6d}  │  diff: {diff}"
                 )
+
             elif exp_parseable and not pred_parseable:
-                # Model produced garbage — show it in bright red with a warning
+                # Model produced garbage — always bright red
                 color = "red"
                 marker = "✗"
-                # Truncate garbage output for display
                 pred_display = predicted.strip()[:20]
                 if len(predicted.strip()) > 20:
                     pred_display += "…"
@@ -2526,8 +2540,11 @@ class LivePlotter:
                     f"{marker}  expected: {exp_val:>6d}  │  "
                     f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
                 )
+
             else:
-                # Both unparseable (shouldn't happen in normal operation)
+                # Both unparseable (shouldn't happen normally)
+                color = "red"
+                marker = "✗"
                 text = (
                     f"{marker}  expected: {expected[:12]:>12s}  │  "
                     f"got: {predicted[:12]:>12s}  │  ⚠ BOTH INVALID"
@@ -2538,8 +2555,12 @@ class LivePlotter:
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
-        # Summary stats
-        n_correct = sum(1 for _, _, c in self._last_predictions if c)
+        # Summary stats — also use numeric comparison
+        n_correct = sum(
+            1 for exp, pred, _ in self._last_predictions
+            if _is_int_str(exp) and _is_int_str(pred)
+            and int(exp.strip()) == int(pred.strip())
+        )
         n_total = len(self._last_predictions)
         n_garbage = sum(
             1 for _, pred, _ in self._last_predictions
