@@ -5,8 +5,18 @@ DIR="${1:-.}"
 # Trailing Slash sicherstellen
 DIR="${DIR%/}/"
 
+# Samples-Unterverzeichnis
+SAMPLES_DIR="${DIR}samples/"
+
+# Prüfen ob das Verzeichnis existiert
+if [ ! -d "$SAMPLES_DIR" ]; then
+    echo "Fehler: Verzeichnis '$SAMPLES_DIR' nicht gefunden!"
+    echo "Erwartete Struktur: <run_folder>/samples/epoch_*.txt"
+    exit 1
+fi
+
 # 1. Daten extrahieren und relative Werte berechnen
-data=$(cat "${DIR}"epoch_*.txt | awk -F': ' '
+data=$(cat "${SAMPLES_DIR}"epoch_*.txt | awk -F': ' '
 /expected/ {e=$2}
 /predicted/ {
     p=$2;
