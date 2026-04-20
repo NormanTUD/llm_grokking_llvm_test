@@ -744,6 +744,53 @@ class TinyGPT(nn.Module):
         model.load_state_dict(state_dict)
         return model
 
+def compute_value_aware_loss(model, inp, tgt, tokenizer, device, alpha=0.1):
+    """
+    Combined loss: cross-entropy (token-level) + alpha * MAE (value-level).
+    
+    The MAE term penalizes the absolute difference between the predicted
+    integer and the expected integer, encouraging numerically closer predictions.
+    """
+    output = model(input_ids=inp, labels=tgt)
+    ce_loss = output.loss  # standard cross-entropy
+    
+    # Greedy-decode the answer for each sample in the batch
+    # and compute |expected - predicted| as an auxiliary signal
+    logits = output.logits  # (B, T, V)
+    
+    # Get greedy predictions for the answer portion
+    pred_tokens = logits.argmax(dim=-1)  # (B, T)
+    
+    mae_losses = []
+    sep_id = tokenizer._tok.token_to_id("<sep>")
+    eos_id = tokenizer.eos_token_id
+    
+    for b in range(inp.shape[0]):
+        # Find answer region in target (non-zero, non-pad tokens after prompt)
+        target_ids = tgt[b].tolist()
+        pred_ids = pred_tokens[b].tolist()
+        
+        # Extract expected answer tokens (non-pad portion of target)
+        answer_tgt = [t for t in target_ids if t != 0 and t != eos_id]
+        answer_pred = pred_ids[len(target_ids) - len(answer_tgt) - 1:len(target_ids) - 1]
+        
+        try:
+            expected_val = int(tokenizer.decode(answer_tgt).strip())
+            predicted_val = int(tokenizer.decode(answer_pred).strip())
+            mae_losses.append(abs(expected_val - predicted_val))
+        except (ValueError, TypeError):
+            continue
+    
+    if mae_losses:
+        # Normalize MAE to be on a similar scale as CE loss
+        mae_term = torch.tensor(float(np.mean(mae_losses)), device=device, requires_grad=False)
+        # Use log(1 + MAE) to prevent huge gradients from large differences
+        mae_term = torch.log1p(mae_term)
+        total_loss = ce_loss + alpha * mae_term
+    else:
+        total_loss = ce_loss
+    
+    return total_loss, ce_loss.item()
 
 class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None, last_hidden_state=None):
