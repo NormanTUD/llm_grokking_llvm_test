@@ -1989,15 +1989,25 @@ class LivePlotter:
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
 
-            ax_diffs.set_title("Batchwise Prediction Difference (squashed)",
+            ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("tanh(scale · (expected − predicted))")
-            ax_diffs.axhline(y=0, color="gray", linewidth=0.8, linestyle="-", alpha=0.5)
-            ax_diffs.axhline(y=1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
-            ax_diffs.axhline(y=-1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
-            ax_diffs.set_ylim(-1.05, 1.05)
+            ax_diffs.set_ylabel("Error Score (0 = perfect, 1 = garbage)")
+            ax_diffs.axhline(y=0, color="green", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
+            ax_diffs.axhline(y=1, color="red", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
+            ax_diffs.set_ylim(-0.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
+
+            self.line_diffs_mean, = ax_diffs.plot(
+                [], [], label="Mean score", color="darkorange", linewidth=2,
+            )
+            self.line_diffs_median, = ax_diffs.plot(
+                [], [], label="Median score", color="purple", linewidth=1.5,
+                linestyle="--",
+            )
+            ax_diffs.legend(loc="upper right", fontsize=8)
+            self.ax_diffs = ax_diffs
+
 
             self.line_diffs_mean, = ax_diffs.plot(
                 [], [], label="Mean diff", color="darkorange", linewidth=2,
@@ -2022,15 +2032,24 @@ class LivePlotter:
             ax_preds = self.fig.add_subplot(gs[2, 0:2])
             ax_info  = self.fig.add_subplot(gs[2, 2])
 
-            ax_diffs.set_title("Batchwise Prediction Difference (squashed)",
+            ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("tanh(scale · (expected − predicted))")
-            ax_diffs.axhline(y=0, color="gray", linewidth=0.8, linestyle="-", alpha=0.5)
-            ax_diffs.axhline(y=1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
-            ax_diffs.axhline(y=-1, color="gray", linewidth=0.5, linestyle=":", alpha=0.3)
-            ax_diffs.set_ylim(-1.05, 1.05)
+            ax_diffs.set_ylabel("Error Score (0 = perfect, 1 = garbage)")
+            ax_diffs.axhline(y=0, color="green", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
+            ax_diffs.axhline(y=1, color="red", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
+            ax_diffs.set_ylim(-0.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
+
+            self.line_diffs_mean, = ax_diffs.plot(
+                [], [], label="Mean score", color="darkorange", linewidth=2,
+            )
+            self.line_diffs_median, = ax_diffs.plot(
+                [], [], label="Median score", color="purple", linewidth=1.5,
+                linestyle="--",
+            )
+            ax_diffs.legend(loc="upper right", fontsize=8)
+            self.ax_diffs = ax_diffs
 
             self.line_diffs_mean, = ax_diffs.plot(
                 [], [], label="Mean diff", color="darkorange", linewidth=2,
@@ -2435,67 +2454,62 @@ class LivePlotter:
 
     def update_prediction_diffs(self, predictions: list):
         """
-        Collect signed differences (expected - predicted) from predictions
-        and update the diff plot.
+        Compute a per-sample error score in [0, 1] and update the diff plot.
 
-        Values are squashed via tanh so that:
-          - Large positive diffs  → near +1
-          - Large negative diffs  → near −1
-          - Small diffs (near 0)  → near 0
+        Scoring:
+          0.0        — perfect match (expected == predicted, both valid ints)
+          (0, ~0.9)  — valid integer but wrong; larger numeric |diff| → closer to 0.9
+                       Uses:  score = 0.9 * tanh(scale * |diff|)
+                       so small diffs are near 0, large diffs approach 0.9
+          1.0        — predicted value is not a valid integer at all
+                       (string, empty, garbage, unparseable BPE output)
 
-        When a prediction is not parseable as an integer (e.g. "-------",
-        "abc", empty string), that sample is SKIPPED — there is no meaningful
-        signed difference to plot for non-numeric outputs.
+        Key invariant: ANY valid integer prediction (even wildly wrong) scores
+        strictly below 1.0.  Only non-numeric outputs score exactly 1.0.
         """
         if not self.enabled:
             return
 
-        # 1) Collect signed diffs from this batch (skip unparseable)
-        diffs = []
-        n_unparseable = 0
+        scores = []
+        scale = 0.1  # Controls how fast numeric diffs approach 0.9
+                      # scale=0.1: |diff|=10 → 0.68, |diff|=25 → 0.87, |diff|=50 → 0.90
+
         for expected, predicted, _ in predictions:
+            # Parse expected
             try:
                 exp_val = int(expected.strip())
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, AttributeError):
+                # If even the expected value is unparseable, skip entirely
+                # (we can't compute a meaningful score)
                 continue
 
+            # Clean BPE artifacts before parsing predicted
             pred_cleaned = ''.join(
                 c for c in predicted if c.isascii() and c.isprintable()
             ).strip()
 
+            # Try to parse predicted as integer
             try:
                 pred_val = int(pred_cleaned)
-                diffs.append(exp_val - pred_val)
             except (ValueError, TypeError):
-                n_unparseable += 1
+                # Unparseable → maximum error score
+                scores.append(1.0)
                 continue
 
-        if not diffs:
+            # Both are valid integers — compute numeric error score
+            diff = abs(exp_val - pred_val)
+            if diff == 0:
+                scores.append(0.0)
+            else:
+                # tanh squashes to (0, 1), multiply by 0.9 so numeric errors
+                # are ALWAYS below 1.0 (which is reserved for garbage)
+                scores.append(0.9 * math.tanh(scale * diff))
+
+        if not scores:
             return
 
-        # 2) Remove extreme outliers (beyond 5th/95th percentile)
-        diffs_arr = np.array(diffs, dtype=float)
-
-        if len(diffs_arr) > 4:
-            p5 = np.percentile(diffs_arr, 5)
-            p95 = np.percentile(diffs_arr, 95)
-            diffs_arr = diffs_arr[(diffs_arr >= p5) & (diffs_arr <= p95)]
-
-        diffs_arr = diffs_arr[np.isfinite(diffs_arr)]
-
-        if len(diffs_arr) == 0:
-            return
-
-        # 3) Squash diffs into (-1, +1) using tanh
-        #    Scale factor controls how quickly values saturate toward ±1.
-        #    With scale=0.1:  diff=±10 → ≈±0.76,  diff=±50 → ≈±1.0
-        #    With scale=0.05: diff=±10 → ≈±0.46,  diff=±50 → ≈±0.97
-        #    Adjust to taste based on your typical diff magnitudes.
-        scale = 0.1
-        squashed = np.tanh(diffs_arr * scale)
-
-        # 4) Append and update plot
-        self._abs_diffs_history.append(squashed.tolist())
+        # Append batch scores and update plot
+        self._abs_diffs_history.append(scores)
 
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
             means = [np.mean(d) for d in self._abs_diffs_history]
@@ -2503,10 +2517,11 @@ class LivePlotter:
             xs = list(range(len(means)))
             self.line_diffs_mean.set_data(xs, means)
             self.line_diffs_median.set_data(xs, medians)
-            self.ax_diffs.set_ylim(-1.05, 1.05)  # Fixed range since tanh ∈ (-1, 1)
+            self.ax_diffs.set_ylim(-0.05, 1.05)  # Fixed range [0, 1]
             self.ax_diffs.relim()
             self.ax_diffs.autoscale_view(scaley=False)  # Only autoscale X
             self._refresh()
+
 
     def _draw_predictions(self):
         """Draw the last batch's expected vs predicted with differences."""
