@@ -16,11 +16,12 @@ Controls (while training):
     Ctrl+Down   Remove 10 epochs (minimum: current epoch)
 """
 
-args = None
+# ════════════════════════════════════════════════════════════════════════════
+# 0.  ARGPARSE
+# ════════════════════════════════════════════════════════════════════════════
 
 run_dir = None
 
-import argparse
 import json
 import math
 import os
@@ -79,6 +80,138 @@ import select
 import matplotlib
 import matplotlib.pyplot as plt
 import tkinter
+
+OPTIMIZERS = {
+    "adam": torch.optim.Adam,
+    "adamw": torch.optim.AdamW,
+    "sgd": torch.optim.SGD,
+    "rmsprop": torch.optim.RMSprop,
+    "adagrad": torch.optim.Adagrad,
+}
+
+SCHEDULERS = {
+    "cosine": lambda opt, ep: torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=ep),
+    "step": lambda opt, ep: torch.optim.lr_scheduler.StepLR(opt, step_size=max(1, ep // 3), gamma=0.5),
+    "plateau": lambda opt, ep: torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=5, factor=0.5),
+    "none": lambda opt, ep: torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda e: 1.0),
+    "warmup_cosine": None,
+}
+
+import argparse
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Train a tiny GPT on randomly generated LLVM IR functions.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    g = p.add_argument_group("Data Generation")
+    g.add_argument("--batches-per-epoch", type=int, default=150,
+                   help="Training batches per epoch")
+    g.add_argument("--val-batches", type=int, default=20,
+                   help="Validation batches per epoch")
+    g.add_argument("--max-params", type=int, default=3,
+                   help="Max function parameters")
+    g.add_argument("--max-ops", type=int, default=4,
+                   help="Max operations in random DAG")
+    g.add_argument("--allowed-ops", type=str, default="add,sub,mul",
+                   help="Comma-separated LLVM ops")
+    g.add_argument("--param-min", type=int, default=-20,
+                   help="Min random parameter value")
+    g.add_argument("--param-max", type=int, default=20,
+                   help="Max random parameter value")
+
+    g = p.add_argument_group("Model Architecture")
+    g.add_argument("--target-params", type=int, default=1_000,
+                   help="Target parameter count (auto config)")
+    g.add_argument("--d-model", type=int, default=0,
+                   help="Model dimension (0 = auto)")
+    g.add_argument("--n-heads", type=int, default=0,
+                   help="Attention heads (0 = auto)")
+    g.add_argument("--n-layers", type=int, default=0,
+                   help="Transformer layers (0 = auto)")
+    g.add_argument("--max-seq-len", type=int, default=2048,
+                   help="Maximum sequence length")
+    g.add_argument("--dropout", type=float, default=0.1,
+                   help="Dropout rate")
+
+    g = p.add_argument_group("Training")
+    g.add_argument("--epochs", type=int, default=30,
+                   help="Number of training epochs")
+    g.add_argument("--batch-size", type=int, default=32,
+                   help="Batch size")
+    g.add_argument("--lr", type=float, default=3e-4,
+                   help="Learning rate")
+    g.add_argument("--weight-decay", type=float, default=1e-2,
+                   help="Weight decay")
+    g.add_argument("--momentum", type=float, default=0.9,
+                   help="Momentum (SGD only)")
+    g.add_argument("--grad-clip", type=float, default=1.0,
+                   help="Gradient clipping norm")
+    g.add_argument("--optimizer", type=str, default="adamw",
+                   choices=list(OPTIMIZERS.keys()),
+                   help="Optimizer")
+    g.add_argument("--scheduler", type=str, default="none",
+                   choices=list(SCHEDULERS.keys()),
+                   help="LR scheduler")
+    g.add_argument("--resume", type=str, default=None,
+                   help="Path to a .pt checkpoint to resume training from "
+                        "(e.g. llvm_gpt_model/model_epoch_15.pt)")
+
+
+    g = p.add_argument_group("Tokenizer")
+    g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
+                   help="Number of examples generated to initialize a reasonable tokenizer")
+    g.add_argument("--use-bpe", action="store_true", default=False,
+                   help="Use BPE tokenizer instead of character-level")
+    g.add_argument("--bpe-vocab-size", type=int, default=512,
+                   help="BPE vocabulary size (only used with --use-bpe)")
+
+    g = p.add_argument_group("Infrastructure")
+    g.add_argument("--device", type=str, default="auto",
+                   choices=["auto", "cpu", "cuda", "mps"],
+                   help="Device")
+    g.add_argument("--seed", type=int, default=42,
+                   help="Random seed")
+    g.add_argument("--plot", action="store_true", default=True,
+                   help="Enable live matplotlib")
+    g.add_argument("--no-plot", action="store_false", dest="plot",
+                   help="Disable live plotting")
+    g.add_argument("--plot-every", type=int, default=5,
+                   help="Update plot every N batches")
+    g.add_argument("--save-every", type=int, default=0,
+                   help="Checkpoint every N epochs (0 = off)")
+    g.add_argument("--no-plot-window", action="store_true", default=False,
+                   help="Suppress the matplotlib window but still write plots to file")
+    g.add_argument("--plot-file", type=str, default="training_plot.png",
+                   help="Filename for the saved plot image (written every epoch)")
+    g.add_argument("--run-dir", type=str, default="runs",
+                   help="Base directory for run logs")
+    g.add_argument("--log-samples", type=int, default=5,
+                   help="Number of example sentences to log per epoch (first N)")
+    g.add_argument("--log-all-samples", action="store_true", default=False,
+                   help="Log ALL generated samples per epoch (overrides --log-samples)")
+    g.add_argument("--no-run-log", action="store_true", default=False,
+                   help="Disable run logging entirely")
+
+    g.add_argument("--wait-pid", type=int, default=None,
+                   help="Wait for this PID to exit before starting training "
+                        "(useful for queueing CUDA jobs)")
+
+    g = p.add_argument_group("Topology")
+    g.add_argument("--topo", action="store_true", default=False,
+                   help="Enable live topological barcode visualization")
+    g.add_argument("--kelp-every", type=int, default=25,
+                   help="Update topological kelp every N batches")
+    g.add_argument("--topo-every", type=int, default=50,
+                   help="Update topological barcodes every N batches")
+    g.add_argument("--topo-max-points", type=int, default=200,
+                   help="Max points to subsample for persistence computation")
+
+    return p.parse_args()
+
+
+args = parse_args()
+
 
 def _tk_report_callback_exception(self, exc_type, exc_value, exc_tb):
     if exc_type is KeyboardInterrupt:
@@ -665,23 +798,6 @@ def find_model_config(
 # ════════════════════════════════════════════════════════════════════════════
 # 5.  OPTIMIZER / SCHEDULER FACTORIES
 # ════════════════════════════════════════════════════════════════════════════
-
-OPTIMIZERS = {
-    "adam": torch.optim.Adam,
-    "adamw": torch.optim.AdamW,
-    "sgd": torch.optim.SGD,
-    "rmsprop": torch.optim.RMSprop,
-    "adagrad": torch.optim.Adagrad,
-}
-
-SCHEDULERS = {
-    "cosine": lambda opt, ep: torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=ep),
-    "step": lambda opt, ep: torch.optim.lr_scheduler.StepLR(opt, step_size=max(1, ep // 3), gamma=0.5),
-    "plateau": lambda opt, ep: torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=5, factor=0.5),
-    "none": lambda opt, ep: torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda e: 1.0),
-    "warmup_cosine": None,
-}
-
 
 def build_warmup_cosine(optimizer, epochs, warmup_epochs=5):
     def lr_lambda(epoch):
@@ -2704,129 +2820,11 @@ def train(args: argparse.Namespace):
 
     return model, tokenizer
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# 10.  ARGPARSE
-# ════════════════════════════════════════════════════════════════════════════
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Train a tiny GPT on randomly generated LLVM IR functions.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    g = p.add_argument_group("Data Generation")
-    g.add_argument("--batches-per-epoch", type=int, default=150,
-                   help="Training batches per epoch")
-    g.add_argument("--val-batches", type=int, default=20,
-                   help="Validation batches per epoch")
-    g.add_argument("--max-params", type=int, default=3,
-                   help="Max function parameters")
-    g.add_argument("--max-ops", type=int, default=4,
-                   help="Max operations in random DAG")
-    g.add_argument("--allowed-ops", type=str, default="add,sub,mul",
-                   help="Comma-separated LLVM ops")
-    g.add_argument("--param-min", type=int, default=-20,
-                   help="Min random parameter value")
-    g.add_argument("--param-max", type=int, default=20,
-                   help="Max random parameter value")
-
-    g = p.add_argument_group("Model Architecture")
-    g.add_argument("--target-params", type=int, default=1_000,
-                   help="Target parameter count (auto config)")
-    g.add_argument("--d-model", type=int, default=0,
-                   help="Model dimension (0 = auto)")
-    g.add_argument("--n-heads", type=int, default=0,
-                   help="Attention heads (0 = auto)")
-    g.add_argument("--n-layers", type=int, default=0,
-                   help="Transformer layers (0 = auto)")
-    g.add_argument("--max-seq-len", type=int, default=2048,
-                   help="Maximum sequence length")
-    g.add_argument("--dropout", type=float, default=0.1,
-                   help="Dropout rate")
-
-    g = p.add_argument_group("Training")
-    g.add_argument("--epochs", type=int, default=30,
-                   help="Number of training epochs")
-    g.add_argument("--batch-size", type=int, default=32,
-                   help="Batch size")
-    g.add_argument("--lr", type=float, default=3e-4,
-                   help="Learning rate")
-    g.add_argument("--weight-decay", type=float, default=1e-2,
-                   help="Weight decay")
-    g.add_argument("--momentum", type=float, default=0.9,
-                   help="Momentum (SGD only)")
-    g.add_argument("--grad-clip", type=float, default=1.0,
-                   help="Gradient clipping norm")
-    g.add_argument("--optimizer", type=str, default="adamw",
-                   choices=list(OPTIMIZERS.keys()),
-                   help="Optimizer")
-    g.add_argument("--scheduler", type=str, default="none",
-                   choices=list(SCHEDULERS.keys()),
-                   help="LR scheduler")
-    g.add_argument("--resume", type=str, default=None,
-                   help="Path to a .pt checkpoint to resume training from "
-                        "(e.g. llvm_gpt_model/model_epoch_15.pt)")
-
-
-    g = p.add_argument_group("Tokenizer")
-    g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
-                   help="Number of examples generated to initialize a reasonable tokenizer")
-    g.add_argument("--use-bpe", action="store_true", default=False,
-                   help="Use BPE tokenizer instead of character-level")
-    g.add_argument("--bpe-vocab-size", type=int, default=512,
-                   help="BPE vocabulary size (only used with --use-bpe)")
-
-    g = p.add_argument_group("Infrastructure")
-    g.add_argument("--device", type=str, default="auto",
-                   choices=["auto", "cpu", "cuda", "mps"],
-                   help="Device")
-    g.add_argument("--seed", type=int, default=42,
-                   help="Random seed")
-    g.add_argument("--plot", action="store_true", default=True,
-                   help="Enable live matplotlib")
-    g.add_argument("--no-plot", action="store_false", dest="plot",
-                   help="Disable live plotting")
-    g.add_argument("--plot-every", type=int, default=5,
-                   help="Update plot every N batches")
-    g.add_argument("--save-every", type=int, default=0,
-                   help="Checkpoint every N epochs (0 = off)")
-    g.add_argument("--no-plot-window", action="store_true", default=False,
-                   help="Suppress the matplotlib window but still write plots to file")
-    g.add_argument("--plot-file", type=str, default="training_plot.png",
-                   help="Filename for the saved plot image (written every epoch)")
-    g.add_argument("--run-dir", type=str, default="runs",
-                   help="Base directory for run logs")
-    g.add_argument("--log-samples", type=int, default=5,
-                   help="Number of example sentences to log per epoch (first N)")
-    g.add_argument("--log-all-samples", action="store_true", default=False,
-                   help="Log ALL generated samples per epoch (overrides --log-samples)")
-    g.add_argument("--no-run-log", action="store_true", default=False,
-                   help="Disable run logging entirely")
-
-    g.add_argument("--wait-pid", type=int, default=None,
-                   help="Wait for this PID to exit before starting training "
-                        "(useful for queueing CUDA jobs)")
-
-    g = p.add_argument_group("Topology")
-    g.add_argument("--topo", action="store_true", default=False,
-                   help="Enable live topological barcode visualization")
-    g.add_argument("--kelp-every", type=int, default=25,
-                   help="Update topological kelp every N batches")
-    g.add_argument("--topo-every", type=int, default=50,
-                   help="Update topological barcodes every N batches")
-    g.add_argument("--topo-max-points", type=int, default=200,
-                   help="Max points to subsample for persistence computation")
-
-    return p.parse_args()
-
 # ════════════════════════════════════════════════════════════════════════════
 # 11.  ENTRY POINT
 # ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    args = parse_args()
-
     console.print(
         Panel(
             "[bold white]LLVM IR GPT Trainer[/]\n"
