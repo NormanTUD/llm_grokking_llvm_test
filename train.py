@@ -810,14 +810,31 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
     model.eval()
     predictions = []
 
+    sep_id = tokenizer._tok.token_to_id("<sep>")
+
     for token_ids, prompt_len in batch[:8]:
-        full_text = tokenizer.decode(token_ids[1:])  # skip <bos>
-
-        parts = full_text.split("<sep>")
-        if len(parts) < 3:
+        # Find the answer portion by locating <sep> tokens in the ID sequence
+        # Format: <bos> [ir_code] <sep> [params] <sep> [result] <eos>
+        # We need to find the second <sep> and extract the answer after it
+        
+        sep_positions = [i for i, tid in enumerate(token_ids) if tid == sep_id]
+        if len(sep_positions) < 2:
             continue
-        expected_answer = parts[2].replace("<eos>", "").strip()
+        
+        # The answer starts after the second <sep>
+        answer_start = sep_positions[1] + 1
+        # Find <eos> or end of sequence
+        eos_id = tokenizer.eos_token_id
+        answer_end = len(token_ids)
+        for i in range(answer_start, len(token_ids)):
+            if token_ids[i] == eos_id:
+                answer_end = i
+                break
+        
+        expected_ids = token_ids[answer_start:answer_end]
+        expected_answer = tokenizer.decode(expected_ids).strip()
 
+        # Use prompt_len to get the prompt (everything up to and including second <sep>)
         prompt_ids = token_ids[:prompt_len]
 
         # Greedy decode
@@ -835,10 +852,14 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
                 break
             generated.append(next_token)
 
-        generated_answer = tokenizer.decode(generated[prompt_len:])
-        generated_answer = (
-            generated_answer.replace("<eos>", "").replace("<pad>", "").strip()
-        )
+        # Decode only the generated portion (after prompt)
+        generated_ids = generated[prompt_len:]
+        generated_answer = tokenizer.decode(generated_ids).strip()
+        
+        # Clean up any special token remnants
+        for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+            generated_answer = generated_answer.replace(special, "")
+        generated_answer = generated_answer.strip()
 
         is_correct = generated_answer.strip() == expected_answer.strip()
         predictions.append((expected_answer, generated_answer, is_correct))
@@ -846,13 +867,16 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
     model.train()
     return predictions
 
-def get_gpu_info() -> dict:
-    """Query nvidia-smi for current GPU memory and utilization."""
+def get_gpu_info() -> Optional[Dict[str, any]]:
+    """
+    Query nvidia-smi for GPU stats. Returns a dict with GPU info,
+    or None if nvidia-smi is not available or fails.
+    """
     try:
         result = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-gpu=memory.used,memory.total,memory.free,utilization.gpu,gpu_name,temperature.gpu,power.draw",
+                "--query-gpu=name,memory.used,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw",
                 "--format=csv,noheader,nounits",
             ],
             capture_output=True,
@@ -860,29 +884,39 @@ def get_gpu_info() -> dict:
             timeout=5,
         )
         if result.returncode != 0:
-            return {}
-        line = result.stdout.strip().split("\n")[0]
+            return None
+
+        line = result.stdout.strip().split("\n")[0]  # First GPU
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 7:
-            return {
-                "gpu_mem_used_mb": int(parts[0]),
-                "gpu_mem_total_mb": int(parts[1]),
-                "gpu_mem_free_mb": int(parts[2]),
-                "gpu_util_pct": int(parts[3]),
-                "gpu_name": parts[4],
-                "gpu_temp_c": parts[5],
-                "gpu_power_w": parts[6],
-            }
-        elif len(parts) >= 4:
-            return {
-                "gpu_mem_used_mb": int(parts[0]),
-                "gpu_mem_total_mb": int(parts[1]),
-                "gpu_mem_free_mb": int(parts[2]),
-                "gpu_util_pct": int(parts[3]),
-            }
-    except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
-        pass
-    return {}
+        if len(parts) < 7:
+            return None
+
+        info = {
+            "gpu_name": parts[0],
+            "gpu_mem_used_mb": int(float(parts[1])),
+            "gpu_mem_total_mb": int(float(parts[2])),
+            "gpu_mem_free_mb": int(float(parts[3])),
+            "gpu_util_pct": int(float(parts[4])),
+            "gpu_temp_c": int(float(parts[5])),
+        }
+
+        # power.draw can sometimes be "[N/A]" on some GPUs
+        try:
+            info["gpu_power_w"] = round(float(parts[6]), 1)
+        except (ValueError, IndexError):
+            pass
+
+        return info
+
+    except FileNotFoundError:
+        # nvidia-smi not installed
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception:
+        return None
+
+
 
 class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
@@ -1496,7 +1530,6 @@ class LivePlotter:
                 f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)",
                 ha="right", va="bottom", fontsize=9, fontweight="bold",
                 transform=ax.transAxes, alpha=0.7)
-
 
     def _draw_model_info(self):
         """Draw basic model information + GPU/system stats."""
