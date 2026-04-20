@@ -1116,14 +1116,19 @@ class LivePlotter:
         """
         Render the kelp forest visualization onto self.ax_kelp.
 
-        Layout:
-          - X axis = token index (the "base manifold" / sea floor)
-          - Y axis = layer depth (0 = sea floor / input, 1 = top / output)
-          - Each kelp strand = one layer, rooted at each token position
-          - Sway amplitude ∝ mean activation norm of that layer
-          - Sway frequency ∝ std of activation norms
-          - Twist/lean ∝ cosine drift from previous layer
+        Fibre-bundle interpretation (per paper §2):
+          - X axis  = token index i ∈ M  (base manifold — the "sea floor")
+          - Y axis  = layer depth ℓ = 0 … L  (embedding → output)
+          - Each kelp strand = one fibre F_i = (V_i^(0), …, V_i^(L))
+          - Within each strand, there are exactly n_layers discrete segments
+          - Sway amplitude  ∝ mean activation norm   (proxy for ‖Φ^(ℓ)‖, divergence)
+          - Sway frequency  ∝ std of activation norms (proxy for shear anisotropy)
+          - Lean / twist    ∝ cosine drift            (proxy for Procrustes deviation / connection strength)
           - Color intensity ∝ per-token norm at that layer
+          - ALL values are deterministic — derived solely from hidden_states
+
+        No randomness anywhere. Every visual element is a function of the
+        network's actual activation geometry.
         """
         ax = self.ax_kelp
         if ax is None or self._kelp_data is None:
@@ -1132,70 +1137,94 @@ class LivePlotter:
         ax.clear()
         ax.set_facecolor("#020a1a")
         ax.set_title(
-            f"Kelp Forest — Embedding Space Dynamics  (step {self._kelp_data['step']})",
+            f"Kelp Forest — Fibre Bundle Dynamics  (step {self._kelp_data['step']})",
             fontsize=10, fontweight="bold", color="#c0d8e8",
         )
 
         data = self._kelp_data
-        n_layers = data["n_layers"]
+        n_layers = data["n_layers"]       # number of hidden states (embedding + L blocks)
         n_tokens = data["n_tokens"]
         layer_stats = data["layer_stats"]
         t_anim = self._kelp_time_offset
 
-        if n_tokens == 0 or n_layers < 2:
+        if n_tokens == 0 or n_layers < 1:
             ax.text(0.5, 0.5, "Not enough data",
                     ha="center", va="center", fontsize=11, alpha=0.4,
                     color="#6a9ab8", transform=ax.transAxes)
             return
 
-        # Normalize stats for visual mapping
+        # ── Normalize stats for visual mapping ──────────────────────────
         all_mean_norms = [s["mean_norm"] for s in layer_stats]
         max_mean_norm = max(all_mean_norms) if max(all_mean_norms) > 0 else 1.0
+
         all_std_norms = [s["std_norm"] for s in layer_stats]
         max_std_norm = max(all_std_norms) if max(all_std_norms) > 0 else 1.0
 
-        # Collect all token norms for global normalization
+        all_drifts = [s["cosine_drift"] for s in layer_stats]
+        max_drift = max(abs(d) for d in all_drifts) if any(d != 0 for d in all_drifts) else 1.0
+
+        # Global token norm for color normalization
         all_token_norms = []
         for s in layer_stats:
             all_token_norms.extend(s["token_norms"].tolist())
         global_max_tnorm = max(all_token_norms) if all_token_norms and max(all_token_norms) > 0 else 1.0
 
-        # Layout parameters
+        # ── Layout parameters ───────────────────────────────────────────
         x_margin = 0.08
-        y_floor = 0.05   # sea floor
-        y_top = 0.92     # top of kelp
-        token_spacing = (1.0 - 2 * x_margin) / max(n_tokens - 1, 1)
+        y_floor = 0.05
+        y_top = 0.92
+        total_height = y_top - y_floor
 
-        # Number of segments per kelp strand (for smooth curves)
-        n_segments = 40
+        # ── Draw layer zone backgrounds ─────────────────────────────────
+        # Each layer gets a band whose brightness is derived from that
+        # layer's mean norm — NOT arbitrary colors.
+        for li in range(n_layers):
+            frac_lo = li / n_layers
+            frac_hi = (li + 1) / n_layers
+            y_lo = y_floor + frac_lo * total_height
+            y_hi = y_floor + frac_hi * total_height
 
-        # ── Draw sea floor ──────────────────────────────────────────────
+            # Brightness from mean norm of this layer (deterministic)
+            norm_frac = layer_stats[li]["mean_norm"] / max_mean_norm
+            # Map to a subtle blue-dark range
+            r = 0.02 + 0.04 * norm_frac
+            g = 0.06 + 0.06 * norm_frac
+            b = 0.10 + 0.10 * norm_frac
+            zone_alpha = 0.3 + 0.2 * norm_frac
+            ax.axhspan(y_lo, y_hi, facecolor=(r, g, b), alpha=zone_alpha, zorder=0)
+
+        # ── Draw sea floor (deterministic sine waves) ───────────────────
         floor_xs = np.linspace(0, 1, 200)
         floor_ys = y_floor + 0.008 * np.sin(floor_xs * 15 + t_anim * 0.3) + \
                    0.004 * np.sin(floor_xs * 37 + t_anim * 0.7)
         ax.fill_between(floor_xs, 0, floor_ys, color="#1a0a30", alpha=0.8)
         ax.plot(floor_xs, floor_ys, color="#4a2a6a", linewidth=1.0, alpha=0.6)
 
-        # ── Draw light rays from top ────────────────────────────────────
-        for ray_i in range(4):
-            ray_x = 0.15 + ray_i * 0.22 + 0.05 * np.sin(t_anim * 0.2 + ray_i)
-            ray_width = 0.03
-            from matplotlib.patches import Polygon as MplPolygon
+        # ── Draw light rays (positions derived from layer stats) ────────
+        # Use the per-layer mean norms to position rays deterministically
+        from matplotlib.patches import Polygon as MplPolygon
+        n_rays = min(4, n_layers)
+        for ray_i in range(n_rays):
+            # Position derived from the layer's mean norm
+            stat_idx = int(ray_i * (n_layers - 1) / max(n_rays - 1, 1))
+            norm_val = layer_stats[stat_idx]["mean_norm"] / max_mean_norm
+            ray_x = 0.1 + ray_i * (0.8 / max(n_rays - 1, 1)) + 0.03 * np.sin(t_anim * 0.2 + norm_val * 6.28)
+            ray_width = 0.02 + 0.015 * norm_val
+            sway = 0.02 * np.sin(t_anim * 0.15 + ray_i * 1.618)
             ray_verts = [
                 (ray_x - ray_width, 1.0),
                 (ray_x + ray_width, 1.0),
-                (ray_x + ray_width * 2 + 0.02 * np.sin(t_anim * 0.15 + ray_i), 0.0),
-                (ray_x - ray_width * 2 + 0.02 * np.sin(t_anim * 0.15 + ray_i), 0.0),
+                (ray_x + ray_width * 2 + sway, 0.0),
+                (ray_x - ray_width * 2 + sway, 0.0),
             ]
             ray_patch = MplPolygon(ray_verts, closed=True,
-                                    facecolor="#4080b0", alpha=0.03)
+                                   facecolor="#4080b0", alpha=0.03)
             ax.add_patch(ray_patch)
 
-        # ── Draw kelp strands ───────────────────────────────────────────
-        # For each token position, draw one kelp that passes through all layers.
-        # The kelp's sway at each height is determined by the layer at that height.
+        # ── Draw kelp strands (fibres) ──────────────────────────────────
+        # Each strand = one fibre F_i, with EXACTLY n_layers discrete
+        # segments. Each segment's geometry comes from that layer's stats.
 
-        # Limit tokens drawn to avoid clutter
         max_display_tokens = min(n_tokens, 32)
         if n_tokens > max_display_tokens:
             token_indices = np.linspace(0, n_tokens - 1, max_display_tokens, dtype=int)
@@ -1204,160 +1233,269 @@ class LivePlotter:
 
         actual_spacing = (1.0 - 2 * x_margin) / max(len(token_indices) - 1, 1)
 
+        # Sub-segments per layer for smooth curves within each layer zone
+        sub_segments_per_layer = 8
+
+        from matplotlib.collections import LineCollection
+
         for ti_display, ti in enumerate(token_indices):
             base_x = x_margin + ti_display * actual_spacing
-            base_y = y_floor
 
-            # Build the kelp path from floor to top
-            # Each segment interpolates between layers
-            seg_ys = np.linspace(0, 1, n_segments + 1)  # 0=floor, 1=top
-            seg_xs = np.zeros(n_segments + 1)
-            seg_colors = np.zeros(n_segments + 1)
+            # Deterministic phase unique to this token, derived from its
+            # embedding-layer norm (the actual network value, not random)
+            tn_embed = layer_stats[0]["token_norms"]
+            tok_embed_norm = tn_embed[min(ti, len(tn_embed) - 1)] if len(tn_embed) > 0 else 0
+            phase = (tok_embed_norm / global_max_tnorm) * 6.2832  # map to [0, 2π]
 
-            # Phase unique to this token
-            phase = ti * 1.618 + ti_display * 0.37
+            # Build path: for each layer, create sub_segments_per_layer points
+            all_xs = []
+            all_ys = []
+            all_colors = []
+            all_layer_ids = []
 
-            for si, frac in enumerate(seg_ys):
-                # Which layer does this fraction correspond to?
-                layer_frac = frac * (n_layers - 1)
-                layer_lo = int(np.floor(layer_frac))
-                layer_hi = min(layer_lo + 1, n_layers - 1)
-                layer_alpha = layer_frac - layer_lo
+            for li in range(n_layers):
+                mean_n = layer_stats[li]["mean_norm"]
+                std_n = layer_stats[li]["std_norm"]
+                drift = layer_stats[li]["cosine_drift"]
 
-                # Interpolate stats
-                def _lerp(a, b, t):
-                    return a * (1 - t) + b * t
+                # Per-token norm at this layer
+                tn = layer_stats[li]["token_norms"]
+                tok_norm = tn[min(ti, len(tn) - 1)] if len(tn) > 0 else 0
 
-                mean_n = _lerp(layer_stats[layer_lo]["mean_norm"],
-                               layer_stats[layer_hi]["mean_norm"], layer_alpha)
-                std_n = _lerp(layer_stats[layer_lo]["std_norm"],
-                              layer_stats[layer_hi]["std_norm"], layer_alpha)
-                drift = _lerp(layer_stats[layer_lo]["cosine_drift"],
-                              layer_stats[layer_hi]["cosine_drift"], layer_alpha)
-
-                # Token norm at this layer (use lower layer)
-                tn_lo = layer_stats[layer_lo]["token_norms"]
-                tok_norm = tn_lo[min(ti, len(tn_lo) - 1)] if len(tn_lo) > 0 else 0
-
-                # Sway calculation
-                # Amplitude grows with height (like real kelp) and with mean_norm
-                amplitude = (mean_n / max_mean_norm) * 0.04 * (0.3 + frac * 0.7)
-                # Frequency driven by std
+                # Sway parameters — ALL from real network values
+                amplitude = (mean_n / max_mean_norm) * 0.04
                 freq = 1.0 + 2.0 * (std_n / max_std_norm)
-                # Drift adds a lean
-                lean = drift * 0.03 * frac
+                lean = (drift / max_drift) * 0.03 if max_drift > 0 else 0
 
-                sway = (amplitude * np.sin(t_anim * freq * 0.8 + phase + frac * 3.0)
-                        + amplitude * 0.4 * np.sin(t_anim * freq * 1.3 + phase * 2 + frac * 5.0)
-                        + lean * np.sin(t_anim * 0.5 + phase))
+                for si in range(sub_segments_per_layer):
+                    sub_frac = si / sub_segments_per_layer
+                    # Global vertical fraction
+                    global_frac = (li + sub_frac) / n_layers
+                    y_val = y_floor + global_frac * total_height
 
-                seg_xs[si] = base_x + sway
-                seg_colors[si] = tok_norm / global_max_tnorm
+                    # Height-dependent amplitude scaling (taller = more sway)
+                    height_scale = 0.3 + 0.7 * global_frac
 
-            # Convert fractions to plot coordinates
-            plot_ys = y_floor + seg_ys * (y_top - y_floor)
+                    sway = (amplitude * height_scale *
+                            np.sin(t_anim * freq * 0.8 + phase + global_frac * 3.0)
+                            + amplitude * 0.4 * height_scale *
+                            np.sin(t_anim * freq * 1.3 + phase * 2 + global_frac * 5.0)
+                            + lean * global_frac *
+                            np.sin(t_anim * 0.5 + phase))
 
-            # Draw the kelp strand as a colored line
-            # Use LineCollection for per-segment coloring
-            from matplotlib.collections import LineCollection
+                    all_xs.append(base_x + sway)
+                    all_ys.append(y_val)
+                    all_colors.append(tok_norm / global_max_tnorm)
+                    all_layer_ids.append(li)
 
-            points = np.array([seg_xs, plot_ys]).T.reshape(-1, 1, 2)
+            # Add the final point at the top
+            li_last = n_layers - 1
+            tn_last = layer_stats[li_last]["token_norms"]
+            tok_norm_last = tn_last[min(ti, len(tn_last) - 1)] if len(tn_last) > 0 else 0
+            mean_n_last = layer_stats[li_last]["mean_norm"]
+            std_n_last = layer_stats[li_last]["std_norm"]
+            drift_last = layer_stats[li_last]["cosine_drift"]
+            amplitude_last = (mean_n_last / max_mean_norm) * 0.04
+            freq_last = 1.0 + 2.0 * (std_n_last / max_std_norm)
+            lean_last = (drift_last / max_drift) * 0.03 if max_drift > 0 else 0
+
+            sway_top = (amplitude_last * np.sin(t_anim * freq_last * 0.8 + phase + 3.0)
+                        + amplitude_last * 0.4 * np.sin(t_anim * freq_last * 1.3 + phase * 2 + 5.0)
+                        + lean_last * np.sin(t_anim * 0.5 + phase))
+            all_xs.append(base_x + sway_top)
+            all_ys.append(y_top)
+            all_colors.append(tok_norm_last / global_max_tnorm)
+            all_layer_ids.append(li_last)
+
+            all_xs = np.array(all_xs)
+            all_ys = np.array(all_ys)
+            all_colors = np.array(all_colors)
+            all_layer_ids = np.array(all_layer_ids)
+
+            # Build line segments
+            points = np.array([all_xs, all_ys]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-            # Color: green hue, brightness from token norm
-            # Map seg_colors to RGBA
-            base_hue_shift = (ti * 25) % 60
+            # Color: green hue, brightness from token norm at that layer
+            # Per-layer hue shift derived from that layer's cosine drift
             colors_rgba = []
             for ci in range(len(segments)):
-                intensity = 0.25 + 0.75 * seg_colors[ci]
-                # HSL-ish: green with slight variation
-                r = 0.05 + 0.15 * (base_hue_shift / 60)
-                g = 0.3 * intensity + 0.15
-                b = 0.1 + 0.05 * intensity
+                intensity = 0.25 + 0.75 * all_colors[ci]
+                li_ci = all_layer_ids[ci]
+                # Hue shift from cosine drift (deterministic, from network)
+                drift_ci = layer_stats[li_ci]["cosine_drift"]
+                drift_norm = abs(drift_ci) / max_drift if max_drift > 0 else 0
+                r = 0.05 + 0.12 * drift_norm
+                g = 0.15 + 0.35 * intensity
+                b = 0.10 + 0.15 * drift_norm
                 a = 0.4 + 0.5 * intensity
                 colors_rgba.append((r, g, b, a))
 
             # Strand thickness: thicker at base, thinner at top
-            linewidths = 2.5 - 1.5 * seg_ys[:-1]
+            fracs = np.linspace(0, 1, len(segments))
+            linewidths = 2.5 - 1.5 * fracs
 
             lc = LineCollection(segments, colors=colors_rgba, linewidths=linewidths,
                                 capstyle="round", joinstyle="round")
             ax.add_collection(lc)
 
-            # Draw small fronds at intervals
-            for fi in range(4, n_segments, 6):
-                frac_f = seg_ys[fi]
-                fx = seg_xs[fi]
-                fy = y_floor + frac_f * (y_top - y_floor)
-                frond_angle = np.sin(t_anim * 1.2 + ti + fi * 0.5) * 0.4
-                frond_angle += (0.6 if ti_display % 2 == 0 else -0.6)
-                frond_len = 0.015 + 0.005 * np.sin(t_anim * 0.7 + fi)
+            # ── Draw nodes at EACH layer boundary ───────────────────────
+            # These are the discrete fibre morphism points Φ^(ℓ)
+            for li in range(n_layers):
+                # Find the exact position of this layer boundary on the strand
+                seg_idx = li * sub_segments_per_layer
+                seg_idx = min(seg_idx, len(all_xs) - 1)
+                node_x = all_xs[seg_idx]
+                node_y = all_ys[seg_idx]
+
+                # Node size from layer's mean norm
+                node_size = 2.0 + 3.0 * (layer_stats[li]["mean_norm"] / max_mean_norm)
+
+                # Color from per-token norm at this layer
+                tn_li = layer_stats[li]["token_norms"]
+                tok_n = tn_li[min(ti, len(tn_li) - 1)] if len(tn_li) > 0 else 0
+                node_intensity = tok_n / global_max_tnorm
+
+                node_color = (
+                    0.2 + 0.3 * node_intensity,
+                    0.5 + 0.4 * node_intensity,
+                    0.3 + 0.2 * node_intensity,
+                    0.6 + 0.3 * node_intensity,
+                )
+                ax.plot(node_x, node_y, 'o',
+                        color=node_color, markersize=node_size,
+                        markeredgecolor=(0.4, 0.8, 0.5, 0.3),
+                        markeredgewidth=0.5, zorder=4)
+
+            # ── Draw fronds at layer midpoints (deterministic) ──────────
+            # One frond per layer, positioned at the midpoint of each
+            # layer zone. Direction derived from cosine drift sign.
+            for li in range(n_layers):
+                mid_seg = li * sub_segments_per_layer + sub_segments_per_layer // 2
+                mid_seg = min(mid_seg, len(all_xs) - 1)
+                fx = all_xs[mid_seg]
+                fy = all_ys[mid_seg]
+
+                drift_li = layer_stats[li]["cosine_drift"]
+                # Frond direction: sign of drift determines left/right
+                frond_sign = 1.0 if drift_li >= 0 else -1.0
+                # Alternate sides for even/odd tokens
+                if ti_display % 2 == 1:
+                    frond_sign *= -1.0
+
+                frond_angle = frond_sign * (0.4 + 0.3 * abs(drift_li) / max_drift) if max_drift > 0 else frond_sign * 0.4
+                frond_angle += 0.1 * np.sin(t_anim * 0.7 + phase + li)
+
+                # Frond length from std norm (more variation = longer frond)
+                frond_len = 0.012 + 0.01 * (layer_stats[li]["std_norm"] / max_std_norm)
                 frond_dx = np.cos(frond_angle) * frond_len
                 frond_dy = np.sin(frond_angle) * frond_len
-                ax.plot([fx, fx + frond_dx], [fy, fy + frond_dy],
-                        color=(0.15, 0.45, 0.25, 0.4), linewidth=1.0)
 
-            # Root anchor
+                frond_intensity = layer_stats[li]["mean_norm"] / max_mean_norm
+                ax.plot([fx, fx + frond_dx], [fy, fy + frond_dy],
+                        color=(0.10 + 0.08 * frond_intensity,
+                               0.35 + 0.15 * frond_intensity,
+                               0.20 + 0.08 * frond_intensity,
+                               0.35 + 0.2 * frond_intensity),
+                        linewidth=1.0)
+
+            # ── Root anchor ─────────────────────────────────────────────
             from matplotlib.patches import Ellipse
-            anchor = Ellipse((base_x, base_y), width=0.012, height=0.008,
+            anchor = Ellipse((base_x, y_floor), width=0.012, height=0.008,
                              facecolor="#2a1540", edgecolor="#4a2a6a",
                              linewidth=0.5, alpha=0.7)
             ax.add_patch(anchor)
 
-        # ── Layer markers (horizontal dashed lines) ─────────────────────────
-        for li in range(n_layers):
-            frac = li / (n_layers - 1) if n_layers > 1 else 0.5
-            y_line = y_floor + frac * (y_top - y_floor)
-            ax.axhline(y=y_line, color="#3a5a7a", linewidth=0.5,
-                       linestyle=":", alpha=0.2)
-            label = f"L{li}" if li > 0 else "Input"
-            if li == n_layers - 1:
-                label = "Output"
-            ax.text(0.995, y_line + 0.008, label,
-                    fontsize=6, color="#4a7a9a", alpha=0.4,
-                    ha="right", va="bottom", transform=ax.get_yaxis_transform())
+        # ── Layer boundary lines ────────────────────────────────────────
+        for li in range(n_layers + 1):
+            frac = li / n_layers
+            y_line = y_floor + frac * total_height
 
-        # ── Water caustics (subtle moving highlights) ───────────────────────
-        for ci in range(6):
-            cx = 0.1 + ci * 0.15 + 0.03 * np.sin(t_anim * 0.4 + ci * 1.7)
-            cy = 0.3 + 0.2 * np.sin(t_anim * 0.25 + ci * 2.3)
-            caustic_alpha = 0.015 + 0.01 * np.sin(t_anim * 0.6 + ci)
-            from matplotlib.patches import Circle
-            caustic = Circle((cx, cy), radius=0.06, facecolor="#60b0d0",
-                             alpha=max(0, caustic_alpha), edgecolor="none")
+            if li == 0 or li == n_layers:
+                ax.axhline(y=y_line, color="#5a8aaa", linewidth=1.0,
+                           linestyle="-", alpha=0.4, zorder=2)
+            else:
+                ax.axhline(y=y_line, color="#4a7a9a", linewidth=0.8,
+                           linestyle="--", alpha=0.35, zorder=2)
+
+            # Layer labels
+            if li < n_layers:
+                label_y = y_floor + (li + 0.5) / n_layers * total_height
+                if li == 0:
+                    label = "Embed"
+                elif li == n_layers - 1:
+                    label = "Output"
+                else:
+                    label = f"L{li}"
+
+                ax.text(0.995, label_y, label,
+                        fontsize=7, color="#6a9aba", alpha=0.6,
+                        ha="right", va="center", transform=ax.get_yaxis_transform(),
+                        fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=0.15", facecolor="#0a1a2a",
+                                  edgecolor="none", alpha=0.5))
+
+        # ── Water caustics (deterministic, from layer stats) ────────────
+        # One caustic per layer, position and size from that layer's stats
+        from matplotlib.patches import Circle
+        for li in range(min(n_layers, 8)):
+            norm_frac = layer_stats[li]["mean_norm"] / max_mean_norm
+            std_frac = layer_stats[li]["std_norm"] / max_std_norm
+            cx = 0.1 + li * (0.8 / max(n_layers - 1, 1)) + 0.03 * np.sin(t_anim * 0.4 + norm_frac * 6.28)
+            cy = y_floor + (li + 0.5) / n_layers * total_height
+            caustic_alpha = 0.01 + 0.015 * std_frac
+            caustic_radius = 0.04 + 0.03 * norm_frac
+            caustic = Circle((cx, cy), radius=caustic_radius,
+                             facecolor="#60b0d0",
+                             alpha=max(0, min(caustic_alpha, 0.03)),
+                             edgecolor="none")
             ax.add_patch(caustic)
 
-        # ── Floating particles (plankton / spores) ──────────────────────────
-        np_rng = np.random.RandomState(int(t_anim * 10) % 2**31)
-        n_particles = 30
-        px = np_rng.uniform(0.02, 0.98, n_particles)
-        py = np_rng.uniform(y_floor + 0.02, y_top + 0.03, n_particles)
-        # Drift particles slightly based on time
-        px = (px + 0.005 * np.sin(t_anim * 0.3 + np.arange(n_particles) * 0.7)) % 1.0
-        py = (py + 0.003 * np.cos(t_anim * 0.2 + np.arange(n_particles) * 1.1))
-        py = np.clip(py, y_floor, y_top)
-        p_alpha = 0.15 + 0.1 * np.sin(t_anim * 0.5 + np.arange(n_particles) * 0.9)
-        p_sizes = 0.5 + 1.0 * np_rng.uniform(0, 1, n_particles)
-        ax.scatter(px, py, s=p_sizes, c="#80c0e0", alpha=p_alpha.clip(0.05, 0.3),
-                   edgecolors="none", zorder=5)
+        # ── Floating particles (deterministic, from per-token norms) ────
+        # Instead of random particles, place one "spore" per token per
+        # layer, at a position derived from that token's norm at that layer.
+        # This makes every particle a real data point.
+        n_display = len(token_indices)
+        for li in range(n_layers):
+            tn_li = layer_stats[li]["token_norms"]
+            for ti_d, ti in enumerate(token_indices):
+                tok_n = tn_li[min(ti, len(tn_li) - 1)] if len(tn_li) > 0 else 0
+                norm_frac = tok_n / global_max_tnorm
 
-        # ── Stats annotation ────────────────────────────────────────────────
-        # Show summary stats in the corner
-        mean_norms_str = ", ".join(f"{s['mean_norm']:.1f}" for s in layer_stats[:4])
-        if n_layers > 4:
-            mean_norms_str += "..."
+                # Position: offset from the strand, derived from norm
+                # Small deterministic displacement so particles don't overlap strands
+                px = x_margin + ti_d * actual_spacing + 0.015 * np.sin(norm_frac * 6.28 + li * 1.618)
+                py = y_floor + (li + 0.5) / n_layers * total_height + 0.005 * np.cos(norm_frac * 6.28 + ti * 1.618)
+                py = np.clip(py, y_floor, y_top)
+
+                p_alpha = 0.08 + 0.15 * norm_frac
+                p_size = 0.3 + 1.2 * norm_frac
+
+                ax.plot(px, py, '.', color="#80c0e0",
+                        alpha=min(p_alpha, 0.25), markersize=p_size, zorder=5)
+
+        # ── Stats annotation ────────────────────────────────────────────
+        mean_norms_str = ", ".join(f"{s['mean_norm']:.1f}" for s in layer_stats[:6])
+        if n_layers > 6:
+            mean_norms_str += " …"
+        drift_str = ", ".join(f"{s['cosine_drift']:.3f}" for s in layer_stats[:6])
+        if n_layers > 6:
+            drift_str += " …"
+
         ax.text(0.01, 0.98,
-                f"Layers: {n_layers}  Tokens: {n_tokens}  "
-                f"Mean‖h‖: [{mean_norms_str}]",
+                f"Layers: {n_layers}  Tokens: {n_tokens}  Fibres: {len(token_indices)}\n"
+                f"Mean‖h‖: [{mean_norms_str}]\n"
+                f"Drift:   [{drift_str}]",
                 fontsize=5.5, color="#5a8aaa", alpha=0.5,
                 ha="left", va="top", transform=ax.transAxes,
                 fontfamily="monospace")
 
-        # ── Axis limits and cleanup ─────────────────────────────────────────
+        # ── Axis limits and cleanup ─────────────────────────────────────
         ax.set_xlim(-0.02, 1.02)
         ax.set_ylim(-0.02, 1.02)
         ax.set_xticks([])
         ax.set_yticks([])
+
 
     @torch.no_grad()
     def update_kelp_forest(self, model: nn.Module, input_ids: torch.Tensor):
