@@ -81,6 +81,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import tkinter
 
+import warnings
+warnings.filterwarnings("ignore", message="Glyph .* missing from font")
+
 OPTIMIZERS = {
     "adam": torch.optim.Adam,
     "adamw": torch.optim.AdamW,
