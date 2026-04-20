@@ -764,8 +764,11 @@ class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
                  topo_enabled: bool = False, topo_every: int = 50,
                  topo_max_points: int = 200, topo_pca_dim: int = 30,
-                 suppress_window: bool = False, plot_file: str = "training_plot.png"):
+                 suppress_window: bool = False, plot_file: str = "training_plot.png",
+                 model_info: dict = None):
         self.enabled = enabled
+        self._model_info = model_info or {}
+        self._last_predictions = []  # Store last batch predictions
         self.update_every = update_every
         self._global_batch = 0
         self._ema_train = None
@@ -826,27 +829,58 @@ class LivePlotter:
 
     def _create_figure(self):
         """Create (or recreate) the matplotlib figure and axes."""
+
         if self.topo_enabled:
-            self.fig, axes_arr = self.plt.subplots(2, 3, figsize=(22, 11))
-            ax_epoch    = axes_arr[0, 0]
-            ax_batch    = axes_arr[0, 1]
-            ax_lr       = axes_arr[0, 2]
-            ax_val      = axes_arr[1, 0]
-            ax_barcode  = axes_arr[1, 1]
-            ax_bd       = axes_arr[1, 2]
+            # 3 rows × 3 cols: top row = epoch/batch/lr,
+            #                   mid row = val/barcode/birth-death,
+            #                   bot row = predictions (wide) + model info
+            self.fig = self.plt.figure(figsize=(24, 16))
+            gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
+
+            ax_epoch   = self.fig.add_subplot(gs[0, 0])
+            ax_batch   = self.fig.add_subplot(gs[0, 1])
+            ax_lr      = self.fig.add_subplot(gs[0, 2])
+            ax_val     = self.fig.add_subplot(gs[1, 0])
+            ax_barcode = self.fig.add_subplot(gs[1, 1])
+            ax_bd      = self.fig.add_subplot(gs[1, 2])
+            ax_preds   = self.fig.add_subplot(gs[2, 0:2])   # spans 2 columns
+            ax_info    = self.fig.add_subplot(gs[2, 2])
+
             self.ax_barcode = ax_barcode
             self.ax_bd = ax_bd
-            self.axes = axes_arr
         else:
-            self.fig, axes_arr = self.plt.subplots(2, 2, figsize=(16, 10))
-            ax_epoch = axes_arr[0, 0]
-            ax_batch = axes_arr[0, 1]
-            ax_lr    = axes_arr[1, 0]
-            ax_val   = axes_arr[1, 1]
+            # 3 rows × 2 cols: top row = epoch/batch,
+            #                   mid row = lr/val,
+            #                   bot row = predictions + model info
+            self.fig = self.plt.figure(figsize=(18, 14))
+            gs = self.fig.add_gridspec(3, 2, hspace=0.45, wspace=0.35)
+
+            ax_epoch = self.fig.add_subplot(gs[0, 0])
+            ax_batch = self.fig.add_subplot(gs[0, 1])
+            ax_lr    = self.fig.add_subplot(gs[1, 0])
+            ax_val   = self.fig.add_subplot(gs[1, 1])
+            ax_preds = self.fig.add_subplot(gs[2, 0])
+            ax_info  = self.fig.add_subplot(gs[2, 1])
+
             self.ax_barcode = None
             self.ax_bd = None
-            self.axes = axes_arr
 
+        # Store references to the new text-only axes
+        self.ax_preds = ax_preds
+        self.ax_info = ax_info
+
+        # _plot_axes: only axes that have actual data lines (used by _refresh
+        # for relim / autoscale_view).  Text-only panels are excluded.
+        self._plot_axes = [ax_epoch, ax_batch, ax_lr, ax_val]
+        if self.ax_barcode is not None:
+            self._plot_axes.append(self.ax_barcode)
+        if self.ax_bd is not None:
+            self._plot_axes.append(self.ax_bd)
+
+        # Keep a flat array for legacy compatibility (only plot axes)
+        self.axes = np.array(self._plot_axes)
+
+        # ── Window title ────────────────────────────────────────────────
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
         try:
             self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
@@ -858,29 +892,33 @@ class LivePlotter:
         ax_epoch.set_xlabel("Epoch")
         ax_epoch.set_ylabel("Loss")
         ax_epoch.grid(True, alpha=0.3)
-        self.line_train_epoch, = ax_epoch.plot([], [], label="Train",
-                                                color="steelblue", linewidth=2)
-        self.line_val_epoch, = ax_epoch.plot([], [], label="Val",
-                                              color="tomato", linewidth=2)
+        self.line_train_epoch, = ax_epoch.plot(
+            [], [], label="Train", color="steelblue", linewidth=2,
+        )
+        self.line_val_epoch, = ax_epoch.plot(
+            [], [], label="Val", color="tomato", linewidth=2,
+        )
         ax_epoch.legend(loc="upper right")
 
-        # ── Top-center: Batch loss EMA ──────────────────────────────────
+        # ── Top-center / top-right: Batch loss EMA ──────────────────────
         ax_batch.set_title("Batch Loss (Train EMA)")
         ax_batch.set_xlabel("Batch")
         ax_batch.set_ylabel("Loss")
         ax_batch.grid(True, alpha=0.3)
-        self.line_batch_ema, = ax_batch.plot([], [], label="Train EMA",
-                                              color="steelblue", linewidth=2)
+        self.line_batch_ema, = ax_batch.plot(
+            [], [], label="Train EMA", color="steelblue", linewidth=2,
+        )
         ax_batch.legend(loc="upper right")
 
-        # ── LR ──────────────────────────────────────────────────────────
+        # ── Learning Rate ───────────────────────────────────────────────
         ax_lr.set_title("Learning Rate")
         ax_lr.set_xlabel("Epoch")
         ax_lr.set_ylabel("LR")
         ax_lr.grid(True, alpha=0.3)
         ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
-        self.line_lr, = ax_lr.plot([], [], label="LR",
-                                    color="seagreen", linewidth=2)
+        self.line_lr, = ax_lr.plot(
+            [], [], label="LR", color="seagreen", linewidth=2,
+        )
         ax_lr.legend(loc="upper right")
 
         # ── Val batch loss ──────────────────────────────────────────────
@@ -888,30 +926,54 @@ class LivePlotter:
         ax_val.set_xlabel("Global Val Batch")
         ax_val.set_ylabel("Loss")
         ax_val.grid(True, alpha=0.3)
-        self.line_val_raw, = ax_val.plot([], [], label="Val Batch",
-                                          color="tomato", linewidth=1.0, alpha=0.5)
-        self.line_val_epoch_avg, = ax_val.plot([], [], label="Val Epoch Avg",
-                                                color="darkred", linewidth=2.0,
-                                                marker="o", markersize=4)
+        self.line_val_raw, = ax_val.plot(
+            [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
+        )
+        self.line_val_epoch_avg, = ax_val.plot(
+            [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
+            marker="o", markersize=4,
+        )
         ax_val.legend(loc="upper right")
 
-        # ── TDA panels ─────────────────────────────────────────────────
+        # ── TDA panels (only when topo_enabled) ─────────────────────────
         if self.ax_barcode is not None:
             self.ax_barcode.set_title("TDA Barcode (Embedding Space)")
-            self.ax_barcode.text(0.5, 0.5, "Waiting for data...",
-                                  ha="center", va="center",
-                                  transform=self.ax_barcode.transAxes,
-                                  fontsize=11, alpha=0.4)
+            self.ax_barcode.text(
+                0.5, 0.5, "Waiting for data...",
+                ha="center", va="center",
+                transform=self.ax_barcode.transAxes,
+                fontsize=11, alpha=0.4,
+            )
             self.ax_barcode.grid(True, alpha=0.2, axis="x")
 
         if self.ax_bd is not None:
             self.ax_bd.set_title("TDA Birth / Death (Persistence)")
-            self.ax_bd.text(0.5, 0.5, "Waiting for data...",
-                             ha="center", va="center",
-                             transform=self.ax_bd.transAxes,
-                             fontsize=11, alpha=0.4)
+            self.ax_bd.text(
+                0.5, 0.5, "Waiting for data...",
+                ha="center", va="center",
+                transform=self.ax_bd.transAxes,
+                fontsize=11, alpha=0.4,
+            )
             self.ax_bd.grid(True, alpha=0.2)
 
+        # ── NEW: Predictions panel (bottom-left, text only) ─────────────
+        ax_preds.set_xlim(0, 1)
+        ax_preds.set_ylim(0, 1)
+        ax_preds.axis("off")
+        ax_preds.set_title(
+            "Last Batch Predictions (Expected → Got)",
+            fontsize=10, fontweight="bold",
+        )
+        self._draw_predictions()
+
+        # ── NEW: Model Info panel (bottom-right, text only) ─────────────
+        ax_info.set_xlim(0, 1)
+        ax_info.set_ylim(0, 1)
+        ax_info.axis("off")
+        ax_info.set_title("Model Info", fontsize=10, fontweight="bold")
+        self._draw_model_info()
+
+        # ── Layout ──────────────────────────────────────────────────────
         self.fig.tight_layout()
 
         # ── Restore existing data onto the new figure ───────────────────
@@ -919,9 +981,9 @@ class LivePlotter:
 
         # ── Register close event ────────────────────────────────────────
         if not self.suppress_window:
-            self.fig.canvas.mpl_connect('close_event', self._on_close)
+            self.fig.canvas.mpl_connect("close_event", self._on_close)
 
-        # Force window to appear
+        # ── Force window to appear ──────────────────────────────────────
         if not self.suppress_window:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
@@ -952,6 +1014,9 @@ class LivePlotter:
         if self._topo_dgms is not None and self.ax_barcode is not None:
             self._draw_barcode(self._topo_dgms, self._topo_layer_name)
             self._draw_birth_death(self._topo_dgms, self._topo_layer_name)
+
+        self._draw_predictions()
+        self._draw_model_info()
 
     def _on_close(self, event):
         """Called when the user closes the matplotlib window."""
@@ -1012,13 +1077,13 @@ class LivePlotter:
         if not self.enabled:
             return
 
-        # Check if user requested reopen (main-thread safe)
         if not self.suppress_window:
             self._check_reopen()
 
         _suppress_c_stderr()
         try:
-            for ax in self.axes.flat:
+            # Only relim/autoscale on actual plot axes, not text panels
+            for ax in self._plot_axes:
                 ax.relim()
                 ax.autoscale_view()
 
@@ -1026,7 +1091,6 @@ class LivePlotter:
                 self.fig.canvas.draw_idle()
                 self.fig.canvas.flush_events()
             else:
-                # Even if window is closed/suppressed, redraw for file saving
                 self.fig.canvas.draw()
         finally:
             _restore_c_stderr()
@@ -1164,6 +1228,151 @@ class LivePlotter:
         finally:
             if was_training:
                 model.train()
+
+    @torch.no_grad()
+    def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
+        """
+        Given a batch of (token_ids, prompt_len) pairs, generate predictions
+        and compare to expected outputs.
+
+        Returns: List of (expected_str, predicted_str, is_correct)
+        """
+        model.eval()
+        predictions = []
+
+        for token_ids, prompt_len in batch[:8]:
+            full_text = tokenizer.decode(token_ids[1:])  # skip <bos>
+
+            parts = full_text.split("<sep>")
+            if len(parts) < 3:
+                continue
+            expected_answer = parts[2].replace("<eos>", "").strip()
+
+            prompt_ids = token_ids[:prompt_len]
+
+            # Greedy decode
+            generated = list(prompt_ids)
+            for _ in range(max_gen_len):
+                inp = torch.tensor(
+                    [generated[-model.max_seq_len:]],
+                    dtype=torch.long, device=device,
+                )
+                output = model(input_ids=inp)
+                logits = output.logits[0, -1, :]
+                next_token = logits.argmax().item()
+
+                if next_token == tokenizer.eos_token_id:
+                    break
+                generated.append(next_token)
+
+            generated_answer = tokenizer.decode(generated[prompt_len:])
+            generated_answer = (
+                generated_answer.replace("<eos>", "").replace("<pad>", "").strip()
+            )
+
+            is_correct = generated_answer.strip() == expected_answer.strip()
+            predictions.append((expected_answer, generated_answer, is_correct))
+
+        model.train()
+        return predictions
+
+
+    def _draw_predictions(self):
+        """Draw the last batch's expected vs predicted outputs."""
+        ax = self.ax_preds
+        if ax is None:
+            return
+        ax.clear()
+        ax.axis("off")
+        ax.set_title("Last Batch Predictions (Expected → Got)", fontsize=10, fontweight="bold")
+
+        if not self._last_predictions:
+            ax.text(0.5, 0.5, "Waiting for predictions...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    transform=ax.transAxes)
+            return
+
+        n_show = min(len(self._last_predictions), 8)  # Show up to 8 examples
+        y_positions = np.linspace(0.92, 0.08, n_show)
+
+        for i, (expected, predicted, is_correct) in enumerate(self._last_predictions[:n_show]):
+            color = "green" if is_correct else "red"
+            marker = "✓" if is_correct else "✗"
+
+            text = f"{marker}  Expected: {expected:>8s}  │  Got: {predicted:>8s}"
+            ax.text(0.05, y_positions[i], text,
+                    fontsize=9, fontfamily="monospace",
+                    color=color, transform=ax.transAxes,
+                    verticalalignment="center")
+
+        # Show accuracy summary
+        n_correct = sum(1 for _, _, c in self._last_predictions if c)
+        n_total = len(self._last_predictions)
+        accuracy = n_correct / n_total * 100 if n_total > 0 else 0
+        ax.text(0.95, 0.02, f"Batch accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)",
+                ha="right", va="bottom", fontsize=9, fontweight="bold",
+                transform=ax.transAxes, alpha=0.7)
+
+
+    def _draw_model_info(self):
+        """Draw basic model information."""
+        ax = self.ax_info
+        if ax is None:
+            return
+        ax.clear()
+        ax.axis("off")
+        ax.set_title("Model Info", fontsize=10, fontweight="bold")
+
+        if not self._model_info:
+            ax.text(0.5, 0.5, "No model info available",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    transform=ax.transAxes)
+            return
+
+        info_lines = [
+            f"Architecture:  TinyGPT",
+            f"Parameters:    {self._model_info.get('params', '?'):,}",
+            f"d_model:       {self._model_info.get('d_model', '?')}",
+            f"n_heads:       {self._model_info.get('n_heads', '?')}",
+            f"n_layers:      {self._model_info.get('n_layers', '?')}",
+            f"max_seq_len:   {self._model_info.get('max_seq_len', '?')}",
+            f"vocab_size:    {self._model_info.get('vocab_size', '?')}",
+            f"dropout:       {self._model_info.get('dropout', '?')}",
+            f"optimizer:     {self._model_info.get('optimizer', '?')}",
+            f"scheduler:     {self._model_info.get('scheduler', '?')}",
+            f"lr:            {self._model_info.get('lr', '?')}",
+            f"device:        {self._model_info.get('device', '?')}",
+        ]
+
+        y_positions = np.linspace(0.92, 0.08, len(info_lines))
+        for i, line in enumerate(info_lines):
+            ax.text(0.05, y_positions[i], line,
+                    fontsize=9, fontfamily="monospace",
+                    color="black",  # <-- FIXED: was "white", invisible on white bg
+                    transform=ax.transAxes,
+                    verticalalignment="center")
+
+
+    def update_predictions(self, predictions: list):
+        """
+        Update the predictions panel.
+
+        Args:
+            predictions: List of tuples (expected_str, predicted_str, is_correct)
+        """
+        if not self.enabled:
+            return
+        self._last_predictions = predictions
+        self._draw_predictions()
+        self._refresh()
+
+
+    def set_model_info(self, info: dict):
+        """Set model info to display."""
+        self._model_info = info
+        self._draw_model_info()
+        self._refresh()
+
 
     def _draw_barcode(self, dgms: list, layer_name: str):
         ax = self.ax_barcode
@@ -1409,6 +1618,20 @@ def train(args: argparse.Namespace):
 
     actual_params = model.count_parameters()
 
+    plotter.set_model_info({
+        "params": actual_params,
+        "d_model": cfg["d_model"],
+        "n_heads": cfg["n_heads"],
+        "n_layers": cfg["n_layers"],
+        "max_seq_len": args.max_seq_len,
+        "vocab_size": tokenizer.vocab_size,
+        "dropout": args.dropout,
+        "optimizer": args.optimizer,
+        "scheduler": args.scheduler,
+        "lr": args.lr,
+        "device": device,
+    })
+
     # ── Resume from checkpoint ──────────────────────────────────────────
     start_epoch = 0
     resumed_train_losses = []
@@ -1648,6 +1871,11 @@ def train(args: argparse.Namespace):
                     plotter.update_val_batch(vl)
                     if run_logger:
                         run_logger.log_batch_loss_val(epoch, val_batches, vl)
+
+                    if batch:
+                        preds = get_batch_predictions(model, tokenizer, batch, device)
+                        plotter.update_predictions(preds)
+
 
                     progress.update(task, advance=1, loss=vl)
 
