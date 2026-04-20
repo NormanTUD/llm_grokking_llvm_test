@@ -8,6 +8,10 @@ DIR="${DIR%/}/"
 # Samples-Unterverzeichnis
 SAMPLES_DIR="${DIR}samples/"
 
+# Plot-Ausgabeverzeichnis erstellen
+PLOT_DIR="${DIR}plots/"
+mkdir -p "$PLOT_DIR"
+
 # Prüfen ob das Verzeichnis existiert
 if [ ! -d "$SAMPLES_DIR" ]; then
     echo "Fehler: Verzeichnis '$SAMPLES_DIR' nicht gefunden!"
@@ -38,16 +42,41 @@ END {
 
 echo "Berechneter Median: $median%"
 
-# 3. Filterung und Plotting mit Gnuplot
-# Filter: wert > (median - 50) && wert < (median + 50)
+# 3. Filterung
 echo "$data" | awk -v m="$median" '
 { if ($1 > (m - 50) && $1 < (m + 50)) print $1 }
 ' > "${DIR}filtered_data.dat"
 
-gnuplot -p <<EOF
+# Alle Daten auch speichern (für ungefiltertes Plot)
+echo "$data" > "${DIR}all_data.dat"
+
+# 4. Dateinamen definieren
+PLOT_FILTERED="${PLOT_DIR}relative_error_filtered.png"
+PLOT_ALL="${PLOT_DIR}relative_error_all.png"
+
+# 5. Plotting mit Gnuplot als PNG-Dateien
+gnuplot <<EOF
+set terminal pngcairo size 1200,600 enhanced font "Arial,12"
+
+# Plot 1: Gefilterte Daten
+set output "${PLOT_FILTERED}"
 set title "Relative Abweichung (Gefiltert: Median ±50%)"
 set ylabel "Abweichung in %"
 set xlabel "Datenpunkt"
 set grid
-plot "${DIR}filtered_data.dat" with linespoints title "Rel. Error"
+plot "${DIR}filtered_data.dat" with linespoints title "Rel. Error (filtered)"
+
+# Plot 2: Alle Daten (ungefiltert)
+set output "${PLOT_ALL}"
+set title "Relative Abweichung (Alle Datenpunkte)"
+set ylabel "Abweichung in %"
+set xlabel "Datenpunkt"
+set grid
+plot "${DIR}all_data.dat" with linespoints title "Rel. Error (all)"
 EOF
+
+# 6. Ergebnis ausgeben
+echo ""
+echo "Plots gespeichert:"
+echo "  $PLOT_FILTERED"
+echo "  $PLOT_ALL"
