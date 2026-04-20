@@ -992,91 +992,66 @@ def _compute_structure_penalty(
     predicted_str: str,
 ) -> float:
     """
-    Compute a scalar penalty for a single prediction.
-
     Hierarchy (strictly ordered, NO overlap between levels):
-      0.0          — perfect match
+      0.0          — perfect match (numeric)
       (0, 0.99]    — wrong integer (ALWAYS better than any non-integer)
-      [1.0, 1.99]  — float-like string (e.g. "-3.5")
-      [2.0, 3.99]  — partially numeric / dash-prefixed (e.g. "---", "-3abc")
-      [4.0, 5.99]  — pure garbage (e.g. "hello", "???")
+      [1.0, 1.99]  — float-like string
+      [2.0, 3.99]  — partially numeric / dash-prefixed
+      [4.0, 5.99]  — pure garbage
       6.0          — empty output (fixed ceiling)
-
-    Key invariant: ANY valid integer (even wildly wrong) is ALWAYS penalized
-    less than ANY non-integer output. This ensures the model is always
-    rewarded for producing integers over garbage.
-
-    Within each level, length closeness to expected_str is a tiebreaker
-    (closer length → lower penalty).
     """
     if not predicted_str:
-        # Empty output is always the worst — fixed ceiling so it doesn't
-        # vary with expected length (which would confuse training)
         return 6.0
-
-    # ── Level 1: Perfect match ──────────────────────────────────────────
-    if predicted_str.strip() == expected_str.strip():
-        return 0.0
 
     int_pattern = re.compile(r'^-?\d+$')
     float_pattern = re.compile(r'^-?\d+\.\d+$')
     partial_numeric = re.compile(r'^-?\d')
 
-    # ── Level 2: Valid integer — range (0, 0.99] ────────────────────────
-    # Capped at 0.99 so ANY integer is ALWAYS better than ANY non-integer.
-    # Uses asymptotic formula: approaches 0.99 for huge diffs but never
-    # exceeds it.
-    if int_pattern.match(predicted_str):
+    # ── Clean BPE artifacts before any comparison ───────────────────────
+    # ByteLevel BPE can produce 'Ġ' (U+0120) and similar prefixes.
+    # Strip all non-ASCII-printable characters, then strip whitespace.
+    cleaned = ''.join(c for c in predicted_str if c.isascii() and c.isprintable())
+    cleaned = cleaned.strip()
+
+    if not cleaned:
+        return 6.0
+
+    # ── Level 1: Perfect match — NUMERIC comparison, not string ─────────
+    # This avoids false negatives from "05" vs "5", "-0" vs "0", etc.
+    if int_pattern.match(cleaned):
         try:
-            pred_int = int(predicted_str)
+            pred_int = int(cleaned)
             diff = abs(expected_int - pred_int)
-            # 0.99 * (1 - 1/(1 + log(1+diff)))
-            #   diff=0  → 0.0  (perfect, but string didn't match — e.g. leading zeros)
-            #   diff=1  → 0.99 * (1 - 1/1.693) ≈ 0.41
-            #   diff=10 → 0.99 * (1 - 1/3.398) ≈ 0.70
-            #   diff=9999 → 0.99 * (1 - 1/10.21) ≈ 0.89
-            #   diff→∞  → 0.99
+            if diff == 0:
+                return 0.0
+            # Level 2: Wrong integer — capped at 0.99
             return 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
-            pass  # fall through (e.g. integer too large for Python)
+            pass
 
     # ── Level 3: Float-like string — range [1.0, 1.99] ─────────────────
-    # The model produced something like "-3.5" — it understands numeric
-    # structure but isn't producing integers. Still much better than garbage.
-    if float_pattern.match(predicted_str):
+    if float_pattern.match(cleaned):
         try:
-            pred_float = float(predicted_str)
+            pred_float = float(cleaned)
             diff = abs(expected_int - pred_float)
+            if diff == 0.0:
+                return 1.0  # exact float match, but still not an int
             return 1.0 + 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
-            return 1.5  # unparseable float — middle of range
+            return 1.5
 
-    # ── Shared: length penalty (used by levels 4 and 5) ─────────────────
-    # Closer to expected length → lower penalty within the level.
-    # Capped at 0.5 so it can't push a level into the next level's range.
-    len_diff = abs(len(predicted_str) - len(expected_str))
+    # ── Shared: length penalty ──────────────────────────────────────────
+    len_diff = abs(len(cleaned) - len(expected_str))
     len_penalty = min(0.5, math.log1p(len_diff) * 0.2)
 
     # ── Level 4: Partially numeric / dash-prefixed — range [2.0, 3.99] ──
-    # Strings like "---", "-3abc", "12xy" — they show SOME numeric structure.
-    # The model is "trying" to produce numbers. Better than pure garbage.
-    #
-    # Key insight from your spec: "-----" should be better than "hello"
-    # because "-" at the beginning could be right for a negative number.
-    #
-    # numeric_ratio measures what fraction of characters are number-like.
-    # Higher ratio → lower penalty (more number-like).
-    if predicted_str.startswith('-') or partial_numeric.match(predicted_str):
-        numeric_chars = sum(1 for c in predicted_str if c in '-0123456789.')
-        numeric_ratio = numeric_chars / max(len(predicted_str), 1)
-        # numeric_ratio=1.0 (all numeric chars) → 2.0 + 0.0 + len_penalty
-        # numeric_ratio=0.0 (no numeric chars)  → 2.0 + 1.5 + len_penalty
+    if cleaned.startswith('-') or partial_numeric.match(cleaned):
+        numeric_chars = sum(1 for c in cleaned if c in '-0123456789.')
+        numeric_ratio = numeric_chars / max(len(cleaned), 1)
         return 2.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
 
     # ── Level 5: Pure garbage — range [4.0, 5.99] ──────────────────────
-    # No numeric structure at all. The model is producing random tokens.
-    # Longer garbage is slightly worse (more tokens wasted).
-    return 4.0 + len_penalty + min(1.5, math.log1p(len(predicted_str)) * 0.4)
+    return 4.0 + len_penalty + min(1.5, math.log1p(len(cleaned)) * 0.4)
 
 class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None,
@@ -2499,28 +2474,29 @@ class LivePlotter:
             except (ValueError, TypeError):
                 exp_parseable = False
 
+            # Clean BPE artifacts before parsing
+            pred_cleaned = ''.join(
+                c for c in predicted if c.isascii() and c.isprintable()
+            ).strip()
+
             try:
-                pred_val = int(predicted.strip())
+                pred_val = int(pred_cleaned)
             except (ValueError, TypeError):
                 pred_parseable = False
 
-            # ── Determine color and marker based on NUMERIC comparison ──
+            # ── Determine color and marker from NUMERIC comparison ──────
             if exp_parseable and pred_parseable:
                 diff = abs(exp_val - pred_val)
                 if diff == 0:
-                    # Perfect numeric match — always green
                     color = "green"
                     marker = "✓"
                 elif diff <= 5:
-                    # Close — orange/yellow (not terrible)
                     color = "orange"
                     marker = "≈"
                 elif diff <= 50:
-                    # Moderate error
                     color = "darkorange"
                     marker = "✗"
                 else:
-                    # Large error
                     color = "red"
                     marker = "✗"
 
@@ -2530,19 +2506,17 @@ class LivePlotter:
                 )
 
             elif exp_parseable and not pred_parseable:
-                # Model produced garbage — always bright red
                 color = "red"
                 marker = "✗"
-                pred_display = predicted.strip()[:20]
-                if len(predicted.strip()) > 20:
-                    pred_display += "…"
+                pred_display = pred_cleaned[:20] if pred_cleaned else predicted.strip()[:20]
+                if len(pred_display) > 20:
+                    pred_display = pred_display[:20] + "…"
                 text = (
                     f"{marker}  expected: {exp_val:>6d}  │  "
                     f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
                 )
 
             else:
-                # Both unparseable (shouldn't happen normally)
                 color = "red"
                 marker = "✗"
                 text = (
@@ -2555,16 +2529,22 @@ class LivePlotter:
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
-        # Summary stats — also use numeric comparison
+        # Summary stats — use numeric comparison
         n_correct = sum(
             1 for exp, pred, _ in self._last_predictions
-            if _is_int_str(exp) and _is_int_str(pred)
-            and int(exp.strip()) == int(pred.strip())
+            if _is_int_str(exp) and _is_int_str(
+                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+            )
+            and int(exp.strip()) == int(
+                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+            )
         )
         n_total = len(self._last_predictions)
         n_garbage = sum(
             1 for _, pred, _ in self._last_predictions
-            if not _is_int_str(pred)
+            if not _is_int_str(
+                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+            )
         )
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
 
