@@ -1,4 +1,5 @@
 llvmlite
+tokenizer
 torchinfo
 rich
 torch
