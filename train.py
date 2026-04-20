@@ -1385,7 +1385,28 @@ def train(args: argparse.Namespace):
 
     # ── Create model ────────────────────────────────────────────────────
     model = TinyGPT(model_config).to(device)
-    summary(model, input_size=(1, 128), dtypes=[torch.long])
+
+    # ── Model summary in Rich panel ────────────────────────────────────
+    from torchinfo import summary as torchinfo_summary
+
+    model_stats = torchinfo_summary(
+        model,
+        input_size=(1, 128),
+        dtypes=[torch.long],
+        verbose=0,  # suppress direct printing
+    )
+
+    # Build a Rich table from the summary string
+    summary_text = str(model_stats)
+    summary_panel = Panel(
+        Text(summary_text, style="white"),
+        title="[bold cyan]📐 Model Summary (torchinfo)",
+        border_style="cyan",
+        padding=(1, 2),
+        expand=False,
+    )
+    console.print(summary_panel)
+
     actual_params = model.count_parameters()
 
     # ── Resume from checkpoint ──────────────────────────────────────────
