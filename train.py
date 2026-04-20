@@ -2222,7 +2222,7 @@ class LivePlotter:
                 except Exception:
                     pass
 
-        y_positions = np.linspace(0.95, 0.02, len(info_lines))
+        y_positions = np.linspace(0.95, 0.01, len(info_lines))
         for i, line in enumerate(info_lines):
             ax.text(0.05, y_positions[i], line,
                     fontsize=8, fontfamily="monospace",
