@@ -45,6 +45,7 @@ def _restore_c_stderr():
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchinfo import summary
 
 from rich.console import Console
 from rich.table import Table
@@ -565,8 +566,14 @@ class TinyGPT(nn.Module):
         return model
 
 
-class _ModelOutput:
+class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None, last_hidden_state=None):
+        super().__init__(
+            loss=loss,
+            logits=logits,
+            hidden_states=hidden_states,
+            last_hidden_state=last_hidden_state,
+        )
         self.loss = loss
         self.logits = logits
         self.hidden_states = hidden_states
@@ -1378,6 +1385,7 @@ def train(args: argparse.Namespace):
 
     # ── Create model ────────────────────────────────────────────────────
     model = TinyGPT(model_config).to(device)
+    summary(model, input_size=(1, 128), dtypes=[torch.long])
     actual_params = model.count_parameters()
 
     # ── Resume from checkpoint ──────────────────────────────────────────
