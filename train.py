@@ -67,7 +67,6 @@ from rich.text import Text
 from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
-from random_llvm_gen import generate_random_function
 from generate_samples import generate_example_samples
 import subprocess
 from run_logger import RunLogger
@@ -194,7 +193,7 @@ def parse_args() -> argparse.Namespace:
                    help="Device")
     g.add_argument("--seed", type=int, default=42,
                    help="Random seed")
-    g.add_argument("--plot", action="store_true", default=True,
+    g.add_argument("--plot", action="store_true", default=False,
                    help="Enable live matplotlib")
     g.add_argument("--no-plot", action="store_false", dest="plot",
                    help="Disable live plotting")
@@ -281,8 +280,11 @@ def wait_for_pid(pid: int, poll_interval: float = 2.0):
     while True:
         try:
             os.kill(pid, 0)  # signal 0: doesn't kill, just checks existence
-        except ProcessNotFoundError:
-            break
+        except OSError as e:
+            import errno
+            if e.errno == errno.ESRCH:
+                break
+            raise
         except PermissionError:
             # Process exists but we don't own it — still alive
             pass
@@ -475,14 +477,18 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
         input_ids:       (B, T)  — input tokens (shifted right)
         target_ids:      (B, T)  — target tokens (shifted left, prompt masked to pad_id)
         value_positions: (B,)    — index of the last <sep> in input_ids (for value head)
-                                   Set to 0 for unparseable answers (masked out in loss).
+                                   Set to 0 ONLY when no <sep> tokens exist at all.
+                                   Kept nonzero for unparseable answers so the structure
+                                   penalty can still operate on the answer region.
         value_targets:   (B,)    — float tensor of expected integer results
                                    Set to NaN for unparseable answers.
+        answer_parseable:(B,)    — bool tensor: True if the answer was a valid integer.
     """
     max_len = max(len(s) for s, _ in batch)
     input_ids, target_ids = [], []
     value_positions = []
     value_targets = []
+    answer_parseable = []
 
     sep_id = None
     eos_id = None
@@ -504,7 +510,9 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
 
         # ── Find value_position: last <sep> in inp ──────────────────────
         vp = 0
-        vt = float("nan")  # Default: unparseable → NaN
+        vt = float("nan")
+        parseable = False
+
         if sep_id is not None:
             sep_positions = [i for i, tid in enumerate(inp) if tid == sep_id]
             if len(sep_positions) >= 2:
@@ -518,19 +526,24 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
                 try:
                     answer_str = tokenizer.decode(answer_ids).strip()
                     vt = float(int(answer_str))
+                    parseable = True
                 except (ValueError, TypeError):
-                    # Answer is not a valid integer — mark as invalid
-                    vp = 0          # will be masked out in loss
-                    vt = float("nan")
+                    # Answer is not a valid integer.
+                    # KEEP vp nonzero — the answer region still exists,
+                    # we just don't know the numeric target.
+                    # vt stays NaN, parseable stays False.
+                    pass
 
         value_positions.append(vp)
         value_targets.append(vt)
+        answer_parseable.append(parseable)
 
     return (
         torch.tensor(input_ids, dtype=torch.long),
         torch.tensor(target_ids, dtype=torch.long),
         torch.tensor(value_positions, dtype=torch.long),
         torch.tensor(value_targets, dtype=torch.float),
+        torch.tensor(answer_parseable, dtype=torch.bool),
     )
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
@@ -864,38 +877,27 @@ def compute_structured_loss(
     tgt: torch.Tensor,
     value_positions: torch.Tensor,
     value_targets: torch.Tensor,
+    answer_parseable: torch.Tensor,
     tokenizer: 'BPETokenizer',
     device: str,
     alpha_value: float = 0.1,
     alpha_structure: float = 0.5,
     use_log_scale: bool = True,
-) -> Tuple[torch.Tensor, float, float, float]:
+) -> Tuple[torch.Tensor, float, float, float, float]:
     """
     Combined loss with a **differentiable** structure-aware penalty.
 
-    Three loss components:
+    Four loss components:
       1. Cross-entropy loss (standard next-token prediction)
       2. Value regression loss (L1 or log-L1 on the value head)
       3. Structure penalty loss — computed IN LOGIT SPACE so gradients
          flow through the model's actual token probability distributions.
-
-    The structure penalty works by constructing soft per-token targets
-    for the answer region and computing a differentiable distance between
-    the model's predicted log-probabilities and those targets. This means
-    the model receives gradient signal about WHICH tokens to produce,
-    not just a uniform scaling of the CE loss.
-
-    Differentiable penalty components:
-      (a) Digit-class probability mass: encourages the model to place
-          probability on digit/minus tokens in the answer region.
-      (b) Per-position soft target KL: for each answer position, builds
-          a soft target distribution from the expected answer token and
-          computes KL divergence against the model's log-probs.
-      (c) Length penalty: differentiable penalty if the model assigns
-          high probability to <eos>/<pad> too early or too late.
+      4. Parsability penalty — applied to samples where the answer region
+         exists but the target value is unparseable. Ensures the structure
+         penalty never silently vanishes for bad samples.
 
     Returns:
-        (total_loss, ce_loss_val, value_loss_val, structure_loss_val)
+        (total_loss, ce_loss_val, value_loss_val, structure_loss_val, parsability_rate)
     """
     output = model(
         input_ids=inp,
@@ -911,7 +913,7 @@ def compute_structured_loss(
     val_loss_val = 0.0
     value_loss_term = torch.tensor(0.0, device=device)
     if value_preds is not None and alpha_value > 0:
-        valid_mask = (value_positions > 0) & (~torch.isnan(value_targets))
+        valid_mask = (value_positions > 0) & answer_parseable & (~torch.isnan(value_targets))
         if valid_mask.any():
             vp = value_preds[valid_mask]
             vt = value_targets[valid_mask]
@@ -927,15 +929,19 @@ def compute_structured_loss(
         tgt=tgt,
         value_positions=value_positions,
         value_targets=value_targets,
+        answer_parseable=answer_parseable,
         tokenizer=tokenizer,
         device=device,
     )
 
-    # ── Combine all three losses ────────────────────────────────────────
-    # Each component has its own gradient path through the model:
-    #   - ce_loss:             gradients via next-token prediction (all positions)
-    #   - value_loss_term:     gradients via value head (at sep position)
-    #   - structure_loss_term: gradients via answer-region logits (digit focus + soft KL)
+    # ── Parsability rate for logging ────────────────────────────────────
+    has_answer_region = (value_positions > 0)
+    if has_answer_region.any():
+        parsability_rate = answer_parseable[has_answer_region].float().mean().item()
+    else:
+        parsability_rate = 0.0
+
+    # ── Combine all losses ──────────────────────────────────────────────
     total_loss = ce_loss + alpha_value * value_loss_term + alpha_structure * structure_loss_term
 
     return (
@@ -943,6 +949,7 @@ def compute_structured_loss(
         ce_loss.item(),
         val_loss_val,
         structure_loss_val,
+        parsability_rate,
     )
 
 
@@ -974,12 +981,12 @@ def _build_digit_token_set(tokenizer: 'BPETokenizer') -> torch.Tensor:
     tokenizer._digit_mask_cache = mask
     return mask
 
-
 def _compute_differentiable_structure_penalty(
-    logits: torch.Tensor,       # (B, T, V)
-    tgt: torch.Tensor,          # (B, T)
+    logits: torch.Tensor,           # (B, T, V)
+    tgt: torch.Tensor,              # (B, T)
     value_positions: torch.Tensor,  # (B,)
     value_targets: torch.Tensor,    # (B,)
+    answer_parseable: torch.Tensor, # (B,)
     tokenizer: 'BPETokenizer',
     device: str,
     temperature: float = 1.0,
@@ -990,21 +997,23 @@ def _compute_differentiable_structure_penalty(
     This operates entirely in logit/probability space, so gradients flow
     back through the model's parameters via the logits.
 
-    Three sub-penalties (all differentiable):
+    KEY FIX: For samples where the answer region exists (value_positions > 0)
+    but the target value is unparseable (answer_parseable=False), we STILL
+    apply the digit-focus and length-calibration penalties. This ensures
+    the model always receives gradient signal to produce numeric tokens in
+    the answer region, even when we can't compute the KL target.
 
-    1. **Digit focus loss**: For each answer-region position, compute the
-       total probability mass the model places on "numeric" tokens (digits,
-       minus sign). Penalize 1 - P(numeric) so the model is encouraged to
-       produce digit-like tokens in the answer region.
+    For parseable samples, all three sub-penalties apply:
+      1. Digit focus loss
+      2. Soft target KL divergence
+      3. Length calibration loss
 
-    2. **Soft target KL divergence**: For each answer position, construct
-       a soft target distribution that places most mass on the correct
-       target token and a small amount on other digit tokens. Compute
-       KL(soft_target || model_probs) which is differentiable w.r.t. logits.
-
-    3. **Length calibration loss**: Penalize the model if it assigns high
-       probability to EOS/PAD tokens before the answer is complete, or
-       low probability to EOS at the position where the answer should end.
+    For unparseable samples (answer region exists but value is NaN):
+      1. Digit focus loss (FULL WEIGHT — this is the primary learning signal)
+      2. Soft target KL: SKIPPED (we don't know the correct tokens)
+      3. Length calibration loss (still applies — answer should end with EOS)
+      4. Anti-garbage penalty: extra penalty proportional to probability mass
+         on non-digit tokens, with a higher weight than for parseable samples.
 
     Returns:
         (loss_tensor, loss_scalar_for_logging)
@@ -1020,10 +1029,16 @@ def _compute_differentiable_structure_penalty(
     log_probs = F.log_softmax(logits / temperature, dim=-1)  # (B, T, V)
     probs = log_probs.exp()  # (B, T, V)
 
-    # Accumulators for the three sub-penalties
+    # Accumulators for the sub-penalties
     digit_focus_losses = []
     kl_losses = []
     length_losses = []
+    anti_garbage_losses = []
+
+    # Counters for diagnostics
+    n_parseable = 0
+    n_unparseable_with_region = 0
+    n_skipped = 0
 
     # Soft target: 85% on correct token, 15% spread over other digit tokens
     CORRECT_MASS = 0.85
@@ -1032,15 +1047,16 @@ def _compute_differentiable_structure_penalty(
     for b in range(B):
         vp_idx = value_positions[b].item()
         if vp_idx == 0:
-            continue  # skip invalid samples
-
-        vt = value_targets[b].item()
-        if math.isnan(vt):
+            # No answer region at all (no <sep> tokens found)
+            n_skipped += 1
             continue
 
+        is_parseable = answer_parseable[b].item()
+        vt = value_targets[b].item()
+
         # Determine the answer region in the target
-        answer_start = vp_idx  # position after last <sep> in input
-        answer_end = T  # will be trimmed below
+        answer_start = vp_idx
+        answer_end = T
 
         # Find where the answer ends (first pad or eos in target)
         for t_idx in range(answer_start, T):
@@ -1050,57 +1066,24 @@ def _compute_differentiable_structure_penalty(
                 break
 
         if answer_end <= answer_start:
+            n_skipped += 1
             continue
 
         answer_len = answer_end - answer_start
 
-        # ── Sub-penalty 1: Digit focus ──────────────────────────────────
+        # ── Sub-penalty 1: Digit focus (ALWAYS applied) ────────────────
         # For each answer position, compute P(any digit token) and penalize
-        # 1 - P(digit). This is fully differentiable through probs.
+        # 1 - P(digit). Applied to ALL samples with an answer region.
         answer_probs = probs[b, answer_start:answer_end, :]  # (answer_len, V)
         digit_prob_mass = answer_probs[:, digit_mask].sum(dim=-1)  # (answer_len,)
-        # Loss: mean(1 - P(digit)) over answer positions
         digit_focus_loss = (1.0 - digit_prob_mass).mean()
         digit_focus_losses.append(digit_focus_loss)
 
-        # ── Sub-penalty 2: Soft target KL divergence ────────────────────
-        # For each answer position, build a soft target and compute KL.
-        answer_log_probs = log_probs[b, answer_start:answer_end, :]  # (answer_len, V)
-        answer_targets = tgt[b, answer_start:answer_end]  # (answer_len,)
-
-        # Build soft target distributions: (answer_len, V)
-        n_digit_tokens = digit_mask.sum().float().clamp(min=1.0)
-        # Base: spread DIGIT_SPREAD_MASS uniformly over digit tokens
-        soft_targets = torch.zeros(answer_len, V, device=device)
-        soft_targets[:, digit_mask] = DIGIT_SPREAD_MASS / n_digit_tokens
-
-        # Place CORRECT_MASS on the actual target token for each position
-        for pos_idx in range(answer_len):
-            target_tok = answer_targets[pos_idx].item()
-            if target_tok != pad_id and target_tok != eos_id:
-                soft_targets[pos_idx, target_tok] += CORRECT_MASS
-                # Re-normalize to ensure it sums to 1
-                soft_targets[pos_idx] = soft_targets[pos_idx] / soft_targets[pos_idx].sum()
-
-        # KL(soft_target || model) = sum(soft_target * (log(soft_target) - log_model))
-        # Use F.kl_div which expects log_probs as input and targets as probs
-        # F.kl_div(input=log_q, target=p) computes sum(p * (log(p) - log_q))
-        kl = F.kl_div(
-            answer_log_probs,
-            soft_targets,
-            reduction='batchmean',
-            log_target=False,
-        )
-        kl_losses.append(kl)
-
-        # ── Sub-penalty 3: Length calibration ───────────────────────────
-        # Penalize high P(eos) before the answer is complete
+        # ── Sub-penalty 3: Length calibration (ALWAYS applied) ──────────
         if eos_id is not None and answer_len > 1:
-            # For positions BEFORE the last answer token, penalize P(eos)
-            early_eos_probs = probs[b, answer_start:answer_end - 1, eos_id]  # (answer_len-1,)
+            early_eos_probs = probs[b, answer_start:answer_end - 1, eos_id]
             early_eos_penalty = early_eos_probs.mean()
 
-            # At the position right after the answer, encourage P(eos)
             if answer_end < T:
                 eos_at_end = probs[b, answer_end, eos_id]
                 late_eos_penalty = (1.0 - eos_at_end)
@@ -1110,10 +1093,61 @@ def _compute_differentiable_structure_penalty(
             length_loss = 0.5 * early_eos_penalty + 0.5 * late_eos_penalty
             length_losses.append(length_loss)
 
+        if is_parseable and not math.isnan(vt):
+            # ── Sub-penalty 2: Soft target KL (parseable only) ──────────
+            n_parseable += 1
+
+            answer_log_probs = log_probs[b, answer_start:answer_end, :]
+            answer_targets_tok = tgt[b, answer_start:answer_end]
+
+            n_digit_tokens = digit_mask.sum().float().clamp(min=1.0)
+            soft_targets = torch.zeros(answer_len, V, device=device)
+            soft_targets[:, digit_mask] = DIGIT_SPREAD_MASS / n_digit_tokens
+
+            for pos_idx in range(answer_len):
+                target_tok = answer_targets_tok[pos_idx].item()
+                if target_tok != pad_id and target_tok != eos_id:
+                    soft_targets[pos_idx, target_tok] += CORRECT_MASS
+                    row_sum = soft_targets[pos_idx].sum()
+                    if row_sum > 0:
+                        soft_targets[pos_idx] = soft_targets[pos_idx] / row_sum
+
+            kl = F.kl_div(
+                answer_log_probs,
+                soft_targets,
+                reduction='batchmean',
+                log_target=False,
+            )
+            kl_losses.append(kl)
+
+        else:
+            # ── Unparseable sample with answer region ───────────────────
+            # We can't compute KL (don't know the target), but we CAN
+            # apply an EXTRA anti-garbage penalty: penalize probability
+            # mass on non-digit, non-eos, non-pad tokens in the answer
+            # region. This is strictly stronger than digit_focus alone.
+            n_unparseable_with_region += 1
+
+            # Compute entropy of the answer region — high entropy means
+            # the model is uncertain, which is better than confidently
+            # producing garbage. Penalize LOW entropy on non-digit tokens.
+            non_digit_mask = ~digit_mask.clone()
+            # Don't penalize eos/pad (they're structural, not garbage)
+            if eos_id is not None and eos_id < V:
+                non_digit_mask[eos_id] = False
+            if pad_id is not None and pad_id < V:
+                non_digit_mask[pad_id] = False
+
+            answer_probs_b = probs[b, answer_start:answer_end, :]
+            # Total probability on garbage (non-digit, non-structural) tokens
+            garbage_prob_mass = answer_probs_b[:, non_digit_mask].sum(dim=-1)
+            # Penalty: mean garbage probability across answer positions
+            # This is differentiable and pushes mass away from garbage tokens
+            anti_garbage = garbage_prob_mass.mean()
+            anti_garbage_losses.append(anti_garbage)
+
     # ── Aggregate ───────────────────────────────────────────────────────
-    # Each sub-loss is a differentiable tensor. We average across the batch
-    # and combine with learned-friendly weights.
-    zero = torch.tensor(0.0, device=device)
+    zero = torch.tensor(0.0, device=device, requires_grad=False)
 
     if digit_focus_losses:
         avg_digit = torch.stack(digit_focus_losses).mean()
@@ -1130,26 +1164,62 @@ def _compute_differentiable_structure_penalty(
     else:
         avg_length = zero
 
-    # Weighted combination of sub-penalties
-    # These weights control the relative importance:
-    #   - digit focus:  encourages numeric output (broad signal)
-    #   - KL:           encourages correct specific tokens (precise signal)
-    #   - length:       encourages correct answer length (structural signal)
+    if anti_garbage_losses:
+        avg_anti_garbage = torch.stack(anti_garbage_losses).mean()
+    else:
+        avg_anti_garbage = zero
+
+    # ── Adaptive weighting ──────────────────────────────────────────────
+    # When most samples are unparseable, the digit focus and anti-garbage
+    # penalties should dominate. When most are parseable, KL dominates.
+    total_with_region = n_parseable + n_unparseable_with_region
+    if total_with_region > 0:
+        parseable_ratio = n_parseable / total_with_region
+    else:
+        parseable_ratio = 0.0
+
+    # Base weights (when all samples are parseable)
     WEIGHT_DIGIT = 0.2
     WEIGHT_KL = 0.6
     WEIGHT_LENGTH = 0.2
+    WEIGHT_ANTI_GARBAGE = 0.0
+
+    # Shift weights when samples are unparseable:
+    # - KL weight scales down (can't compute it for unparseable)
+    # - Digit focus and anti-garbage scale up to compensate
+    effective_kl_weight = WEIGHT_KL * parseable_ratio
+    unparseable_ratio = 1.0 - parseable_ratio
+    effective_digit_weight = WEIGHT_DIGIT + 0.3 * unparseable_ratio
+    effective_garbage_weight = 0.4 * unparseable_ratio
+    effective_length_weight = WEIGHT_LENGTH
+
+    # Normalize so weights sum to 1.0 (preserves loss scale)
+    total_weight = (effective_digit_weight + effective_kl_weight +
+                    effective_length_weight + effective_garbage_weight)
+    if total_weight > 0:
+        effective_digit_weight /= total_weight
+        effective_kl_weight /= total_weight
+        effective_length_weight /= total_weight
+        effective_garbage_weight /= total_weight
 
     total_structure = (
-        WEIGHT_DIGIT * avg_digit
-        + WEIGHT_KL * avg_kl
-        + WEIGHT_LENGTH * avg_length
+        effective_digit_weight * avg_digit
+        + effective_kl_weight * avg_kl
+        + effective_length_weight * avg_length
+        + effective_garbage_weight * avg_anti_garbage
     )
 
-    # Scalar for logging (detached)
-    structure_scalar = total_structure.item() if total_structure.requires_grad else total_structure.item() if isinstance(total_structure, torch.Tensor) else 0.0
+    # Ensure we always return a tensor that participates in the graph
+    # even if all sub-losses are zero (prevents silent gradient death)
+    if not total_structure.requires_grad and total_with_region > 0:
+        # This shouldn't happen if any sub-loss was computed from probs,
+        # but as a safety net: add a tiny term from the logits directly
+        # so the graph stays connected.
+        total_structure = total_structure + 0.0 * logits.sum() * 0.0
+
+    structure_scalar = total_structure.item() if isinstance(total_structure, torch.Tensor) else 0.0
 
     return total_structure, structure_scalar
-
 
 def _compute_structure_penalty(
     expected_str: str,
@@ -3263,6 +3333,8 @@ def train(args: argparse.Namespace):
             TextColumn("•"),
             TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
             TextColumn("•"),
+            TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
+            TextColumn("•"),
             TextColumn("[dim]eta={task.fields[eta]}[/]"),
             TimeElapsedColumn(),
             console=console,
@@ -3270,8 +3342,9 @@ def train(args: argparse.Namespace):
         ) as progress:
             task = progress.add_task(
                 "train", total=args.batches_per_epoch,
-                loss=0.0, ema=0.0, vloss=0.0, eta="...",
+                loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
             )
+
             ema_loss = None
 
             for batch_idx in range(args.batches_per_epoch):
@@ -3288,7 +3361,7 @@ def train(args: argparse.Namespace):
                     continue
 
                 # ── Collate with value targets ──────────────────────────
-                inp, tgt, val_pos, val_tgt = collate_batch(
+                inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
                     batch,
                     pad_id=tokenizer.SPECIAL["<pad>"],
                     tokenizer=tokenizer,
@@ -3297,14 +3370,15 @@ def train(args: argparse.Namespace):
                 tgt = tgt.to(device)
                 val_pos = val_pos.to(device)
                 val_tgt = val_tgt.to(device)
+                ans_parseable = ans_parseable.to(device)
 
                 # ── Combined loss: CE + alpha * value regression ────────
-                loss, ce_val, vloss_val, struct_val = compute_structured_loss(
-                    model, inp, tgt, val_pos, val_tgt,
+                loss, ce_val, vloss_val, struct_val, parse_rate = compute_structured_loss(
+                    model, inp, tgt, val_pos, val_tgt, ans_parseable,
                     tokenizer=tokenizer,
                     device=device,
                     alpha_value=value_loss_alpha,
-                    alpha_structure=0.5,  # tune this — new CLI arg recommended
+                    alpha_structure=args.structure_loss_alpha,
                     use_log_scale=True,
                 )
 
@@ -3337,7 +3411,7 @@ def train(args: argparse.Namespace):
 
                 progress.update(
                     task, advance=1, loss=bl, ema=ema_loss,
-                    vloss=vloss_val,
+                    vloss=vloss_val, parse=parse_rate,
                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
                 )
 
@@ -3368,13 +3442,12 @@ def train(args: argparse.Namespace):
                         tokenizer, args.batch_size, args.max_params, args.max_ops,
                         allowed_ops, (args.param_min, args.param_max), args.max_seq_len,
                     )
-                    total_samples += len(batch)
 
                     if len(batch) < 2:
                         progress.update(task, advance=1, loss=0.0)
                         continue
 
-                    inp, tgt, val_pos, val_tgt = collate_batch(
+                    inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
                         batch,
                         pad_id=tokenizer.SPECIAL["<pad>"],
                         tokenizer=tokenizer,
@@ -3383,16 +3456,18 @@ def train(args: argparse.Namespace):
                     tgt = tgt.to(device)
                     val_pos = val_pos.to(device)
                     val_tgt = val_tgt.to(device)
+                    ans_parseable = ans_parseable.to(device)
 
                     # Use the same combined loss for validation metrics
-                    vl_total, vl_ce, vl_value, vl_struct = compute_structured_loss(
-                        model, inp, tgt, val_pos, val_tgt,
+                    vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = compute_structured_loss(
+                        model, inp, tgt, val_pos, val_tgt, ans_parseable,
                         tokenizer=tokenizer,
                         device=device,
                         alpha_value=value_loss_alpha,
-                        alpha_structure=0.5,
+                        alpha_structure=args.structure_loss_alpha,
                         use_log_scale=True,
                     )
+
                     vl = vl_total.item()
                     val_loss += vl
                     val_batches += 1
