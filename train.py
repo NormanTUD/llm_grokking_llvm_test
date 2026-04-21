@@ -2341,6 +2341,7 @@ class LivePlotter:
             )
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
             self.ax_diffs = ax_diffs
+            self._scatter_diffs = None
 
         else:
             self.fig = self.plt.figure(figsize=(24, 18))
@@ -2373,6 +2374,7 @@ class LivePlotter:
             )
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
             self.ax_diffs = ax_diffs
+            self._scatter_diffs = None
 
             self.ax_barcode = None
             self.ax_bd = None
@@ -2557,6 +2559,33 @@ class LivePlotter:
             self.line_diffs_mean.set_data(xs, means)
             self.line_diffs_median.set_data(xs, medians)
 
+            all_scatter_x = []
+            all_scatter_y = []
+            for i, batch_scores in enumerate(self._abs_diffs_history):
+                for s in batch_scores:
+                    all_scatter_x.append(i)
+                    all_scatter_y.append(s)
+
+            if all_scatter_x:
+                self._scatter_diffs = self.ax_diffs.scatter(
+                    all_scatter_x, all_scatter_y,
+                    s=14, alpha=0.30, color="steelblue", zorder=1,
+                    edgecolors="none",
+                )
+
+            n_updates = len(self._abs_diffs_history)
+            self.ax_diffs.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
+            self.ax_diffs.set_ylim(-0.05, 1.05)
+
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
+                Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
+                       markersize=6, alpha=0.5, linestyle='None', label="Individual"),
+            ]
+            self.ax_diffs.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
+
     def _on_close(self, event):
         """Called when the user closes the matplotlib window."""
         with self._lock:
@@ -2621,8 +2650,11 @@ class LivePlotter:
 
         _suppress_c_stderr()
         try:
-            # Only relim/autoscale on actual plot axes, not text panels
             for ax in self._plot_axes:
+                if ax is self.ax_diffs:
+                    # Skip relim/autoscale entirely for ax_diffs —
+                    # we manage its limits manually in update_prediction_diffs
+                    continue
                 ax.relim()
                 ax.autoscale_view()
 
@@ -2633,6 +2665,7 @@ class LivePlotter:
                 self.fig.canvas.draw()
         finally:
             _restore_c_stderr()
+
 
     # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
@@ -2784,56 +2817,88 @@ class LivePlotter:
             return
 
         scores = []
-        scale = 0.1  # Controls how fast numeric diffs approach 0.9
-                      # scale=0.1: |diff|=10 → 0.68, |diff|=25 → 0.87, |diff|=50 → 0.90
+        scale = 0.1
 
         for expected, predicted, _ in predictions:
-            # Parse expected
             try:
                 exp_val = int(expected.strip())
             except (ValueError, TypeError, AttributeError):
-                # If even the expected value is unparseable, skip entirely
-                # (we can't compute a meaningful score)
                 continue
 
-            # Clean BPE artifacts before parsing predicted
             pred_cleaned = ''.join(
                 c for c in predicted if c.isascii() and c.isprintable()
             ).strip()
 
-            # Try to parse predicted as integer
             try:
                 pred_val = int(pred_cleaned)
             except (ValueError, TypeError):
-                # Unparseable → maximum error score
                 scores.append(1.0)
                 continue
 
-            # Both are valid integers — compute numeric error score
             diff = abs(exp_val - pred_val)
             if diff == 0:
                 scores.append(0.0)
             else:
-                # tanh squashes to (0, 1), multiply by 0.9 so numeric errors
-                # are ALWAYS below 1.0 (which is reserved for garbage)
                 scores.append(0.9 * math.tanh(scale * diff))
 
         if not scores:
             return
 
-        # Append batch scores and update plot
         self._abs_diffs_history.append(scores)
 
-        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
-            means = [np.mean(d) for d in self._abs_diffs_history]
-            medians = [np.median(d) for d in self._abs_diffs_history]
-            xs = list(range(len(means)))
-            self.line_diffs_mean.set_data(xs, means)
-            self.line_diffs_median.set_data(xs, medians)
-            self.ax_diffs.set_ylim(-0.05, 1.05)  # Fixed range [0, 1]
-            self.ax_diffs.relim()
-            self.ax_diffs.autoscale_view(scaley=False)  # Only autoscale X
-            self._refresh()
+        if not hasattr(self, 'ax_diffs') or self.ax_diffs is None:
+            return
+
+        ax = self.ax_diffs
+
+        # ── Update mean/median lines ────────────────────────────────────
+        means = [np.mean(d) for d in self._abs_diffs_history]
+        medians = [np.median(d) for d in self._abs_diffs_history]
+        xs = list(range(len(means)))
+        self.line_diffs_mean.set_data(xs, means)
+        self.line_diffs_median.set_data(xs, medians)
+
+        # ── Remove old scatter ──────────────────────────────────────────
+        if self._scatter_diffs is not None:
+            try:
+                self._scatter_diffs.remove()
+            except (ValueError, AttributeError):
+                pass
+            self._scatter_diffs = None
+
+        # ── Build new scatter data ──────────────────────────────────────
+        all_scatter_x = []
+        all_scatter_y = []
+        for i, batch_scores in enumerate(self._abs_diffs_history):
+            for s in batch_scores:
+                all_scatter_x.append(i)
+                all_scatter_y.append(s)
+
+        if all_scatter_x:
+            self._scatter_diffs = ax.scatter(
+                all_scatter_x, all_scatter_y,
+                s=14, alpha=0.30, color="steelblue", zorder=1,
+                edgecolors="none",
+            )
+
+        # ── Set axis limits explicitly (scatter is invisible to relim) ──
+        n_updates = len(self._abs_diffs_history)
+        ax.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
+        ax.set_ylim(-0.05, 1.05)
+
+        # ── Update legend to include individual dots ────────────────────
+        # Rebuild legend with a proxy artist for the scatter
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
+            Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
+                   markersize=6, alpha=0.5, linestyle='None', label="Individual"),
+        ]
+        ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
+
+        # ── Force redraw ────────────────────────────────────────────────
+        self._refresh()
 
 
     def _draw_predictions(self):
