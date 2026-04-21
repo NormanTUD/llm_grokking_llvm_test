@@ -193,7 +193,7 @@ def parse_args() -> argparse.Namespace:
                    help="Device")
     g.add_argument("--seed", type=int, default=42,
                    help="Random seed")
-    g.add_argument("--plot", action="store_true", default=False,
+    g.add_argument("--dont-plot", action="store_true", default=False,
                    help="Enable live matplotlib")
     g.add_argument("--no-plot", action="store_false", dest="plot",
                    help="Disable live plotting")
@@ -3104,7 +3104,7 @@ def train(args: argparse.Namespace):
 
     # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
     plotter = LivePlotter(
-        enabled=args.plot,
+        enabled=not args.dont_plot,
         update_every=args.plot_every,
         topo_enabled=args.topo,
         topo_every=args.topo_every,
