@@ -885,19 +885,12 @@ def compute_structured_loss(
     use_log_scale: bool = True,
 ) -> Tuple[torch.Tensor, float, float, float, float]:
     """
-    Combined loss with a **differentiable** structure-aware penalty.
-
-    Four loss components:
-      1. Cross-entropy loss (standard next-token prediction)
-      2. Value regression loss (L1 or log-L1 on the value head)
-      3. Structure penalty loss — computed IN LOGIT SPACE so gradients
-         flow through the model's actual token probability distributions.
-      4. Parsability penalty — applied to samples where the answer region
-         exists but the target value is unparseable. Ensures the structure
-         penalty never silently vanishes for bad samples.
-
-    Returns:
-        (total_loss, ce_loss_val, value_loss_val, structure_loss_val, parsability_rate)
+    Combined loss:
+      1. Cross-entropy (teacher-forced, standard)
+      2. Value regression (L1 on value head)  
+      3. Generation reward loss — ACTUALLY GENERATE, score the output,
+         and use the log-probability of the generated sequence weighted
+         by the reward as a REINFORCE-style gradient signal.
     """
     output = model(
         input_ids=inp,
@@ -906,8 +899,8 @@ def compute_structured_loss(
     )
 
     ce_loss = output.loss
+    logits = output.logits
     value_preds = output.value_preds
-    logits = output.logits  # (B, T, V)
 
     # ── Value regression loss ───────────────────────────────────────────
     val_loss_val = 0.0
@@ -923,26 +916,22 @@ def compute_structured_loss(
                 value_loss_term = F.l1_loss(vp, vt)
             val_loss_val = value_loss_term.item()
 
-    # ── Differentiable structure penalty ────────────────────────────────
-    structure_loss_term, structure_loss_val = _compute_differentiable_structure_penalty(
-        logits=logits,
-        tgt=tgt,
+    # ── Generation reward loss (REINFORCE-style) ────────────────────────
+    gen_loss_term, parsability_rate = _compute_generation_reward_loss(
+        model=model,
+        inp=inp,
         value_positions=value_positions,
         value_targets=value_targets,
         answer_parseable=answer_parseable,
         tokenizer=tokenizer,
         device=device,
+        max_gen_len=20,
     )
 
-    # ── Parsability rate for logging ────────────────────────────────────
-    has_answer_region = (value_positions > 0)
-    if has_answer_region.any():
-        parsability_rate = answer_parseable[has_answer_region].float().mean().item()
-    else:
-        parsability_rate = 0.0
+    structure_loss_val = gen_loss_term.item() if isinstance(gen_loss_term, torch.Tensor) else 0.0
 
-    # ── Combine all losses ──────────────────────────────────────────────
-    total_loss = ce_loss + alpha_value * value_loss_term + alpha_structure * structure_loss_term
+    # ── Combine ─────────────────────────────────────────────────────────
+    total_loss = ce_loss + alpha_value * value_loss_term + alpha_structure * gen_loss_term
 
     return (
         total_loss,
@@ -952,6 +941,136 @@ def compute_structured_loss(
         parsability_rate,
     )
 
+def _compute_generation_reward_loss(
+    model: 'TinyGPT',
+    inp: torch.Tensor,
+    value_positions: torch.Tensor,
+    value_targets: torch.Tensor,
+    answer_parseable: torch.Tensor,
+    tokenizer: 'BPETokenizer',
+    device: str,
+    max_gen_len: int = 20,
+) -> Tuple[torch.Tensor, float]:
+    """
+    Generate from the model, score using _compute_structure_penalty,
+    and use the score as a REINFORCE reward signal.
+    
+    The structure penalty (0=perfect, 6=garbage) is converted to a
+    reward in [-1, +1] via:  reward = 1.0 - (penalty / 3.0)
+    clamped to [-1, +1].
+    
+    This means:
+      penalty=0.0 (perfect)     → reward = +1.0
+      penalty=0.5 (close int)   → reward = +0.83
+      penalty=1.0 (padded int)  → reward = +0.67
+      penalty=3.0 (partial num) → reward =  0.0  (baseline)
+      penalty=5.0 (garbage)     → reward = -0.67
+      penalty=6.0 (empty)       → reward = -1.0
+    """
+    B = inp.shape[0]
+
+    eos_id = tokenizer.eos_token_id
+    pad_id = tokenizer.pad_token_id
+
+    all_rewards = []
+    all_log_probs = []
+    n_parseable = 0
+    n_with_region = 0
+
+    for b in range(B):
+        vp = value_positions[b].item()
+        if vp == 0:
+            continue
+        n_with_region += 1
+
+        vt = value_targets[b].item()
+        is_parseable = answer_parseable[b].item()
+
+        # ── Get expected string and int ─────────────────────────────
+        if is_parseable and not math.isnan(vt):
+            expected_int = int(vt)
+            expected_str = str(expected_int)
+        else:
+            expected_int = 0
+            expected_str = "0"
+
+        # ── Prompt = everything up to and including last <sep> ──────
+        prompt = inp[b, :vp + 1].tolist()
+
+        # ── Generate greedily, collecting log-probs WITH gradient ───
+        generated_ids = []
+        log_prob_sum = torch.tensor(0.0, device=device)
+        current_ids = list(prompt)
+
+        for step in range(max_gen_len):
+            input_tensor = torch.tensor(
+                [current_ids[-model.max_seq_len:]],
+                dtype=torch.long, device=device,
+            )
+            out = model(input_ids=input_tensor)
+            step_logits = out.logits[0, -1, :]
+            step_log_probs = F.log_softmax(step_logits, dim=-1)
+
+            next_token = step_logits.argmax().item()
+            log_prob_sum = log_prob_sum + step_log_probs[next_token]
+
+            if next_token == eos_id:
+                break
+            generated_ids.append(next_token)
+            current_ids.append(next_token)
+
+        # ── Decode generated output ─────────────────────────────────
+        if generated_ids:
+            gen_str = tokenizer.decode(generated_ids).strip()
+        else:
+            gen_str = ""
+
+        # ── Score using your existing penalty function ──────────────
+        penalty = _compute_structure_penalty(
+            expected_str=expected_str,
+            expected_int=expected_int,
+            predicted_str=gen_str,
+        )
+
+        # ── Convert penalty → reward ────────────────────────────────
+        # penalty=0 → reward=+1, penalty=3 → reward=0, penalty=6 → reward=-1
+        reward = 1.0 - (penalty / 3.0)
+        reward = max(-1.0, min(1.0, reward))
+
+        # Track parsability
+        pred_cleaned = ''.join(
+            c for c in gen_str if c.isascii() and c.isprintable()
+        ).strip()
+        try:
+            int(pred_cleaned)
+            n_parseable += 1
+        except (ValueError, TypeError):
+            pass
+
+        all_rewards.append(reward)
+        all_log_probs.append(log_prob_sum)
+
+    # ── REINFORCE loss ──────────────────────────────────────────────────
+    if not all_log_probs:
+        return torch.tensor(0.0, device=device), 0.0
+
+    parsability_rate = n_parseable / max(n_with_region, 1)
+
+    # Baseline: mean reward (variance reduction)
+    mean_reward = sum(all_rewards) / len(all_rewards)
+
+    # Policy gradient: -E[(reward - baseline) * log_prob]
+    loss_terms = []
+    for reward, lp in zip(all_rewards, all_log_probs):
+        advantage = reward - mean_reward
+        loss_terms.append(-advantage * lp)
+
+    if loss_terms:
+        gen_loss = torch.stack(loss_terms).mean()
+    else:
+        gen_loss = torch.tensor(0.0, device=device)
+
+    return gen_loss, parsability_rate
 
 def _build_digit_token_set(tokenizer: 'BPETokenizer') -> torch.Tensor:
     """
