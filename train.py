@@ -3364,6 +3364,21 @@ def train(args: argparse.Namespace):
         }, epoch_ckpt_path)
         console.print(f"  [dim]💾 Saved checkpoint: {epoch_ckpt_path}[/]")
 
+        # ── Clean up old checkpoints: keep only the last 10 ────────────
+        max_keep = 10
+        import glob
+        existing_ckpts = sorted(
+            glob.glob(os.path.join(save_path, "model_epoch_*.pt")),
+            key=lambda p: int(os.path.basename(p).replace("model_epoch_", "").replace(".pt", ""))
+        )
+        if len(existing_ckpts) > max_keep:
+            for old_ckpt in existing_ckpts[:-max_keep]:
+                try:
+                    os.remove(old_ckpt)
+                    console.print(f"  [dim]🗑️  Removed old checkpoint: {os.path.basename(old_ckpt)}[/]")
+                except OSError:
+                    pass
+
         # ── Save best model (lowest val loss) ───────────────────────────
         if is_best and save_path:
             best_path = os.path.join(save_path, "model_best.pt")
