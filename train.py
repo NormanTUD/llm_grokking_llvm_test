@@ -194,7 +194,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--seed", type=int, default=42,
                    help="Random seed")
     g.add_argument("--dont-plot", action="store_true", default=False,
-                   help="Enable live matplotlib")
+                   help="Disable live matplotlib")
     g.add_argument("--no-plot", action="store_false", dest="plot",
                    help="Disable live plotting")
     g.add_argument("--plot-every", type=int, default=5,
