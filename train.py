@@ -67,12 +67,10 @@ from rich.text import Text
 from rich import box
 
 from random_llvm_gen import generate_random_function, list_supported_ops
-import random
-from generate_samples import generate_example_samples
 from random_llvm_gen import generate_random_function
+from generate_samples import generate_example_samples
 import subprocess
 from run_logger import RunLogger
-from generate_samples import generate_example_samples
 import threading
 import tty
 import termios
