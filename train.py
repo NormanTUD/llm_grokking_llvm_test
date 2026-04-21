@@ -99,6 +99,22 @@ SCHEDULERS = {
 }
 
 import argparse
+
+import os as _os
+import re
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+_RE_INT = re.compile(r'^-?\d+$')
+_RE_FLOAT = re.compile(r'^-?\d+\.\d+$')
+_RE_LEADING_INT = re.compile(r'^(\s*-?\d+)(.*)')
+_RE_PADDED_INT = re.compile(r'^\s*(-?\d+)\s*$')
+_RE_PARTIAL_NUMERIC = re.compile(r'^-?\d')
+_RE_LEADING_FLOAT = re.compile(r'^(\s*-?\d+\.\d+)(.*)')
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Train a tiny GPT on randomly generated LLVM IR functions.",
@@ -306,8 +322,6 @@ def _pid_alive(pid: int) -> bool:
 # ── Suppress X11/XIM spam ──────────────────────────────────────────────────
 # The "key event is already fabricated" messages come from libX11.
 # Redirect C-level stderr temporarily during matplotlib import.
-import os as _os
-
 _stderr_fd = _os.dup(2)
 _devnull = _os.open(_os.devnull, _os.O_WRONLY)
 
@@ -844,11 +858,8 @@ class TinyGPT(nn.Module):
         return model
 
 
-import re
-import math
-
 def compute_structured_loss(
-    model: TinyGPT,
+    model: 'TinyGPT',
     inp: torch.Tensor,
     tgt: torch.Tensor,
     value_positions: torch.Tensor,
@@ -860,26 +871,31 @@ def compute_structured_loss(
     use_log_scale: bool = True,
 ) -> Tuple[torch.Tensor, float, float, float]:
     """
-    Combined loss with structure-aware penalty for generated answers.
+    Combined loss with a **differentiable** structure-aware penalty.
 
-    Hierarchy (low loss → high loss):
-      1. Perfect integer match                          → 0 extra penalty
-      2. Wrong integer, small |diff|                    → small penalty (scaled by diff)
-      3. Wrong integer, large |diff|                    → larger penalty (capped at 0.99)
-      4. Float-like string (e.g. "-3.5")                → moderate penalty [1.0, 1.99]
-      5. String starting with '-' or digits             → higher penalty [2.0, 3.99]
-         Length closer to expected → slightly better
-      6. Pure garbage string ("hello", "???")            → maximum penalty [4.0, 5.99]
-         Length far from expected → even worse
-      7. Empty string                                    → fixed ceiling 6.0
+    Three loss components:
+      1. Cross-entropy loss (standard next-token prediction)
+      2. Value regression loss (L1 or log-L1 on the value head)
+      3. Structure penalty loss — computed IN LOGIT SPACE so gradients
+         flow through the model's actual token probability distributions.
 
-    The structure penalty is applied as a MULTIPLICATIVE SCALE on the CE loss
-    so that gradients actually flow (a bare torch.tensor() constant contributes
-    zero gradient). When the model produces garbage, CE gradients are amplified;
-    when it produces the correct integer, gradients are unscaled (1.0×).
+    The structure penalty works by constructing soft per-token targets
+    for the answer region and computing a differentiable distance between
+    the model's predicted log-probabilities and those targets. This means
+    the model receives gradient signal about WHICH tokens to produce,
+    not just a uniform scaling of the CE loss.
+
+    Differentiable penalty components:
+      (a) Digit-class probability mass: encourages the model to place
+          probability on digit/minus tokens in the answer region.
+      (b) Per-position soft target KL: for each answer position, builds
+          a soft target distribution from the expected answer token and
+          computes KL divergence against the model's log-probs.
+      (c) Length penalty: differentiable penalty if the model assigns
+          high probability to <eos>/<pad> too early or too late.
 
     Returns:
-        total_loss, ce_loss_val, value_loss_val, structure_loss_val
+        (total_loss, ce_loss_val, value_loss_val, structure_loss_val)
     """
     output = model(
         input_ids=inp,
@@ -891,7 +907,7 @@ def compute_structured_loss(
     value_preds = output.value_preds
     logits = output.logits  # (B, T, V)
 
-    # ── Value regression loss (same as before) ──────────────────────────
+    # ── Value regression loss ───────────────────────────────────────────
     val_loss_val = 0.0
     value_loss_term = torch.tensor(0.0, device=device)
     if value_preds is not None and alpha_value > 0:
@@ -905,76 +921,22 @@ def compute_structured_loss(
                 value_loss_term = F.l1_loss(vp, vt)
             val_loss_val = value_loss_term.item()
 
-    # ── Structure-aware penalty on generated answer tokens ──────────────
-    # We do greedy argmax decoding from the logits (no separate generation
-    # pass needed — just argmax the teacher-forced logits for the answer
-    # portion).
+    # ── Differentiable structure penalty ────────────────────────────────
+    structure_loss_term, structure_loss_val = _compute_differentiable_structure_penalty(
+        logits=logits,
+        tgt=tgt,
+        value_positions=value_positions,
+        value_targets=value_targets,
+        tokenizer=tokenizer,
+        device=device,
+    )
 
-    structure_penalties = []
-
-    sep_id = tokenizer._tok.token_to_id("<sep>")
-    eos_id = tokenizer.eos_token_id
-    pad_id = tokenizer.pad_token_id
-
-    B, T, V = logits.shape
-
-    # For each sample in the batch, decode the answer portion
-    for b in range(B):
-        # Find answer region in target
-        # value_positions[b] gives the last <sep> position in input
-        vp_idx = value_positions[b].item()
-        if vp_idx == 0:
-            continue  # skip invalid samples
-
-        vt = value_targets[b].item()
-        if math.isnan(vt):
-            continue
-
-        expected_int = int(vt)
-        expected_str = str(expected_int)
-
-        # The answer tokens in target start at vp_idx (position after last <sep>)
-        answer_start = vp_idx
-
-        # Greedy decode from logits (teacher-forced)
-        pred_token_ids = []
-        for t_idx in range(answer_start, T):
-            target_tok = tgt[b, t_idx].item()
-            if target_tok == pad_id or target_tok == eos_id:
-                break
-            pred_tok = logits[b, t_idx].argmax(dim=-1).item()
-            pred_token_ids.append(pred_tok)
-
-        if not pred_token_ids:
-            continue
-
-        predicted_str = tokenizer.decode(pred_token_ids).strip()
-        for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
-            predicted_str = predicted_str.replace(special, "")
-        predicted_str = predicted_str.strip()
-
-        # ── Compute structure penalty ───────────────────────────────────
-        penalty = _compute_structure_penalty(
-            expected_str, expected_int, predicted_str
-        )
-        structure_penalties.append(penalty)
-
-    # ── Combine: use penalty as multiplicative scale on CE loss ─────────
-    # This is the critical fix: a plain torch.tensor(mean_penalty) has NO
-    # gradient graph, so adding it contributes zero gradients to the model.
-    # Instead, we MULTIPLY the CE loss by (1 + alpha * penalty), which
-    # preserves the CE gradient graph and scales gradient magnitude:
-    #   - Perfect output (penalty=0)  → scale = 1.0 (normal gradients)
-    #   - Garbage output (penalty~5)  → scale = 1 + 0.5*5 = 3.5× amplified
-    if structure_penalties:
-        mean_penalty = sum(structure_penalties) / len(structure_penalties)
-        scale = 1.0 + alpha_structure * mean_penalty
-        structure_loss_val = mean_penalty  # for logging only
-    else:
-        scale = 1.0
-        structure_loss_val = 0.0
-
-    total_loss = scale * ce_loss + alpha_value * value_loss_term
+    # ── Combine all three losses ────────────────────────────────────────
+    # Each component has its own gradient path through the model:
+    #   - ce_loss:             gradients via next-token prediction (all positions)
+    #   - value_loss_term:     gradients via value head (at sep position)
+    #   - structure_loss_term: gradients via answer-region logits (digit focus + soft KL)
+    total_loss = ce_loss + alpha_value * value_loss_term + alpha_structure * structure_loss_term
 
     return (
         total_loss,
@@ -983,102 +945,281 @@ def compute_structured_loss(
         structure_loss_val,
     )
 
+
+def _build_digit_token_set(tokenizer: 'BPETokenizer') -> torch.Tensor:
+    """
+    Return a boolean tensor of shape (vocab_size,) that is True for tokens
+    that represent digits, minus signs, or digit-containing subwords.
+
+    This is computed once and cached on the tokenizer object.
+    """
+    if hasattr(tokenizer, '_digit_mask_cache'):
+        return tokenizer._digit_mask_cache
+
+    vocab_size = tokenizer.vocab_size
+    mask = torch.zeros(vocab_size, dtype=torch.bool)
+
+    digit_chars = set('0123456789-')
+
+    for token_id in range(vocab_size):
+        try:
+            token_str = tokenizer.decode([token_id])
+            # A token is "numeric" if ALL its printable characters are digits or minus
+            printable = ''.join(c for c in token_str if c.isascii() and c.isprintable()).strip()
+            if printable and all(c in digit_chars for c in printable):
+                mask[token_id] = True
+        except Exception:
+            continue
+
+    tokenizer._digit_mask_cache = mask
+    return mask
+
+
+def _compute_differentiable_structure_penalty(
+    logits: torch.Tensor,       # (B, T, V)
+    tgt: torch.Tensor,          # (B, T)
+    value_positions: torch.Tensor,  # (B,)
+    value_targets: torch.Tensor,    # (B,)
+    tokenizer: 'BPETokenizer',
+    device: str,
+    temperature: float = 1.0,
+) -> Tuple[torch.Tensor, float]:
+    """
+    Compute a fully differentiable structure penalty over the answer region.
+
+    This operates entirely in logit/probability space, so gradients flow
+    back through the model's parameters via the logits.
+
+    Three sub-penalties (all differentiable):
+
+    1. **Digit focus loss**: For each answer-region position, compute the
+       total probability mass the model places on "numeric" tokens (digits,
+       minus sign). Penalize 1 - P(numeric) so the model is encouraged to
+       produce digit-like tokens in the answer region.
+
+    2. **Soft target KL divergence**: For each answer position, construct
+       a soft target distribution that places most mass on the correct
+       target token and a small amount on other digit tokens. Compute
+       KL(soft_target || model_probs) which is differentiable w.r.t. logits.
+
+    3. **Length calibration loss**: Penalize the model if it assigns high
+       probability to EOS/PAD tokens before the answer is complete, or
+       low probability to EOS at the position where the answer should end.
+
+    Returns:
+        (loss_tensor, loss_scalar_for_logging)
+    """
+    B, T, V = logits.shape
+    pad_id = tokenizer.pad_token_id
+    eos_id = tokenizer.eos_token_id
+
+    # Get digit token mask (cached after first call)
+    digit_mask = _build_digit_token_set(tokenizer).to(device)  # (V,)
+
+    # Log-probabilities for the full sequence
+    log_probs = F.log_softmax(logits / temperature, dim=-1)  # (B, T, V)
+    probs = log_probs.exp()  # (B, T, V)
+
+    # Accumulators for the three sub-penalties
+    digit_focus_losses = []
+    kl_losses = []
+    length_losses = []
+
+    # Soft target: 85% on correct token, 15% spread over other digit tokens
+    CORRECT_MASS = 0.85
+    DIGIT_SPREAD_MASS = 0.15
+
+    for b in range(B):
+        vp_idx = value_positions[b].item()
+        if vp_idx == 0:
+            continue  # skip invalid samples
+
+        vt = value_targets[b].item()
+        if math.isnan(vt):
+            continue
+
+        # Determine the answer region in the target
+        answer_start = vp_idx  # position after last <sep> in input
+        answer_end = T  # will be trimmed below
+
+        # Find where the answer ends (first pad or eos in target)
+        for t_idx in range(answer_start, T):
+            tok = tgt[b, t_idx].item()
+            if tok == pad_id or tok == eos_id:
+                answer_end = t_idx
+                break
+
+        if answer_end <= answer_start:
+            continue
+
+        answer_len = answer_end - answer_start
+
+        # ── Sub-penalty 1: Digit focus ──────────────────────────────────
+        # For each answer position, compute P(any digit token) and penalize
+        # 1 - P(digit). This is fully differentiable through probs.
+        answer_probs = probs[b, answer_start:answer_end, :]  # (answer_len, V)
+        digit_prob_mass = answer_probs[:, digit_mask].sum(dim=-1)  # (answer_len,)
+        # Loss: mean(1 - P(digit)) over answer positions
+        digit_focus_loss = (1.0 - digit_prob_mass).mean()
+        digit_focus_losses.append(digit_focus_loss)
+
+        # ── Sub-penalty 2: Soft target KL divergence ────────────────────
+        # For each answer position, build a soft target and compute KL.
+        answer_log_probs = log_probs[b, answer_start:answer_end, :]  # (answer_len, V)
+        answer_targets = tgt[b, answer_start:answer_end]  # (answer_len,)
+
+        # Build soft target distributions: (answer_len, V)
+        n_digit_tokens = digit_mask.sum().float().clamp(min=1.0)
+        # Base: spread DIGIT_SPREAD_MASS uniformly over digit tokens
+        soft_targets = torch.zeros(answer_len, V, device=device)
+        soft_targets[:, digit_mask] = DIGIT_SPREAD_MASS / n_digit_tokens
+
+        # Place CORRECT_MASS on the actual target token for each position
+        for pos_idx in range(answer_len):
+            target_tok = answer_targets[pos_idx].item()
+            if target_tok != pad_id and target_tok != eos_id:
+                soft_targets[pos_idx, target_tok] += CORRECT_MASS
+                # Re-normalize to ensure it sums to 1
+                soft_targets[pos_idx] = soft_targets[pos_idx] / soft_targets[pos_idx].sum()
+
+        # KL(soft_target || model) = sum(soft_target * (log(soft_target) - log_model))
+        # Use F.kl_div which expects log_probs as input and targets as probs
+        # F.kl_div(input=log_q, target=p) computes sum(p * (log(p) - log_q))
+        kl = F.kl_div(
+            answer_log_probs,
+            soft_targets,
+            reduction='batchmean',
+            log_target=False,
+        )
+        kl_losses.append(kl)
+
+        # ── Sub-penalty 3: Length calibration ───────────────────────────
+        # Penalize high P(eos) before the answer is complete
+        if eos_id is not None and answer_len > 1:
+            # For positions BEFORE the last answer token, penalize P(eos)
+            early_eos_probs = probs[b, answer_start:answer_end - 1, eos_id]  # (answer_len-1,)
+            early_eos_penalty = early_eos_probs.mean()
+
+            # At the position right after the answer, encourage P(eos)
+            if answer_end < T:
+                eos_at_end = probs[b, answer_end, eos_id]
+                late_eos_penalty = (1.0 - eos_at_end)
+            else:
+                late_eos_penalty = torch.tensor(0.0, device=device)
+
+            length_loss = 0.5 * early_eos_penalty + 0.5 * late_eos_penalty
+            length_losses.append(length_loss)
+
+    # ── Aggregate ───────────────────────────────────────────────────────
+    # Each sub-loss is a differentiable tensor. We average across the batch
+    # and combine with learned-friendly weights.
+    zero = torch.tensor(0.0, device=device)
+
+    if digit_focus_losses:
+        avg_digit = torch.stack(digit_focus_losses).mean()
+    else:
+        avg_digit = zero
+
+    if kl_losses:
+        avg_kl = torch.stack(kl_losses).mean()
+    else:
+        avg_kl = zero
+
+    if length_losses:
+        avg_length = torch.stack(length_losses).mean()
+    else:
+        avg_length = zero
+
+    # Weighted combination of sub-penalties
+    # These weights control the relative importance:
+    #   - digit focus:  encourages numeric output (broad signal)
+    #   - KL:           encourages correct specific tokens (precise signal)
+    #   - length:       encourages correct answer length (structural signal)
+    WEIGHT_DIGIT = 0.2
+    WEIGHT_KL = 0.6
+    WEIGHT_LENGTH = 0.2
+
+    total_structure = (
+        WEIGHT_DIGIT * avg_digit
+        + WEIGHT_KL * avg_kl
+        + WEIGHT_LENGTH * avg_length
+    )
+
+    # Scalar for logging (detached)
+    structure_scalar = total_structure.item() if total_structure.requires_grad else total_structure.item() if isinstance(total_structure, torch.Tensor) else 0.0
+
+    return total_structure, structure_scalar
+
+
 def _compute_structure_penalty(
     expected_str: str,
     expected_int: int,
     predicted_str: str,
 ) -> float:
     """
-    Compute a scalar penalty for a single prediction.
+    Compute a scalar penalty for a single prediction (NON-DIFFERENTIABLE).
+
+    This is retained for logging, visualization, and the prediction diff
+    plot — but is NO LONGER used in the loss computation.
 
     Hierarchy (strictly ordered, NO overlap between levels):
       0.0            — perfect integer match (numeric comparison)
-      (0, 0.99]      — wrong integer, valid format (ALWAYS better than non-integer)
-      [1.0, 1.49]    — integer with leading/trailing whitespace (slightly worse)
-      [1.5, 1.99]    — starts with a valid integer but has trailing chars (e.g. "-5abc")
-      [2.0, 2.99]    — float-like string (e.g. "-3.5")
-      [3.0, 4.99]    — partially numeric / dash-prefixed (e.g. "---", "-3abc" without leading int)
-      [5.0, 5.99]    — pure garbage (e.g. "hello", "???")
-      6.0            — empty output (fixed ceiling)
-
-    Key invariant: ANY valid integer (even wildly wrong) is ALWAYS penalized
-    less than ANY non-integer output. Strings that START with a valid integer
-    are better than strings that merely contain numeric characters.
+      (0, 0.99]      — wrong integer, valid format
+      [1.0, 1.49]    — integer with leading/trailing whitespace
+      [1.5, 1.99]    — starts with a valid integer but has trailing chars
+      [2.0, 2.99]    — float-like string
+      [3.0, 4.99]    — partially numeric / dash-prefixed
+      [5.0, 5.99]    — pure garbage
+      6.0            — empty output
     """
     if not predicted_str:
         return 6.0
 
-    # ── Clean BPE artifacts ─────────────────────────────────────────────
+    # Clean BPE artifacts
     cleaned = ''.join(c for c in predicted_str if c.isascii() and c.isprintable())
-
     if not cleaned:
         return 6.0
 
-    int_pattern = re.compile(r'^-?\d+$')
-    float_pattern = re.compile(r'^-?\d+\.\d+$')
-    # Matches a leading integer, possibly followed by other stuff
-    leading_int_pattern = re.compile(r'^(\s*-?\d+)(.*)')
-    # Whitespace-padded integer
-    padded_int_pattern = re.compile(r'^\s*(-?\d+)\s*$')
-    partial_numeric = re.compile(r'^-?\d')
-
-    # ── Level 0: Perfect match (clean string, exact integer) ────────────
     stripped = cleaned.strip()
 
-    if int_pattern.match(stripped):
+    # Level 0: Perfect match
+    if _RE_INT.match(stripped):
         try:
             pred_int = int(stripped)
             diff = abs(expected_int - pred_int)
             if diff == 0:
                 return 0.0
-            # Level 1: Wrong integer — capped at 0.99
             return 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
             pass
 
-    # ── Level 1.5: Whitespace-padded integer ────────────────────────────
-    # e.g. "  -5  " or "\t-5\n" — the model got the right number but
-    # added whitespace. Slightly worse than a clean integer because we
-    # want to encourage clean output, but much better than garbage.
-    padded_match = padded_int_pattern.match(cleaned)
+    # Level 1.5: Whitespace-padded integer
+    padded_match = _RE_PADDED_INT.match(cleaned)
     if padded_match:
         try:
             pred_int = int(padded_match.group(1))
             diff = abs(expected_int - pred_int)
-            # Range [1.0, 1.49] — always worse than clean integer (max 0.99)
-            # but always better than "starts with int + garbage" (1.5+)
             return 1.0 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
         except (ValueError, OverflowError):
             pass
 
-    # ── Level 2: Starts with valid integer + trailing stuff ─────────────
-    # e.g. "-5abc", "-5 3", "-5..", "-5---"
-    # The model got the beginning right — it's "on the right track".
-    # Much better than random garbage, but not a valid integer.
-    leading_match = leading_int_pattern.match(cleaned)
+    # Level 2: Starts with valid integer + trailing stuff
+    leading_match = _RE_LEADING_INT.match(cleaned)
     if leading_match:
         int_part = leading_match.group(1).strip()
         trailing = leading_match.group(2)
-
-        if int_part and trailing:  # has both integer prefix AND trailing stuff
+        if int_part and trailing:
             try:
                 pred_int = int(int_part)
                 diff = abs(expected_int - pred_int)
-
-                # Base penalty: [1.5, 1.99]
-                # Closer integer prefix → lower penalty
                 base = 1.5 + 0.3 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
-
-                # Trailing length penalty: more trailing garbage → worse
-                # But capped so we stay in [1.5, 1.99]
                 trailing_penalty = min(0.19, len(trailing) * 0.03)
-
                 return base + trailing_penalty
             except (ValueError, OverflowError):
                 pass
 
-    # ── Level 3: Float-like string — range [2.0, 2.99] ─────────────────
-    if float_pattern.match(stripped):
+    # Level 3: Float-like string
+    if _RE_FLOAT.match(stripped):
         try:
             pred_float = float(stripped)
             diff = abs(expected_int - pred_float)
@@ -1086,9 +1227,8 @@ def _compute_structure_penalty(
         except (ValueError, OverflowError):
             return 2.5
 
-    # ── Also check: starts with float + trailing ────────────────────────
-    leading_float_pattern = re.compile(r'^(\s*-?\d+\.\d+)(.*)')
-    leading_float_match = leading_float_pattern.match(cleaned)
+    # Float with trailing
+    leading_float_match = _RE_LEADING_FLOAT.match(cleaned)
     if leading_float_match:
         float_part = leading_float_match.group(1).strip()
         trailing = leading_float_match.group(2)
@@ -1096,27 +1236,21 @@ def _compute_structure_penalty(
             try:
                 pred_float = float(float_part)
                 diff = abs(expected_int - pred_float)
-                # Slightly worse than clean float, range [2.5, 2.99]
                 return 2.5 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
             except (ValueError, OverflowError):
                 pass
 
-    # ── Shared: length penalty (used by levels 4 and 5) ─────────────────
+    # Shared length penalty
     len_diff = abs(len(cleaned) - len(expected_str))
     len_penalty = min(0.5, math.log1p(len_diff) * 0.2)
 
-    # ── Level 4: Partially numeric / dash-prefixed — range [3.0, 4.99] ──
-    # Strings like "---", "12xy" — they show SOME numeric structure.
-    # "-----" is better than "hello" because "-" could be the start of
-    # a negative number.
-    if cleaned.startswith('-') or partial_numeric.match(cleaned):
+    # Level 4: Partially numeric
+    if cleaned.startswith('-') or _RE_PARTIAL_NUMERIC.match(cleaned):
         numeric_chars = sum(1 for c in cleaned if c in '-0123456789.')
         numeric_ratio = numeric_chars / max(len(cleaned), 1)
-        # numeric_ratio=1.0 (all numeric chars like "---") → 3.0 + 0.0 + len_penalty
-        # numeric_ratio=0.0 (no numeric chars) → 3.0 + 1.5 + len_penalty
         return 3.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
 
-    # ── Level 5: Pure garbage — range [5.0, 5.99] ──────────────────────
+    # Level 5: Pure garbage
     return 5.0 + len_penalty + min(0.49, math.log1p(len(cleaned)) * 0.15)
 
 class _ModelOutput(dict):
