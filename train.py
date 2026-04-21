@@ -2005,18 +2005,7 @@ class LivePlotter:
                 [], [], label="Median score", color="purple", linewidth=1.5,
                 linestyle="--",
             )
-            ax_diffs.legend(loc="upper right", fontsize=8)
-            self.ax_diffs = ax_diffs
-
-
-            self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean diff", color="darkorange", linewidth=2,
-            )
-            self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median diff", color="purple", linewidth=1.5,
-                linestyle="--",
-            )
-            ax_diffs.legend(loc="upper right", fontsize=8)
+            ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
             self.ax_diffs = ax_diffs
 
         else:
@@ -2048,17 +2037,7 @@ class LivePlotter:
                 [], [], label="Median score", color="purple", linewidth=1.5,
                 linestyle="--",
             )
-            ax_diffs.legend(loc="upper right", fontsize=8)
-            self.ax_diffs = ax_diffs
-
-            self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean diff", color="darkorange", linewidth=2,
-            )
-            self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median diff", color="purple", linewidth=1.5,
-                linestyle="--",
-            )
-            ax_diffs.legend(loc="upper right", fontsize=8)
+            ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
             self.ax_diffs = ax_diffs
 
             self.ax_barcode = None
