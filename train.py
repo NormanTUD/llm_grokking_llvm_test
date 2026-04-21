@@ -1217,6 +1217,14 @@ def _compute_differentiable_structure_penalty(
         # so the graph stays connected.
         total_structure = total_structure + 0.0 * logits.sum() * 0.0
 
+    if total_with_region > 0:
+        unparseable_frac = 1.0 - (n_parseable / total_with_region)
+        if unparseable_frac > 0:
+            parsability_penalty = torch.tensor(
+                unparseable_frac, device=device, requires_grad=False
+            )
+            total_structure = total_structure + parsability_penalty
+
     structure_scalar = total_structure.item() if isinstance(total_structure, torch.Tensor) else 0.0
 
     return total_structure, structure_scalar
