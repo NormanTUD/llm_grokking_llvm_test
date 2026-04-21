@@ -1217,13 +1217,18 @@ def _compute_differentiable_structure_penalty(
         # so the graph stays connected.
         total_structure = total_structure + 0.0 * logits.sum() * 0.0
 
-    if total_with_region > 0:
+    # ── Parsability penalty WITH gradients ──────────────────────────────
+    # When samples are unparseable, penalize the model's confidence on
+    # non-digit tokens in the answer region. This is DIFFERENTIABLE
+    # because it operates on the logit probabilities directly.
+    if total_with_region > 0 and n_parseable < total_with_region:
         unparseable_frac = 1.0 - (n_parseable / total_with_region)
-        if unparseable_frac > 0:
-            parsability_penalty = torch.tensor(
-                unparseable_frac, device=device, requires_grad=False
-            )
-            total_structure = total_structure + parsability_penalty
+        # Scale up the existing digit_focus and anti_garbage losses
+        # for unparseable samples — these already have gradients
+        boost = torch.tensor(unparseable_frac, device=device) 
+        # Add a GRADIENT-CARRYING term: amplify avg_digit (which has grads)
+        parsability_boost = boost * avg_digit * 2.0
+        total_structure = total_structure + parsability_boost
 
     structure_scalar = total_structure.item() if isinstance(total_structure, torch.Tensor) else 0.0
 
