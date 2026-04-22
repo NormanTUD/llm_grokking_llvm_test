@@ -2955,17 +2955,11 @@ class LivePlotter:
             if was_training:
                 model.train()
 
-
     def update_prediction_diffs(self, predictions: list):
-        """
-        Compute a per-sample error score in [0, 1] and update the diff plot.
-        Only scatter points are shown (last ~1000 updates).
-        """
         if not self.enabled:
             return
 
         scores = []
-        scale = 0.1
 
         for expected, predicted, _ in predictions:
             try:
@@ -2980,14 +2974,11 @@ class LivePlotter:
             try:
                 pred_val = int(pred_cleaned)
             except (ValueError, TypeError):
-                scores.append(1.0)
+                scores.append(10000)  # unparseable → max score
                 continue
 
             diff = abs(exp_val - pred_val)
-            if diff == 0:
-                scores.append(0.0)
-            else:
-                scores.append(0.9 * math.tanh(scale * diff))
+            scores.append(diff)
 
         if not scores:
             return
@@ -3000,10 +2991,8 @@ class LivePlotter:
         ax = self.ax_diffs
         n_updates = len(self._abs_diffs_history)
 
-        # ── Only show the last ~1000 updates as scatter ─────────────────
         max_scatter_window = 1000
 
-        # ── Remove old scatter ──────────────────────────────────────────
         if self._scatter_diffs is not None:
             try:
                 self._scatter_diffs.remove()
@@ -3011,7 +3000,6 @@ class LivePlotter:
                 pass
             self._scatter_diffs = None
 
-        # ── Build new scatter data (WINDOWED to last 1000) ──────────────
         scatter_start = max(0, n_updates - max_scatter_window)
         all_scatter_x = []
         all_scatter_y = []
@@ -3020,20 +3008,15 @@ class LivePlotter:
                 all_scatter_x.append(i)
                 all_scatter_y.append(s)
 
-        # Adaptive alpha
         n_scatter = len(all_scatter_x)
         if n_scatter > 5000:
-            scatter_alpha = 0.08
-            scatter_size = 6
+            scatter_alpha, scatter_size = 0.08, 6
         elif n_scatter > 2000:
-            scatter_alpha = 0.15
-            scatter_size = 10
+            scatter_alpha, scatter_size = 0.15, 10
         elif n_scatter > 500:
-            scatter_alpha = 0.22
-            scatter_size = 12
+            scatter_alpha, scatter_size = 0.22, 12
         else:
-            scatter_alpha = 0.30
-            scatter_size = 14
+            scatter_alpha, scatter_size = 0.30, 14
 
         if all_scatter_x:
             self._scatter_diffs = ax.scatter(
@@ -3042,22 +3025,14 @@ class LivePlotter:
                     edgecolors="none",
                     )
 
-        # ── Set axis limits ─────────────────────────────────────────────
         x_lo = max(scatter_start - 0.5, -0.5)
         x_hi = max(n_updates - 0.5, 0.5)
         ax.set_xlim(x_lo, x_hi)
-        ax.set_ylim(-0.05, 1.05)
+        ax.set_ylim(-50, 10000)
 
-        # ── Update legend (scatter only) ────────────────────────────────
-        from matplotlib.lines import Line2D
-        window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
-        legend_elements = [
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                       markersize=6, alpha=0.5, linestyle='None', label=window_label),
-                ]
-        ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
-
+        # No legend
         self._refresh()
+
 
     @staticmethod
     def _downsample_line_indices(
