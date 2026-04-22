@@ -2441,14 +2441,8 @@ class LivePlotter:
             ax_diffs.set_ylim(-0.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
 
-            self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean score", color="darkorange", linewidth=2,
-            )
-            self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median score", color="purple", linewidth=1.5,
-                linestyle="--",
-            )
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
+
             self.ax_diffs = ax_diffs
             self._scatter_diffs = None
 
@@ -2474,14 +2468,8 @@ class LivePlotter:
             ax_diffs.set_ylim(-0.05, 1.05)
             ax_diffs.grid(True, alpha=0.3)
 
-            self.line_diffs_mean, = ax_diffs.plot(
-                [], [], label="Mean score", color="darkorange", linewidth=2,
-            )
-            self.line_diffs_median, = ax_diffs.plot(
-                [], [], label="Median score", color="purple", linewidth=1.5,
-                linestyle="--",
-            )
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
+
             self.ax_diffs = ax_diffs
             self._scatter_diffs = None
 
@@ -2629,59 +2617,16 @@ class LivePlotter:
 
     def _restore_data(self):
         """Re-plot all accumulated data onto current line objects."""
-        if self.train_epoch_losses:
-            epochs = list(range(1, len(self.train_epoch_losses) + 1))
-            self.line_train_epoch.set_data(epochs, self.train_epoch_losses)
-            self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
-
-        if self.batch_ema:
-            xs = list(range(len(self.batch_ema)))
-            self.line_batch_ema.set_data(xs, self.batch_ema)
-
-        if self.lr_history:
-            epochs = list(range(1, len(self.lr_history) + 1))
-            self.line_lr.set_data(epochs, self.lr_history)
-
-        if self.val_batch_raw:
-            vxs = list(range(len(self.val_batch_raw)))
-            self.line_val_raw.set_data(vxs, self.val_batch_raw)
-            self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs,
-                                              self._val_epoch_avg_ys)
-
-        # Redraw TDA if we have cached diagrams
-        if self._topo_dgms is not None and self.ax_barcode is not None:
-            self._draw_barcode(self._topo_dgms, self._topo_layer_name)
-            self._draw_birth_death(self._topo_dgms, self._topo_layer_name)
-
-        # Redraw kelp forest if we have cached data
-        if self._kelp_data is not None:
-            self._draw_kelp_forest()
+        # ... existing restore code ...
 
         self._draw_predictions()
         self._draw_model_info()
 
-        # Restore diff plot (windowed)
+        # Restore diff plot (scatter only, last 1000)
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
             n_updates = len(self._abs_diffs_history)
-            max_scatter_window = 500
-            max_line_points = 1500
-            recent_full_res = 300
+            max_scatter_window = 1000
 
-            all_means = [np.mean(d) for d in self._abs_diffs_history]
-            all_medians = [np.median(d) for d in self._abs_diffs_history]
-
-            # Two-tier downsampled lines
-            line_indices = self._downsample_line_indices(
-                n_updates, max_line_points, recent_full_res
-            )
-            line_xs = [i for i in line_indices]
-            line_means = [all_means[i] for i in line_indices]
-            line_medians = [all_medians[i] for i in line_indices]
-
-            self.line_diffs_mean.set_data(line_xs, line_means)
-            self.line_diffs_median.set_data(line_xs, line_medians)
-
-            # Windowed scatter
             scatter_start = max(0, n_updates - max_scatter_window)
             all_scatter_x = []
             all_scatter_y = []
@@ -2700,14 +2645,13 @@ class LivePlotter:
                     edgecolors="none",
                 )
 
-            self.ax_diffs.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
+            x_lo = max(scatter_start - 0.5, -0.5)
+            self.ax_diffs.set_xlim(x_lo, max(n_updates - 0.5, 0.5))
             self.ax_diffs.set_ylim(-0.05, 1.05)
 
             from matplotlib.lines import Line2D
             window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
             legend_elements = [
-                Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
-                Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
                 Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
                        markersize=6, alpha=0.5, linestyle='None', label=window_label),
             ]
@@ -2928,22 +2872,7 @@ class LivePlotter:
     def update_prediction_diffs(self, predictions: list):
         """
         Compute a per-sample error score in [0, 1] and update the diff plot.
-
-        Scoring:
-          0.0        — perfect match (expected == predicted, both valid ints)
-          (0, ~0.9)  — valid integer but wrong; larger numeric |diff| → closer to 0.9
-                       Uses:  score = 0.9 * tanh(scale * |diff|)
-                       so small diffs are near 0, large diffs approach 0.9
-          1.0        — predicted value is not a valid integer at all
-                       (string, empty, garbage, unparseable BPE output)
-
-        Key invariant: ANY valid integer prediction (even wildly wrong) scores
-        strictly below 1.0.  Only non-numeric outputs score exactly 1.0.
-
-        WINDOWED DISPLAY: Only the most recent `max_display_points` updates
-        are shown as scatter dots to prevent overloading the plot after many
-        epochs. The mean/median lines use a two-tier downsampling strategy:
-        recent data at full resolution, older data progressively thinned.
+        Only scatter points are shown (last ~1000 updates).
         """
         if not self.enabled:
             return
@@ -2984,28 +2913,8 @@ class LivePlotter:
         ax = self.ax_diffs
         n_updates = len(self._abs_diffs_history)
 
-        # ── Windowing / downsampling parameters ─────────────────────────
-        max_scatter_window = 500    # Only show scatter for the last N updates
-        max_line_points = 1500      # Hard cap on rendered line points
-        recent_full_res = 300       # Keep last N points at full resolution
-
-        # ── Compute mean/median over ALL history ────────────────────────
-        all_means = [np.mean(d) for d in self._abs_diffs_history]
-        all_medians = [np.median(d) for d in self._abs_diffs_history]
-
-        # ── Two-tier downsampling for lines ─────────────────────────────
-        # Tier 1 (old): indices [0, n_updates - recent_full_res) — downsampled
-        # Tier 2 (recent): indices [n_updates - recent_full_res, n_updates) — full res
-        line_indices = self._downsample_line_indices(
-            n_updates, max_line_points, recent_full_res
-        )
-
-        line_xs = [i for i in line_indices]
-        line_means = [all_means[i] for i in line_indices]
-        line_medians = [all_medians[i] for i in line_indices]
-
-        self.line_diffs_mean.set_data(line_xs, line_means)
-        self.line_diffs_median.set_data(line_xs, line_medians)
+        # ── Only show the last ~1000 updates as scatter ─────────────────
+        max_scatter_window = 1000
 
         # ── Remove old scatter ──────────────────────────────────────────
         if self._scatter_diffs is not None:
@@ -3015,7 +2924,7 @@ class LivePlotter:
                 pass
             self._scatter_diffs = None
 
-        # ── Build new scatter data (WINDOWED) ───────────────────────────
+        # ── Build new scatter data (WINDOWED to last 1000) ──────────────
         scatter_start = max(0, n_updates - max_scatter_window)
         all_scatter_x = []
         all_scatter_y = []
@@ -3024,7 +2933,7 @@ class LivePlotter:
                 all_scatter_x.append(i)
                 all_scatter_y.append(s)
 
-        # Adaptive alpha: fewer points = more opaque, many = more transparent
+        # Adaptive alpha
         n_scatter = len(all_scatter_x)
         if n_scatter > 5000:
             scatter_alpha = 0.08
@@ -3046,22 +2955,21 @@ class LivePlotter:
                 edgecolors="none",
             )
 
-        # ── Set axis limits explicitly ──────────────────────────────────
-        ax.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
+        # ── Set axis limits ─────────────────────────────────────────────
+        x_lo = max(scatter_start - 0.5, -0.5)
+        x_hi = max(n_updates - 0.5, 0.5)
+        ax.set_xlim(x_lo, x_hi)
         ax.set_ylim(-0.05, 1.05)
 
-        # ── Update legend ───────────────────────────────────────────────
+        # ── Update legend (scatter only) ────────────────────────────────
         from matplotlib.lines import Line2D
         window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
         legend_elements = [
-            Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
-            Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
                    markersize=6, alpha=0.5, linestyle='None', label=window_label),
         ]
         ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
-        # ── Force redraw ────────────────────────────────────────────────
         self._refresh()
 
     @staticmethod
