@@ -88,6 +88,9 @@ from persim import wasserstein
 
 import warnings
 warnings.filterwarnings("ignore", message="Glyph .* missing from font")
+warnings.filterwarnings("ignore", message="Glyph .* missing from font")
+warnings.filterwarnings("ignore", message="No artists with labels found to put in legend")
+warnings.filterwarnings("ignore", message="This figure includes Axes that are not compatible with tight_layout")
 
 csv_log = CSVTrainingLogger()
 
