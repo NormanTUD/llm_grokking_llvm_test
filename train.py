@@ -4033,9 +4033,11 @@ def train(args: argparse.Namespace):
                     # ── Plotter + run logger ────────────────────────────
                     plotter.update_val_batch(vl)
 
-                    if preds:
-                        plotter.accumulate_predictions(preds)
-                        plotter.update_prediction_diffs(preds)
+                    if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
+                        preds = get_batch_predictions(model, tokenizer, batch, device)
+                        if preds:
+                            plotter.accumulate_predictions(preds)
+                            plotter.update_prediction_diffs(preds)
 
                     if run_logger:
                         run_logger.log_batch_loss_val(epoch, val_batches, vl)
