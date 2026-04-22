@@ -3373,39 +3373,58 @@ class LivePlotter:
             return
 
         ax.clear()
-        ax.set_title(
-            f"Wasserstein-1 Distance (layers) — step {self._topo_step}",
-            fontsize=9, fontweight="bold",
-        )
 
         if W_matrix is None or W_matrix.size == 0:
+            ax.set_title(
+                f"Wasserstein-1 Distance (layers) — step {self._topo_step}",
+                fontsize=9, fontweight="bold",
+            )
             ax.text(0.5, 0.5, "Waiting for data...",
                     ha="center", va="center", fontsize=11, alpha=0.4,
                     transform=ax.transAxes)
             return
 
-        n = W_matrix.shape[0]
-        im = ax.imshow(
-            W_matrix,
-            cmap="inferno",
-            interpolation="nearest",
-            origin="lower",
-            aspect="equal",
+        # ── Normalize to [0, 1] so the color scale doesn't drift ───────
+        w_max = W_matrix.max()
+        if w_max > 0:
+            W_normed = W_matrix / w_max
+        else:
+            W_normed = W_matrix
+
+        ax.set_title(
+            f"Wasserstein-1 Distance (layers) — step {self._topo_step}\n"
+            f"[max={w_max:.2f}]",
+            fontsize=9, fontweight="bold",
         )
 
-        # Colorbar
-        if hasattr(self, '_wass_cbar') and self._wass_cbar is not None:
+        n = W_normed.shape[0]
+
+        # ── Remove old colorbar BEFORE clearing axes ────────────────────
+        if self._wass_cbar is not None:
             try:
                 self._wass_cbar.remove()
             except Exception:
                 pass
+            self._wass_cbar = None
+
+        im = ax.imshow(
+            W_normed,
+            cmap="inferno",
+            interpolation="nearest",
+            origin="lower",
+            aspect="equal",
+            vmin=0.0,
+            vmax=1.0,  # FIXED scale: always 0–1
+        )
+
+        # ── Colorbar ────────────────────────────────────────────────────
         self._wass_cbar = self.fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         self._wass_cbar.ax.tick_params(labelsize=6)
+        self._wass_cbar.set_label("Relative W₁", fontsize=7)
 
-        # Axis labels
+        # ── Axis labels ─────────────────────────────────────────────────
         tick_positions = list(range(n))
         tick_labels = [f"L{i}" for i in range(n)]
-        # Show every other label if too many layers
         if n > 10:
             for i in range(len(tick_labels)):
                 if i % 2 != 0:
