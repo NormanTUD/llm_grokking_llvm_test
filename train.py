@@ -164,7 +164,7 @@ def parse_args() -> argparse.Namespace:
                    help="Dropout rate")
     g.add_argument("--value-loss-alpha", type=float, default=0.1,
                    help="Weight for the value regression (absolute difference) loss term. "
-                        "0 = disabled, higher = more emphasis on numeric accuracy.")
+                   "0 = disabled, higher = more emphasis on numeric accuracy.")
 
     g = p.add_argument_group("Training")
     g.add_argument("--epochs", type=int, default=30,
@@ -187,13 +187,13 @@ def parse_args() -> argparse.Namespace:
                    help="LR scheduler")
     g.add_argument("--resume", type=str, default=None,
                    help="Path to a .pt checkpoint to resume training from "
-                        "(e.g. llvm_gpt_model/model_epoch_15.pt)")
+                   "(e.g. llvm_gpt_model/model_epoch_15.pt)")
     g.add_argument("--structure-loss-alpha", type=float, default=0.5,
-               help="Weight for the structure-aware penalty loss term. "
-                    "0 = disabled, higher = more emphasis on producing valid numbers.")
+                   help="Weight for the structure-aware penalty loss term. "
+                   "0 = disabled, higher = more emphasis on producing valid numbers.")
     g.add_argument("--length-loss-alpha", type=float, default=0.3,
                    help="Weight for the length penalty loss term. "
-                        "0 = disabled, higher = more emphasis on correct answer length.")
+                   "0 = disabled, higher = more emphasis on correct answer length.")
 
     g = p.add_argument_group("Tokenizer")
     g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
@@ -232,7 +232,7 @@ def parse_args() -> argparse.Namespace:
 
     g.add_argument("--wait-pid", type=int, default=None,
                    help="Wait for this PID to exit before starting training "
-                        "(useful for queueing CUDA jobs)")
+                   "(useful for queueing CUDA jobs)")
 
     g = p.add_argument_group("Topology")
     g.add_argument("--topo", action="store_true", default=False,
@@ -287,12 +287,12 @@ signal.signal(signal.SIGINT, _sigint_handler)
 def wait_for_pid(pid: int, poll_interval: float = 2.0):
     """Block until the given PID is no longer running."""
     console.print(
-        Panel(
-            f"[bold yellow]⏳ Waiting for PID {pid} to finish before starting training...[/]\n"
-            f"[dim]Polling every {poll_interval}s[/]",
-            border_style="yellow",
-        )
-    )
+            Panel(
+                f"[bold yellow]⏳ Waiting for PID {pid} to finish before starting training...[/]\n"
+                f"[dim]Polling every {poll_interval}s[/]",
+                border_style="yellow",
+                )
+            )
     while True:
         try:
             os.kill(pid, 0)  # signal 0: doesn't kill, just checks existence
@@ -324,10 +324,10 @@ def _pid_alive(pid: int) -> bool:
     # Fallback: use `ps`
     try:
         result = subprocess.run(
-            ["ps", "-p", str(pid)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+                ["ps", "-p", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                )
         return result.returncode == 0
     except FileNotFoundError:
         # No `ps` available, rely on os.kill alone
@@ -424,13 +424,13 @@ class BPETokenizer:
 # ════════════════════════════════════════════════════════════════════════════
 
 def generate_single_sample(
-    tokenizer: BPETokenizer,
-    max_params: int = 4,
-    max_ops: int = 6,
-    allowed_ops: Optional[List[str]] = None,
-    param_range: Tuple[int, int] = (-50, 50),
-    max_seq_len: int = 2048,
-) -> Optional[List[int]]:
+        tokenizer: BPETokenizer,
+        max_params: int = 4,
+        max_ops: int = 6,
+        allowed_ops: Optional[List[str]] = None,
+        param_range: Tuple[int, int] = (-50, 50),
+        max_seq_len: int = 2048,
+        ) -> Optional[List[int]]:
     if allowed_ops is None:
         allowed_ops = ["add", "sub", "mul"]
 
@@ -440,24 +440,24 @@ def generate_single_sample(
 
     try:
         ir_code, result = generate_random_function(
-            num_params=num_params,
-            params=params,
-            allowed_ops=allowed_ops,
-            num_operations=num_ops,
-            func_name="f",
-        )
+                num_params=num_params,
+                params=params,
+                allowed_ops=allowed_ops,
+                num_operations=num_ops,
+                func_name="f",
+                )
     except Exception:
         return None
 
     params_str = ",".join(str(p) for p in params)
     result_str = str(result)
     text = f"{ir_code}<sep>{params_str}<sep>{result_str}"
-    
+
     ids = (
-        [tokenizer.bos_token_id]
-        + tokenizer.encode(text)
-        + [tokenizer.eos_token_id]
-    )
+            [tokenizer.bos_token_id]
+            + tokenizer.encode(text)
+            + [tokenizer.eos_token_id]
+            )
 
     prompt_part = f"{ir_code}<sep>{params_str}<sep>"
     prompt_len = 1 + len(tokenizer.encode(prompt_part))  # +1 for <bos>
@@ -465,21 +465,21 @@ def generate_single_sample(
     return ids, prompt_len
 
 def generate_batch(
-    tokenizer: BPETokenizer,
-    batch_size: int,
-    max_params: int = 3,
-    max_ops: int = 4,
-    allowed_ops: Optional[List[str]] = None,
-    param_range: Tuple[int, int] = (-20, 20),
-    max_seq_len: int = 2048,
-) -> List[List[int]]:
+        tokenizer: BPETokenizer,
+        batch_size: int,
+        max_params: int = 3,
+        max_ops: int = 4,
+        allowed_ops: Optional[List[str]] = None,
+        param_range: Tuple[int, int] = (-20, 20),
+        max_seq_len: int = 2048,
+        ) -> List[List[int]]:
     samples = []
     attempts = 0
     while len(samples) < batch_size and attempts < batch_size * 5:
         attempts += 1
         s = generate_single_sample(
-            tokenizer, max_params, max_ops, allowed_ops, param_range, max_seq_len
-        )
+                tokenizer, max_params, max_ops, allowed_ops, param_range, max_seq_len
+                )
         if s is not None:
             samples.append(s)
     return samples
@@ -555,17 +555,17 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
         answer_parseable.append(parseable)
 
     return (
-        torch.tensor(input_ids, dtype=torch.long),
-        torch.tensor(target_ids, dtype=torch.long),
-        torch.tensor(value_positions, dtype=torch.long),
-        torch.tensor(value_targets, dtype=torch.float),
-        torch.tensor(answer_parseable, dtype=torch.bool),
-    )
+            torch.tensor(input_ids, dtype=torch.long),
+            torch.tensor(target_ids, dtype=torch.long),
+            torch.tensor(value_positions, dtype=torch.long),
+            torch.tensor(value_targets, dtype=torch.float),
+            torch.tensor(answer_parseable, dtype=torch.bool),
+            )
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
-                                  max_params=4, max_ops=6,
-                                  param_range=(-50, 50),
-                                  bpe_vocab_size=512) -> BPETokenizer:
+                                 max_params=4, max_ops=6,
+                                 param_range=(-50, 50),
+                                 bpe_vocab_size=512) -> BPETokenizer:
     """
     Generate n_programs random LLVM IR functions to build a tokenizer.
     """
@@ -576,18 +576,18 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     corpus: List[str] = []
 
     with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold green]Generating LLVM IR corpus for tokenizer..."),
-        BarColumn(bar_width=40),
-        MofNCompleteColumn(),
-        TextColumn("• [cyan]{task.fields[status]}[/]"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=False,
-    ) as progress:
+            SpinnerColumn(),
+            TextColumn("[bold green]Generating LLVM IR corpus for tokenizer..."),
+            BarColumn(bar_width=40),
+            MofNCompleteColumn(),
+            TextColumn("• [cyan]{task.fields[status]}[/]"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=False,
+            ) as progress:
         task = progress.add_task(
-            "gen_corpus", total=n_programs, status="starting..."
-        )
+                "gen_corpus", total=n_programs, status="starting..."
+                )
         success = 0
         fail = 0
 
@@ -597,10 +597,10 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
             params = [random.randint(*param_range) for _ in range(num_p)]
             try:
                 ir_code, result = generate_random_function(
-                    num_params=num_p, params=params,
-                    allowed_ops=allowed_ops, num_operations=num_o,
-                    func_name="f",
-                )
+                        num_params=num_p, params=params,
+                        allowed_ops=allowed_ops, num_operations=num_o,
+                        func_name="f",
+                        )
                 text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
                 corpus.append(text)
                 success += 1
@@ -608,20 +608,20 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                 fail += 1
 
             progress.update(
-                task, advance=1,
-                status=f"{success} ok, {fail} failed"
-            )
+                    task, advance=1,
+                    status=f"{success} ok, {fail} failed"
+                    )
 
     console.print(
-        f"  [green]✓[/] Corpus ready: [bold]{len(corpus)}[/] programs "
-        f"([dim]{fail} generation failures skipped[/])"
-    )
+            f"  [green]✓[/] Corpus ready: [bold]{len(corpus)}[/] programs "
+            f"([dim]{fail} generation failures skipped[/])"
+            )
 
     # ── Step 2: Train BPE tokenizer ─────────────────────────────────────
     console.print(
-        f"  [cyan]Training BPE tokenizer "
-        f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
-    )
+            f"  [cyan]Training BPE tokenizer "
+            f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
+            )
 
     hf_tokenizer = HFTokenizer(models.BPE())
     hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -630,21 +630,21 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     special_tokens = ["<pad>", "<bos>", "<eos>", "<sep>"]
 
     trainer_obj = trainers.BpeTrainer(
-        vocab_size=bpe_vocab_size,
-        special_tokens=special_tokens,
-        min_frequency=2,
-        show_progress=True,
-        initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
-    )
+            vocab_size=bpe_vocab_size,
+            special_tokens=special_tokens,
+            min_frequency=2,
+            show_progress=True,
+            initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+            )
 
     with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold magenta]Training BPE merges..."),
-        TextColumn("(this may take a moment)"),
-        TimeElapsedColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
+            SpinnerColumn(),
+            TextColumn("[bold magenta]Training BPE merges..."),
+            TextColumn("(this may take a moment)"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+            ) as progress:
         task = progress.add_task("bpe_train", total=None)  # indeterminate
         hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
         progress.update(task, completed=True)
@@ -652,18 +652,18 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     tokenizer = BPETokenizer(hf_tokenizer=hf_tokenizer)
 
     console.print(
-        f"  [green]✓[/] BPE tokenizer trained — "
-        f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
-    )
+            f"  [green]✓[/] BPE tokenizer trained — "
+            f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
+            )
 
     # Show a sample encoding
     if corpus:
         sample = corpus[0][:80]
         encoded = tokenizer.encode(sample)
         console.print(
-            f"  [dim]Sample: \"{sample}...\"[/]\n"
-            f"  [dim]→ {len(encoded)} tokens (vs {len(sample)} chars)[/]"
-        )
+                f"  [dim]Sample: \"{sample}...\"[/]\n"
+                f"  [dim]→ {len(encoded)} tokens (vs {len(sample)} chars)[/]"
+                )
 
     return tokenizer
 
@@ -675,15 +675,15 @@ class LLVMGPTConfig:
     model_type = "llvm_gpt"
 
     def __init__(
-        self,
-        vocab_size: int = 90,
-        d_model: int = 64,
-        n_heads: int = 4,
-        n_layers: int = 4,
-        max_seq_len: int = 2048,
-        dropout: float = 0.1,
-        **kwargs,
-    ):
+            self,
+            vocab_size: int = 90,
+            d_model: int = 64,
+            n_heads: int = 4,
+            n_layers: int = 4,
+            max_seq_len: int = 2048,
+            dropout: float = 0.1,
+            **kwargs,
+            ):
         self.vocab_size = vocab_size
         self.d_model = d_model
         self.n_heads = n_heads
@@ -719,9 +719,9 @@ class CausalSelfAttention(nn.Module):
         self.attn_drop = nn.Dropout(dropout)
         self.proj_drop = nn.Dropout(dropout)
         self.register_buffer(
-            "mask",
-            torch.tril(torch.ones(max_seq_len, max_seq_len)).unsqueeze(0).unsqueeze(0),
-        )
+                "mask",
+                torch.tril(torch.ones(max_seq_len, max_seq_len)).unsqueeze(0).unsqueeze(0),
+                )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         try:
@@ -748,11 +748,11 @@ class TransformerBlock(nn.Module):
         self.attn = CausalSelfAttention(d_model, n_heads, max_seq_len, dropout)
         self.ln2 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
-            nn.Linear(d_model, 4 * d_model),
-            nn.GELU(),
-            nn.Linear(4 * d_model, d_model),
-            nn.Dropout(dropout),
-        )
+                nn.Linear(d_model, 4 * d_model),
+                nn.GELU(),
+                nn.Linear(4 * d_model, d_model),
+                nn.Dropout(dropout),
+                )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.ln1(x))
@@ -769,11 +769,11 @@ class TinyGPT(nn.Module):
         self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
         self.drop = nn.Dropout(config.dropout)
         self.blocks = nn.Sequential(
-            *[
-                TransformerBlock(config.d_model, config.n_heads, config.max_seq_len, config.dropout)
-                for _ in range(config.n_layers)
-            ]
-        )
+                *[
+                    TransformerBlock(config.d_model, config.n_heads, config.max_seq_len, config.dropout)
+                    for _ in range(config.n_layers)
+                    ]
+                )
         self.ln_f = nn.LayerNorm(config.d_model)
         self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         self.head.weight = self.tok_emb.weight
@@ -782,10 +782,10 @@ class TinyGPT(nn.Module):
         # Projects the last hidden state at a chosen position to a scalar
         # predicted integer value. This is fully differentiable.
         self.value_head = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model),
-            nn.GELU(),
-            nn.Linear(config.d_model, 1),
-        )
+                nn.Linear(config.d_model, config.d_model),
+                nn.GELU(),
+                nn.Linear(config.d_model, 1),
+                )
 
         self.apply(self._init_weights)
 
@@ -799,14 +799,14 @@ class TinyGPT(nn.Module):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(
-        self,
-        input_ids: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        value_positions: Optional[torch.Tensor] = None,
-        output_hidden_states: bool = False,
-        **kwargs,
-    ):
+            self,
+            input_ids: Optional[torch.Tensor] = None,
+            labels: Optional[torch.Tensor] = None,
+            attention_mask: Optional[torch.Tensor] = None,
+            value_positions: Optional[torch.Tensor] = None,
+            output_hidden_states: bool = False,
+            **kwargs,
+            ):
         """
         Args:
             input_ids:       (B, T) token indices
@@ -838,10 +838,10 @@ class TinyGPT(nn.Module):
         loss = None
         if labels is not None:
             loss = F.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                labels.view(-1),
-                ignore_index=0,
-            )
+                    logits.view(-1, logits.size(-1)),
+                    labels.view(-1),
+                    ignore_index=0,
+                    )
 
         # ── Value head prediction ───────────────────────────────────────
         # Gather the hidden state at the specified position for each sample
@@ -856,12 +856,12 @@ class TinyGPT(nn.Module):
             value_preds = self.value_head(pooled).squeeze(-1)         # (B,)
 
         return _ModelOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=tuple(hidden_states_list) if output_hidden_states else None,
-            last_hidden_state=x,
-            value_preds=value_preds,
-        )
+                loss=loss,
+                logits=logits,
+                hidden_states=tuple(hidden_states_list) if output_hidden_states else None,
+                last_hidden_state=x,
+                value_preds=value_preds,
+                )
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -879,27 +879,27 @@ class TinyGPT(nn.Module):
                 setattr(config, k, v)
         model = cls(config)
         state_dict = torch.load(
-            os.path.join(path, "pytorch_model.bin"),
-            map_location="cpu",
-            weights_only=True,
-        )
+                os.path.join(path, "pytorch_model.bin"),
+                map_location="cpu",
+                weights_only=True,
+                )
         model.load_state_dict(state_dict)
         return model
 
 def compute_structured_loss(
-    model: 'TinyGPT',
-    inp: torch.Tensor,
-    tgt: torch.Tensor,
-    value_positions: torch.Tensor,
-    value_targets: torch.Tensor,
-    answer_parseable: torch.Tensor,
-    tokenizer: 'BPETokenizer',
-    device: str,
-    alpha_value: float = 0.1,
-    alpha_structure: float = 0.5,
-    alpha_length: float = 0.3,
-    use_log_scale: bool = True,
-) -> Tuple[torch.Tensor, float, float, float, float]:
+        model: 'TinyGPT',
+        inp: torch.Tensor,
+        tgt: torch.Tensor,
+        value_positions: torch.Tensor,
+        value_targets: torch.Tensor,
+        answer_parseable: torch.Tensor,
+        tokenizer: 'BPETokenizer',
+        device: str,
+        alpha_value: float = 0.1,
+        alpha_structure: float = 0.5,
+        alpha_length: float = 0.3,
+        use_log_scale: bool = True,
+        ) -> Tuple[torch.Tensor, float, float, float, float]:
     """
     Combined loss:
       1. Cross-entropy (teacher-forced, standard)
@@ -912,10 +912,10 @@ def compute_structured_loss(
          expected answer length. This is fully differentiable.
     """
     output = model(
-        input_ids=inp,
-        labels=tgt,
-        value_positions=value_positions,
-    )
+            input_ids=inp,
+            labels=tgt,
+            value_positions=value_positions,
+            )
 
     ce_loss = output.loss
     logits = output.logits
@@ -956,61 +956,61 @@ def compute_structured_loss(
 
             # Combine: sign matters a LOT, magnitude matters proportionally
             value_loss_term = (
-                0.4 * sign_penalty +
-                0.35 * magnitude_loss +
-                0.25 * relative_error
-            )
+                    0.4 * sign_penalty +
+                    0.35 * magnitude_loss +
+                    0.25 * relative_error
+                    )
             val_loss_val = value_loss_term.item()
 
     # ── Length penalty loss (differentiable) ────────────────────────────
     length_loss_term = _compute_length_penalty(
-        logits=logits,
-        tgt=tgt,
-        value_positions=value_positions,
-        answer_parseable=answer_parseable,
-        tokenizer=tokenizer,
-        device=device,
-    )
+            logits=logits,
+            tgt=tgt,
+            value_positions=value_positions,
+            answer_parseable=answer_parseable,
+            tokenizer=tokenizer,
+            device=device,
+            )
 
     # ── Generation reward loss (REINFORCE-style) ────────────────────────
     gen_loss_term, parsability_rate = _compute_generation_reward_loss(
-        model=model,
-        inp=inp,
-        value_positions=value_positions,
-        value_targets=value_targets,
-        answer_parseable=answer_parseable,
-        tokenizer=tokenizer,
-        device=device,
-        max_gen_len=20,
-    )
+            model=model,
+            inp=inp,
+            value_positions=value_positions,
+            value_targets=value_targets,
+            answer_parseable=answer_parseable,
+            tokenizer=tokenizer,
+            device=device,
+            max_gen_len=20,
+            )
 
     structure_loss_val = gen_loss_term.item() if isinstance(gen_loss_term, torch.Tensor) else 0.0
 
     # ── Combine ─────────────────────────────────────────────────────────
     total_loss = (
-        ce_loss
-        + alpha_value * value_loss_term
-        + alpha_structure * gen_loss_term
-        + alpha_length * length_loss_term
-    )
+            ce_loss
+            + alpha_value * value_loss_term
+            + alpha_structure * gen_loss_term
+            + alpha_length * length_loss_term
+            )
 
     return (
-        total_loss,
-        ce_loss.item(),
-        val_loss_val,
-        structure_loss_val,
-        parsability_rate,
-    )
+            total_loss,
+            ce_loss.item(),
+            val_loss_val,
+            structure_loss_val,
+            parsability_rate,
+            )
 
 
 def _compute_length_penalty(
-    logits: torch.Tensor,           # (B, T, V)
-    tgt: torch.Tensor,              # (B, T)
-    value_positions: torch.Tensor,  # (B,)
-    answer_parseable: torch.Tensor, # (B,)
-    tokenizer: 'BPETokenizer',
-    device: str,
-) -> torch.Tensor:
+        logits: torch.Tensor,           # (B, T, V)
+        tgt: torch.Tensor,              # (B, T)
+        value_positions: torch.Tensor,  # (B,)
+        answer_parseable: torch.Tensor, # (B,)
+        tokenizer: 'BPETokenizer',
+        device: str,
+        ) -> torch.Tensor:
     """
     Differentiable length penalty.
 
@@ -1091,23 +1091,23 @@ def _compute_length_penalty(
     return torch.stack(length_losses).mean()
 
 def _compute_generation_reward_loss(
-    model: 'TinyGPT',
-    inp: torch.Tensor,
-    value_positions: torch.Tensor,
-    value_targets: torch.Tensor,
-    answer_parseable: torch.Tensor,
-    tokenizer: 'BPETokenizer',
-    device: str,
-    max_gen_len: int = 20,
-) -> Tuple[torch.Tensor, float]:
+        model: 'TinyGPT',
+        inp: torch.Tensor,
+        value_positions: torch.Tensor,
+        value_targets: torch.Tensor,
+        answer_parseable: torch.Tensor,
+        tokenizer: 'BPETokenizer',
+        device: str,
+        max_gen_len: int = 20,
+        ) -> Tuple[torch.Tensor, float]:
     """
     Generate from the model, score using _compute_structure_penalty,
     and use the score as a REINFORCE reward signal.
-    
+
     The structure penalty (0=perfect, 6=garbage) is converted to a
     reward in [-1, +1] via:  reward = 1.0 - (penalty / 3.0)
     clamped to [-1, +1].
-    
+
     This means:
       penalty=0.0 (perfect)     → reward = +1.0
       penalty=0.5 (close int)   → reward = +0.83
@@ -1153,9 +1153,9 @@ def _compute_generation_reward_loss(
 
         for step in range(max_gen_len):
             input_tensor = torch.tensor(
-                [current_ids[-model.max_seq_len:]],
-                dtype=torch.long, device=device,
-            )
+                    [current_ids[-model.max_seq_len:]],
+                    dtype=torch.long, device=device,
+                    )
             out = model(input_ids=input_tensor)
             step_logits = out.logits[0, -1, :]
             step_log_probs = F.log_softmax(step_logits, dim=-1)
@@ -1176,10 +1176,10 @@ def _compute_generation_reward_loss(
 
         # ── Score using your existing penalty function ──────────────
         penalty = _compute_structure_penalty(
-            expected_str=expected_str,
-            expected_int=expected_int,
-            predicted_str=gen_str,
-        )
+                expected_str=expected_str,
+                expected_int=expected_int,
+                predicted_str=gen_str,
+                )
 
         # ── Convert penalty → reward ────────────────────────────────
         # penalty=0 → reward=+1, penalty=3 → reward=0, penalty=6 → reward=-1
@@ -1188,8 +1188,8 @@ def _compute_generation_reward_loss(
 
         # Track parsability
         pred_cleaned = ''.join(
-            c for c in gen_str if c.isascii() and c.isprintable()
-        ).strip()
+                c for c in gen_str if c.isascii() and c.isprintable()
+                ).strip()
         try:
             int(pred_cleaned)
             n_parseable += 1
@@ -1250,15 +1250,15 @@ def _build_digit_token_set(tokenizer: 'BPETokenizer') -> torch.Tensor:
     return mask
 
 def _compute_differentiable_structure_penalty(
-    logits: torch.Tensor,           # (B, T, V)
-    tgt: torch.Tensor,              # (B, T)
-    value_positions: torch.Tensor,  # (B,)
-    value_targets: torch.Tensor,    # (B,)
-    answer_parseable: torch.Tensor, # (B,)
-    tokenizer: 'BPETokenizer',
-    device: str,
-    temperature: float = 1.0,
-) -> Tuple[torch.Tensor, float]:
+        logits: torch.Tensor,           # (B, T, V)
+        tgt: torch.Tensor,              # (B, T)
+        value_positions: torch.Tensor,  # (B,)
+        value_targets: torch.Tensor,    # (B,)
+        answer_parseable: torch.Tensor, # (B,)
+        tokenizer: 'BPETokenizer',
+        device: str,
+        temperature: float = 1.0,
+        ) -> Tuple[torch.Tensor, float]:
     """
     Compute a fully differentiable structure penalty over the answer region.
 
@@ -1381,11 +1381,11 @@ def _compute_differentiable_structure_penalty(
                         soft_targets[pos_idx] = soft_targets[pos_idx] / row_sum
 
             kl = F.kl_div(
-                answer_log_probs,
-                soft_targets,
-                reduction='batchmean',
-                log_target=False,
-            )
+                    answer_log_probs,
+                    soft_targets,
+                    reduction='batchmean',
+                    log_target=False,
+                    )
             kl_losses.append(kl)
 
         else:
@@ -1471,11 +1471,11 @@ def _compute_differentiable_structure_penalty(
         effective_garbage_weight /= total_weight
 
     total_structure = (
-        effective_digit_weight * avg_digit
-        + effective_kl_weight * avg_kl
-        + effective_length_weight * avg_length
-        + effective_garbage_weight * avg_anti_garbage
-    )
+            effective_digit_weight * avg_digit
+            + effective_kl_weight * avg_kl
+            + effective_length_weight * avg_length
+            + effective_garbage_weight * avg_anti_garbage
+            )
 
     # Ensure we always return a tensor that participates in the graph
     # even if all sub-losses are zero (prevents silent gradient death)
@@ -1503,10 +1503,10 @@ def _compute_differentiable_structure_penalty(
     return total_structure, structure_scalar
 
 def _compute_structure_penalty(
-    expected_str: str,
-    expected_int: int,
-    predicted_str: str,
-) -> float:
+        expected_str: str,
+        expected_int: int,
+        predicted_str: str,
+        ) -> float:
     """
     Compute a scalar penalty for a single prediction (NON-DIFFERENTIABLE).
 
@@ -1654,12 +1654,12 @@ class _ModelOutput(dict):
     def __init__(self, loss=None, logits=None, hidden_states=None,
                  last_hidden_state=None, value_preds=None):
         super().__init__(
-            loss=loss,
-            logits=logits,
-            hidden_states=hidden_states,
-            last_hidden_state=last_hidden_state,
-            value_preds=value_preds,
-        )
+                loss=loss,
+                logits=logits,
+                hidden_states=hidden_states,
+                last_hidden_state=last_hidden_state,
+                value_preds=value_preds,
+                )
         self.loss = loss
         self.logits = logits
         self.hidden_states = hidden_states
@@ -1681,10 +1681,10 @@ def estimate_params(vocab_size: int, d_model: int, n_layers: int, max_seq_len: i
 
 
 def find_model_config(
-    vocab_size: int,
-    target_params: int = 1_000,
-    max_seq_len: int = 2048,
-) -> dict:
+        vocab_size: int,
+        target_params: int = 1_000,
+        max_seq_len: int = 2048,
+        ) -> dict:
     best = None
     best_diff = float("inf")
     for d_model in range(8, 512, 2):
@@ -1697,11 +1697,11 @@ def find_model_config(
                 if diff < best_diff:
                     best_diff = diff
                     best = {
-                        "d_model": d_model,
-                        "n_heads": n_heads,
-                        "n_layers": n_layers,
-                        "estimated_params": n,
-                    }
+                            "d_model": d_model,
+                            "n_heads": n_heads,
+                            "n_layers": n_layers,
+                            "estimated_params": n,
+                            }
     return best
 
 
@@ -1776,32 +1776,32 @@ class EpochController:
                             with self._lock:
                                 self.total_epochs += self.step
                             console.print(
-                                f"\n[bold green]  ↑ Epochs → "
-                                f"{self.total_epochs} (+{self.step})[/]\n"
-                            )
+                                    f"\n[bold green]  ↑ Epochs → "
+                                    f"{self.total_epochs} (+{self.step})[/]\n"
+                                    )
                         elif ch == "-":
                             with self._lock:
                                 self.total_epochs = max(
-                                    self._min_epoch, self.total_epochs - self.step
-                                )
+                                        self._min_epoch, self.total_epochs - self.step
+                                        )
                             console.print(
-                                f"\n[bold red]  ↓ Epochs → "
-                                f"{self.total_epochs} (-{self.step})[/]\n"
-                            )
+                                    f"\n[bold red]  ↓ Epochs → "
+                                    f"{self.total_epochs} (-{self.step})[/]\n"
+                                    )
                         elif ch == "r":
                             # Request plot window reopen
                             if self._plotter is not None:
                                 self._plotter.request_reopen()
                                 console.print(
-                                    "\n[bold cyan]  📊 Reopen plot requested...[/]\n"
-                                )
+                                        "\n[bold cyan]  📊 Reopen plot requested...[/]\n"
+                                        )
                         elif ch == "q":
                             with self._lock:
                                 self._quit = True
                                 self.total_epochs = self._min_epoch
                             console.print(
-                                "\n[bold yellow]  ⏹ Finishing after current epoch...[/]\n"
-                            )
+                                    "\n[bold yellow]  ⏹ Finishing after current epoch...[/]\n"
+                                    )
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         except Exception:
@@ -1844,11 +1844,11 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
         # Find the answer portion by locating <sep> tokens in the ID sequence
         # Format: <bos> [ir_code] <sep> [params] <sep> [result] <eos>
         # We need to find the second <sep> and extract the answer after it
-        
+
         sep_positions = [i for i, tid in enumerate(token_ids) if tid == sep_id]
         if len(sep_positions) < 2:
             continue
-        
+
         # The answer starts after the second <sep>
         answer_start = sep_positions[1] + 1
         # Find <eos> or end of sequence
@@ -1858,7 +1858,7 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
             if token_ids[i] == eos_id:
                 answer_end = i
                 break
-        
+
         expected_ids = token_ids[answer_start:answer_end]
         expected_answer = tokenizer.decode(expected_ids).strip()
 
@@ -1869,9 +1869,9 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
         generated = list(prompt_ids)
         for _ in range(max_gen_len):
             inp = torch.tensor(
-                [generated[-model.max_seq_len:]],
-                dtype=torch.long, device=device,
-            )
+                    [generated[-model.max_seq_len:]],
+                    dtype=torch.long, device=device,
+                    )
             output = model(input_ids=inp)
             logits = output.logits[0, -1, :]
             next_token = logits.argmax().item()
@@ -1883,7 +1883,7 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
         # Decode only the generated portion (after prompt)
         generated_ids = generated[prompt_len:]
         generated_answer = tokenizer.decode(generated_ids).strip()
-        
+
         # Clean up any special token remnants
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             generated_answer = generated_answer.replace(special, "")
@@ -1902,15 +1902,15 @@ def get_gpu_info() -> Optional[Dict[str, any]]:
     """
     try:
         result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=name,memory.used,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.used,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw",
+                    "--format=csv,noheader,nounits",
+                    ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                )
         if result.returncode != 0:
             return None
 
@@ -1920,13 +1920,13 @@ def get_gpu_info() -> Optional[Dict[str, any]]:
             return None
 
         info = {
-            "gpu_name": parts[0],
-            "gpu_mem_used_mb": int(float(parts[1])),
-            "gpu_mem_total_mb": int(float(parts[2])),
-            "gpu_mem_free_mb": int(float(parts[3])),
-            "gpu_util_pct": int(float(parts[4])),
-            "gpu_temp_c": int(float(parts[5])),
-        }
+                "gpu_name": parts[0],
+                "gpu_mem_used_mb": int(float(parts[1])),
+                "gpu_mem_total_mb": int(float(parts[2])),
+                "gpu_mem_free_mb": int(float(parts[3])),
+                "gpu_util_pct": int(float(parts[4])),
+                "gpu_temp_c": int(float(parts[5])),
+                }
 
         # power.draw can sometimes be "[N/A]" on some GPUs
         try:
@@ -2020,8 +2020,8 @@ class LivePlotter:
 
         if not suppress_window:
             self._window_watch_thread = threading.Thread(
-                target=self._watch_window, daemon=True
-            )
+                    target=self._watch_window, daemon=True
+                    )
             self._window_watch_thread.start()
 
     def _draw_kelp_forest(self):
@@ -2049,9 +2049,9 @@ class LivePlotter:
         ax.clear()
         ax.set_facecolor("#020a1a")
         ax.set_title(
-            f"Kelp Forest — Fibre Bundle Dynamics  (step {self._kelp_data['step']})",
-            fontsize=10, fontweight="bold", color="#c0d8e8",
-        )
+                f"Kelp Forest — Fibre Bundle Dynamics  (step {self._kelp_data['step']})",
+                fontsize=10, fontweight="bold", color="#c0d8e8",
+                )
 
         data = self._kelp_data
         n_layers = data["n_layers"]       # number of hidden states (embedding + L blocks)
@@ -2108,7 +2108,7 @@ class LivePlotter:
         # ── Draw sea floor (deterministic sine waves) ───────────────────
         floor_xs = np.linspace(0, 1, 200)
         floor_ys = y_floor + 0.008 * np.sin(floor_xs * 15 + t_anim * 0.3) + \
-                   0.004 * np.sin(floor_xs * 37 + t_anim * 0.7)
+                0.004 * np.sin(floor_xs * 37 + t_anim * 0.7)
         ax.fill_between(floor_xs, 0, floor_ys, color="#1a0a30", alpha=0.8)
         ax.plot(floor_xs, floor_ys, color="#4a2a6a", linewidth=1.0, alpha=0.6)
 
@@ -2124,11 +2124,11 @@ class LivePlotter:
             ray_width = 0.02 + 0.015 * norm_val
             sway = 0.02 * np.sin(t_anim * 0.15 + ray_i * 1.618)
             ray_verts = [
-                (ray_x - ray_width, 1.0),
-                (ray_x + ray_width, 1.0),
-                (ray_x + ray_width * 2 + sway, 0.0),
-                (ray_x - ray_width * 2 + sway, 0.0),
-            ]
+                    (ray_x - ray_width, 1.0),
+                    (ray_x + ray_width, 1.0),
+                    (ray_x + ray_width * 2 + sway, 0.0),
+                    (ray_x - ray_width * 2 + sway, 0.0),
+                    ]
             ray_patch = MplPolygon(ray_verts, closed=True,
                                    facecolor="#4080b0", alpha=0.03)
             ax.add_patch(ray_patch)
@@ -2269,11 +2269,11 @@ class LivePlotter:
                 node_intensity = tok_n / global_max_tnorm
 
                 node_color = (
-                    0.2 + 0.3 * node_intensity,
-                    0.5 + 0.4 * node_intensity,
-                    0.3 + 0.2 * node_intensity,
-                    0.6 + 0.3 * node_intensity,
-                )
+                        0.2 + 0.3 * node_intensity,
+                        0.5 + 0.4 * node_intensity,
+                        0.3 + 0.2 * node_intensity,
+                        0.6 + 0.3 * node_intensity,
+                        )
                 ax.plot(node_x, node_y, 'o',
                         color=node_color, markersize=node_size,
                         markeredgecolor=(0.4, 0.8, 0.5, 0.3),
@@ -2452,8 +2452,8 @@ class LivePlotter:
                 cosine_drift = 0.0
                 if prev_mean_vec is not None:
                     cos = F.cosine_similarity(
-                        mean_vec.unsqueeze(0), prev_mean_vec.unsqueeze(0)
-                    ).item()
+                            mean_vec.unsqueeze(0), prev_mean_vec.unsqueeze(0)
+                            ).item()
                     cosine_drift = 1.0 - cos  # 0 = identical, ~2 = opposite
 
                 # Per-token norms for this layer (take first batch element)
@@ -2464,15 +2464,15 @@ class LivePlotter:
                     "std_norm": std_norm,
                     "cosine_drift": cosine_drift,
                     "token_norms": token_norms,
-                })
+                    })
                 prev_mean_vec = mean_vec
 
             self._kelp_data = {
-                "layer_stats": layer_stats,
-                "n_layers": len(hidden_states),
-                "n_tokens": hidden_states[0].shape[1],
-                "step": self._kelp_step,
-            }
+                    "layer_stats": layer_stats,
+                    "n_layers": len(hidden_states),
+                    "n_tokens": hidden_states[0].shape[1],
+                    "step": self._kelp_step,
+                    }
 
             # Advance the sway "time" so animation progresses between updates
             self._kelp_time_offset += 1.0
@@ -2570,7 +2570,7 @@ class LivePlotter:
         # ── Kelp forest axes ────────────────────────────────────────────────
         self.ax_kelp = ax_kelp
         ax_kelp.set_title("Kelp Forest — Embedding Space Dynamics",
-                           fontsize=10, fontweight="bold")
+                          fontsize=10, fontweight="bold")
         ax_kelp.set_facecolor("#020a1a")
         ax_kelp.set_xlim(0, 1)
         ax_kelp.set_ylim(0, 1)
@@ -2608,11 +2608,11 @@ class LivePlotter:
         ax_epoch.set_ylabel("Loss")
         ax_epoch.grid(True, alpha=0.3)
         self.line_train_epoch, = ax_epoch.plot(
-            [], [], label="Train", color="steelblue", linewidth=2,
-        )
+                [], [], label="Train", color="steelblue", linewidth=2,
+                )
         self.line_val_epoch, = ax_epoch.plot(
-            [], [], label="Val", color="tomato", linewidth=2,
-        )
+                [], [], label="Val", color="tomato", linewidth=2,
+                )
         ax_epoch.legend(loc="upper right", fontsize=8)
 
         # ── Top-center: Batch loss EMA ──────────────────────────────────────
@@ -2621,8 +2621,8 @@ class LivePlotter:
         ax_batch.set_ylabel("Loss")
         ax_batch.grid(True, alpha=0.3)
         self.line_batch_ema, = ax_batch.plot(
-            [], [], label="Train EMA", color="steelblue", linewidth=2,
-        )
+                [], [], label="Train EMA", color="steelblue", linewidth=2,
+                )
         ax_batch.legend(loc="upper right", fontsize=8)
 
         # ── Top-right: Learning Rate ────────────────────────────────────────
@@ -2632,8 +2632,8 @@ class LivePlotter:
         ax_lr.grid(True, alpha=0.3)
         ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
         self.line_lr, = ax_lr.plot(
-            [], [], label="LR", color="seagreen", linewidth=2,
-        )
+                [], [], label="LR", color="seagreen", linewidth=2,
+                )
         ax_lr.legend(loc="upper right", fontsize=8)
 
         # ── Mid-left: Val batch loss ────────────────────────────────────────
@@ -2642,42 +2642,42 @@ class LivePlotter:
         ax_val.set_ylabel("Loss")
         ax_val.grid(True, alpha=0.3)
         self.line_val_raw, = ax_val.plot(
-            [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
-        )
+                [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
+                )
         self.line_val_epoch_avg, = ax_val.plot(
-            [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
-            marker="o", markersize=4,
-        )
+                [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
+                marker="o", markersize=4,
+                )
         ax_val.legend(loc="upper right", fontsize=8)
 
         # ── TDA panels (only when topo_enabled) ─────────────────────────────
         if self.ax_barcode is not None:
             self.ax_barcode.set_title("Persistence Landscapes (H₁, all layers)",
-                                       fontsize=10, fontweight="bold")
+                                      fontsize=10, fontweight="bold")
             self.ax_barcode.text(
-                0.5, 0.5, "Waiting for data...",
-                ha="center", va="center",
-                transform=self.ax_barcode.transAxes,
-                fontsize=11, alpha=0.4,
-            )
+                    0.5, 0.5, "Waiting for data...",
+                    ha="center", va="center",
+                    transform=self.ax_barcode.transAxes,
+                    fontsize=11, alpha=0.4,
+                    )
             self.ax_barcode.grid(True, alpha=0.2)
 
         if self.ax_bd is not None:
             self.ax_bd.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
-                                  fontsize=10, fontweight="bold")
+                                 fontsize=10, fontweight="bold")
             # Create a dummy 1x1 image and a PERMANENT colorbar
             self._wass_im = self.ax_bd.imshow(
-                np.zeros((1, 1)),
-                cmap="inferno",
-                interpolation="nearest",
-                origin="lower",
-                aspect="equal",
-                vmin=0.0,
-                vmax=1.0,
-            )
+                    np.zeros((1, 1)),
+                    cmap="inferno",
+                    interpolation="nearest",
+                    origin="lower",
+                    aspect="equal",
+                    vmin=0.0,
+                    vmax=1.0,
+                    )
             self._wass_cbar = self.fig.colorbar(
-                self._wass_im, ax=self.ax_bd, fraction=0.046, pad=0.04,
-            )
+                    self._wass_im, ax=self.ax_bd, fraction=0.046, pad=0.04,
+                    )
             self._wass_cbar.ax.tick_params(labelsize=6)
             self._wass_cbar.set_label("Relative W₁", fontsize=7)
             # Store the axes position so we can restore it if needed
@@ -2689,9 +2689,9 @@ class LivePlotter:
         ax_preds.set_ylim(0, 1)
         ax_preds.axis("off")
         ax_preds.set_title(
-            "Last Batch Predictions (Expected → Got)",
-            fontsize=10, fontweight="bold",
-        )
+                "Last Batch Predictions (Expected → Got)",
+                fontsize=10, fontweight="bold",
+                )
         self._draw_predictions()
 
         # ── Model Info panel (text only) ────────────────────────────────────
@@ -2742,10 +2742,10 @@ class LivePlotter:
                 scatter_alpha = 0.30 if n_scatter < 500 else (0.15 if n_scatter < 2000 else 0.08)
                 scatter_size = 14 if n_scatter < 500 else (10 if n_scatter < 2000 else 6)
                 self._scatter_diffs = self.ax_diffs.scatter(
-                    all_scatter_x, all_scatter_y,
-                    s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
-                    edgecolors="none",
-                )
+                        all_scatter_x, all_scatter_y,
+                        s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
+                        edgecolors="none",
+                        )
 
             x_lo = max(scatter_start - 0.5, -0.5)
             self.ax_diffs.set_xlim(x_lo, max(n_updates - 0.5, 0.5))
@@ -2754,9 +2754,9 @@ class LivePlotter:
             from matplotlib.lines import Line2D
             window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
             legend_elements = [
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                       markersize=6, alpha=0.5, linestyle='None', label=window_label),
-            ]
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
+                           markersize=6, alpha=0.5, linestyle='None', label=window_label),
+                    ]
             self.ax_diffs.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
     def _on_close(self, event):
@@ -2764,9 +2764,9 @@ class LivePlotter:
         with self._lock:
             self._window_closed = True
         console.print(
-            "\n[bold yellow]📊 Plot window closed. "
-            "Press [bold white]r[/bold white] to reopen it.[/]\n"
-        )
+                "\n[bold yellow]📊 Plot window closed. "
+                "Press [bold white]r[/bold white] to reopen it.[/]\n"
+                )
 
     def _watch_window(self):
         """Background thread: periodically pumps the matplotlib event loop
@@ -2880,7 +2880,7 @@ class LivePlotter:
         vxs = list(range(len(self.val_batch_raw)))
         self.line_val_raw.set_data(vxs, self.val_batch_raw)
         self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs,
-                                          self._val_epoch_avg_ys)
+                                         self._val_epoch_avg_ys)
 
     # ── Epoch update ────────────────────────────────────────────────────
     def update_epoch(self, train_loss: float, val_loss: float, lr: float):
@@ -2931,22 +2931,22 @@ class LivePlotter:
             n_landscapes = 5
             resolution = 100
             landscapes, sample_range = compute_persistence_landscapes(
-                hidden_states,
-                n_landscapes=n_landscapes,
-                resolution=resolution,
-                max_points=self.topo_max_points,
-                pca_dim=self.topo_pca_dim,
-            )
+                    hidden_states,
+                    n_landscapes=n_landscapes,
+                    resolution=resolution,
+                    max_points=self.topo_max_points,
+                    pca_dim=self.topo_pca_dim,
+                    )
             self._draw_persistence_landscapes(
-                landscapes, sample_range, n_landscapes, resolution,
-            )
+                    landscapes, sample_range, n_landscapes, resolution,
+                    )
 
             # ── Wasserstein Heatmap (replaces birth/death) ──────────────
             W = compute_cross_layer_wasserstein(
-                hidden_states,
-                max_points=self.topo_max_points,
-                pca_dim=self.topo_pca_dim,
-            )
+                    hidden_states,
+                    max_points=self.topo_max_points,
+                    pca_dim=self.topo_pca_dim,
+                    )
             self._draw_wasserstein_heatmap(W)
 
             self._refresh()
@@ -2978,8 +2978,8 @@ class LivePlotter:
                 continue
 
             pred_cleaned = ''.join(
-                c for c in predicted if c.isascii() and c.isprintable()
-            ).strip()
+                    c for c in predicted if c.isascii() and c.isprintable()
+                    ).strip()
 
             try:
                 pred_val = int(pred_cleaned)
@@ -3041,10 +3041,10 @@ class LivePlotter:
 
         if all_scatter_x:
             self._scatter_diffs = ax.scatter(
-                all_scatter_x, all_scatter_y,
-                s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
-                edgecolors="none",
-            )
+                    all_scatter_x, all_scatter_y,
+                    s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
+                    edgecolors="none",
+                    )
 
         # ── Set axis limits ─────────────────────────────────────────────
         x_lo = max(scatter_start - 0.5, -0.5)
@@ -3056,19 +3056,19 @@ class LivePlotter:
         from matplotlib.lines import Line2D
         window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                   markersize=6, alpha=0.5, linestyle='None', label=window_label),
-        ]
+                Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
+                       markersize=6, alpha=0.5, linestyle='None', label=window_label),
+                ]
         ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
         self._refresh()
 
     @staticmethod
     def _downsample_line_indices(
-        n_total: int,
-        max_points: int = 1500,
-        recent_full_res: int = 300,
-    ) -> List[int]:
+            n_total: int,
+            max_points: int = 1500,
+            recent_full_res: int = 300,
+            ) -> List[int]:
         """
         Two-tier downsampling strategy for line data:
           - The most recent `recent_full_res` points are kept at full resolution.
@@ -3117,9 +3117,9 @@ class LivePlotter:
         ax.clear()
         ax.axis("off")
         ax.set_title(
-            "Predictions (Training + Validation samples)",
-            fontsize=10, fontweight="bold",
-        )
+                "Predictions (Training + Validation samples)",
+                fontsize=10, fontweight="bold",
+                )
 
         if not self._last_predictions:
             ax.text(0.5, 0.5, "Waiting for predictions...",
@@ -3131,8 +3131,8 @@ class LivePlotter:
         y_positions = np.linspace(0.95, 0.05, n_show)
 
         for i, (expected, predicted, is_correct) in enumerate(
-            self._last_predictions[-n_show:]
-        ):
+                self._last_predictions[-n_show:]
+                ):
             # Try to parse both as integers
             exp_parseable = True
             pred_parseable = True
@@ -3143,8 +3143,8 @@ class LivePlotter:
 
             # Clean BPE artifacts before parsing
             pred_cleaned = ''.join(
-                c for c in predicted if c.isascii() and c.isprintable()
-            ).strip()
+                    c for c in predicted if c.isascii() and c.isprintable()
+                    ).strip()
 
             try:
                 pred_val = int(pred_cleaned)
@@ -3168,9 +3168,9 @@ class LivePlotter:
                     marker = "✗"
 
                 text = (
-                    f"{marker}  expected: {exp_val:>6d}  │  "
-                    f"got: {pred_val:>6d}  │  diff: {diff}"
-                )
+                        f"{marker}  expected: {exp_val:>6d}  │  "
+                        f"got: {pred_val:>6d}  │  diff: {diff}"
+                        )
 
             elif exp_parseable and not pred_parseable:
                 color = "red"
@@ -3179,17 +3179,17 @@ class LivePlotter:
                 if len(pred_display) > 20:
                     pred_display = pred_display[:20] + "…"
                 text = (
-                    f"{marker}  expected: {exp_val:>6d}  │  "
-                    f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
-                )
+                        f"{marker}  expected: {exp_val:>6d}  │  "
+                        f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
+                        )
 
             else:
                 color = "red"
                 marker = "✗"
                 text = (
-                    f"{marker}  expected: {expected[:12]:>12s}  │  "
-                    f"got: {predicted[:12]:>12s}  │  ⚠ BOTH INVALID"
-                )
+                        f"{marker}  expected: {expected[:12]:>12s}  │  "
+                        f"got: {predicted[:12]:>12s}  │  ⚠ BOTH INVALID"
+                        )
 
             ax.text(0.02, y_positions[i], text,
                     fontsize=8, fontfamily="monospace",
@@ -3198,21 +3198,21 @@ class LivePlotter:
 
         # Summary stats — use numeric comparison
         n_correct = sum(
-            1 for exp, pred, _ in self._last_predictions
-            if _is_int_str(exp) and _is_int_str(
-                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-            )
-            and int(exp.strip()) == int(
-                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-            )
-        )
+                1 for exp, pred, _ in self._last_predictions
+                if _is_int_str(exp) and _is_int_str(
+                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+                    )
+                and int(exp.strip()) == int(
+                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+                    )
+                )
         n_total = len(self._last_predictions)
         n_garbage = sum(
-            1 for _, pred, _ in self._last_predictions
-            if not _is_int_str(
-                ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-            )
-        )
+                1 for _, pred, _ in self._last_predictions
+                if not _is_int_str(
+                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+                    )
+                )
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
 
         summary = f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)"
@@ -3239,14 +3239,14 @@ class LivePlotter:
             return
 
         info_lines = [
-            f"Parameters:    {self._model_info.get('params', '?'):,}",
-            f"d_model:       {self._model_info.get('d_model', '?')}",
-            f"n_heads:       {self._model_info.get('n_heads', '?')}",
-            f"n_layers:      {self._model_info.get('n_layers', '?')}",
-            f"max_seq_len:   {self._model_info.get('max_seq_len', '?')}",
-            f"vocab_size:    {self._model_info.get('vocab_size', '?')}",
-            f"device:        {self._model_info.get('device', '?')}",
-        ]
+                f"Parameters:    {self._model_info.get('params', '?'):,}",
+                f"d_model:       {self._model_info.get('d_model', '?')}",
+                f"n_heads:       {self._model_info.get('n_heads', '?')}",
+                f"n_layers:      {self._model_info.get('n_layers', '?')}",
+                f"max_seq_len:   {self._model_info.get('max_seq_len', '?')}",
+                f"vocab_size:    {self._model_info.get('vocab_size', '?')}",
+                f"device:        {self._model_info.get('device', '?')}",
+                ]
 
         # Add GPU info if available, otherwise show CPU/system info
         gpu = get_gpu_info()
@@ -3255,10 +3255,10 @@ class LivePlotter:
             if "gpu_name" in gpu:
                 info_lines.append(f"GPU:           {gpu['gpu_name']}")
             info_lines.append(
-                f"GPU Mem:       {gpu.get('gpu_mem_used_mb', '?')} / "
-                f"{gpu.get('gpu_mem_total_mb', '?')} MB "
-                f"({gpu.get('gpu_mem_free_mb', '?')} MB free)"
-            )
+                    f"GPU Mem:       {gpu.get('gpu_mem_used_mb', '?')} / "
+                    f"{gpu.get('gpu_mem_total_mb', '?')} MB "
+                    f"({gpu.get('gpu_mem_free_mb', '?')} MB free)"
+                    )
             info_lines.append(f"GPU Util:      {gpu.get('gpu_util_pct', '?')}%")
             if "gpu_temp_c" in gpu:
                 info_lines.append(f"GPU Temp:      {gpu['gpu_temp_c']}°C")
@@ -3271,16 +3271,16 @@ class LivePlotter:
             if torch.cuda.is_available():
                 info_lines.append(f"CUDA:          {torch.version.cuda}")
                 info_lines.append(
-                    f"CUDA Device:   {torch.cuda.get_device_name(0)}"
-                )
+                        f"CUDA Device:   {torch.cuda.get_device_name(0)}"
+                        )
                 mem = torch.cuda.mem_get_info(0)
                 free_mb = mem[0] // (1024 * 1024)
                 total_mb = mem[1] // (1024 * 1024)
                 used_mb = total_mb - free_mb
                 info_lines.append(
-                    f"CUDA Mem:      {used_mb} / {total_mb} MB "
-                    f"({free_mb} MB free)"
-                )
+                        f"CUDA Mem:      {used_mb} / {total_mb} MB "
+                        f"({free_mb} MB free)"
+                        )
             elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 info_lines.append(f"Backend:       MPS (Apple Silicon)")
             else:
@@ -3335,9 +3335,9 @@ class LivePlotter:
 
         ax.clear()
         ax.set_title(
-            f"Persistence Landscapes (H₁) — step {self._topo_step}",
-            fontsize=9, fontweight="bold",
-        )
+                f"Persistence Landscapes (H₁) — step {self._topo_step}",
+                fontsize=9, fontweight="bold",
+                )
 
         if not landscapes_per_layer:
             ax.text(0.5, 0.5, "No H₁ features detected",
@@ -3362,12 +3362,12 @@ class LivePlotter:
                 continue  # skip flat-zero layers
 
             ax.plot(
-                x_grid, dominant,
-                color=colors[li],
-                linewidth=1.4,
-                alpha=0.7,
-                label=f"L{li}" if li % max(1, n_layers // 6) == 0 else None,
-            )
+                    x_grid, dominant,
+                    color=colors[li],
+                    linewidth=1.4,
+                    alpha=0.7,
+                    label=f"L{li}" if li % max(1, n_layers // 6) == 0 else None,
+                    )
 
         ax.set_xlabel("Filtration value", fontsize=8)
         ax.set_ylabel("λ₁(t)", fontsize=8)
@@ -3400,14 +3400,14 @@ class LivePlotter:
         else:
             # Fallback: first call before _create_figure set it up
             self._wass_im = ax.imshow(
-                W_normed,
-                cmap="inferno",
-                interpolation="nearest",
-                origin="lower",
-                aspect="equal",
-                vmin=0.0,
-                vmax=1.0,
-            )
+                    W_normed,
+                    cmap="inferno",
+                    interpolation="nearest",
+                    origin="lower",
+                    aspect="equal",
+                    vmin=0.0,
+                    vmax=1.0,
+                    )
 
         # ── Restore axes position (undo any drift) ──────────────────────
         if self._wass_ax_pos is not None:
@@ -3415,10 +3415,10 @@ class LivePlotter:
 
         # ── Update title and tick labels ────────────────────────────────
         ax.set_title(
-            f"Wasserstein-1 Distance (layers) — step {self._topo_step}\n"
-            f"[max={w_max:.2f}]",
-            fontsize=9, fontweight="bold",
-        )
+                f"Wasserstein-1 Distance (layers) — step {self._topo_step}\n"
+                f"[max={w_max:.2f}]",
+                fontsize=9, fontweight="bold",
+                )
 
         n = W_normed.shape[0]
         tick_positions = list(range(n))
@@ -3503,15 +3503,15 @@ class TimeEstimator:
 # ════════════════════════════════════════════════════════════════════════════
 
 def _prepare_batch(
-    tokenizer: BPETokenizer,
-    batch_size: int,
-    max_params: int,
-    max_ops: int,
-    allowed_ops: List[str],
-    param_range: Tuple[int, int],
-    max_seq_len: int,
-    device: str,
-) -> Optional[Tuple]:
+        tokenizer: BPETokenizer,
+        batch_size: int,
+        max_params: int,
+        max_ops: int,
+        allowed_ops: List[str],
+        param_range: Tuple[int, int],
+        max_seq_len: int,
+        device: str,
+        ) -> Optional[Tuple]:
     """
     Generate a batch, collate it, and move tensors to device.
 
@@ -3520,40 +3520,40 @@ def _prepare_batch(
         or None if the batch is too small.
     """
     batch = generate_batch(
-        tokenizer, batch_size, max_params, max_ops,
-        allowed_ops, param_range, max_seq_len,
-    )
+            tokenizer, batch_size, max_params, max_ops,
+            allowed_ops, param_range, max_seq_len,
+            )
     if len(batch) < 2:
         return None
 
     inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
-        batch,
-        pad_id=tokenizer.SPECIAL["<pad>"],
-        tokenizer=tokenizer,
-    )
+            batch,
+            pad_id=tokenizer.SPECIAL["<pad>"],
+            tokenizer=tokenizer,
+            )
     return (
-        batch,
-        inp.to(device),
-        tgt.to(device),
-        val_pos.to(device),
-        val_tgt.to(device),
-        ans_parseable.to(device),
-    )
+            batch,
+            inp.to(device),
+            tgt.to(device),
+            val_pos.to(device),
+            val_tgt.to(device),
+            ans_parseable.to(device),
+            )
 
 
 def _compute_batch_loss(
-    model: TinyGPT,
-    inp: torch.Tensor,
-    tgt: torch.Tensor,
-    val_pos: torch.Tensor,
-    val_tgt: torch.Tensor,
-    ans_parseable: torch.Tensor,
-    tokenizer: BPETokenizer,
-    device: str,
-    value_loss_alpha: float,
-    structure_loss_alpha: float,
-    length_loss_alpha: float,
-) -> Tuple[torch.Tensor, float, float, float, float]:
+        model: TinyGPT,
+        inp: torch.Tensor,
+        tgt: torch.Tensor,
+        val_pos: torch.Tensor,
+        val_tgt: torch.Tensor,
+        ans_parseable: torch.Tensor,
+        tokenizer: BPETokenizer,
+        device: str,
+        value_loss_alpha: float,
+        structure_loss_alpha: float,
+        length_loss_alpha: float,
+        ) -> Tuple[torch.Tensor, float, float, float, float]:
     """
     Thin wrapper around compute_structured_loss with standard args.
 
@@ -3561,27 +3561,27 @@ def _compute_batch_loss(
         (loss_tensor, ce_val, vloss_val, struct_val, parse_rate)
     """
     return compute_structured_loss(
-        model, inp, tgt, val_pos, val_tgt, ans_parseable,
-        tokenizer=tokenizer,
-        device=device,
-        alpha_value=value_loss_alpha,
-        alpha_structure=structure_loss_alpha,
-        alpha_length=length_loss_alpha,
-        use_log_scale=True,
-    )
+            model, inp, tgt, val_pos, val_tgt, ans_parseable,
+            tokenizer=tokenizer,
+            device=device,
+            alpha_value=value_loss_alpha,
+            alpha_structure=structure_loss_alpha,
+            alpha_length=length_loss_alpha,
+            use_log_scale=True,
+            )
 
 
 def _save_checkpoint(
-    path: str,
-    filename: str,
-    epoch: int,
-    model: TinyGPT,
-    optimizer,
-    scheduler,
-    train_loss: float,
-    val_loss: float,
-    best_val_loss: float,
-) -> str:
+        path: str,
+        filename: str,
+        epoch: int,
+        model: TinyGPT,
+        optimizer,
+        scheduler,
+        train_loss: float,
+        val_loss: float,
+        best_val_loss: float,
+        ) -> str:
     """Save a .pt checkpoint to path/filename. Returns the full path."""
     os.makedirs(path, exist_ok=True)
     full_path = os.path.join(path, filename)
@@ -3593,7 +3593,7 @@ def _save_checkpoint(
         "train_loss": train_loss,
         "val_loss": val_loss,
         "best_val_loss": best_val_loss,
-    }, full_path)
+        }, full_path)
     return full_path
 
 
@@ -3601,30 +3601,30 @@ def _prune_checkpoints(save_path: str, max_keep: int = 10):
     """Remove old model_epoch_*.pt files, keeping only the most recent max_keep."""
     import glob
     existing = sorted(
-        glob.glob(os.path.join(save_path, "model_epoch_*.pt")),
-        key=lambda p: int(
-            os.path.basename(p).replace("model_epoch_", "").replace(".pt", "")
-        ),
-    )
+            glob.glob(os.path.join(save_path, "model_epoch_*.pt")),
+            key=lambda p: int(
+                os.path.basename(p).replace("model_epoch_", "").replace(".pt", "")
+                ),
+            )
     if len(existing) > max_keep:
         for old in existing[:-max_keep]:
             try:
                 os.remove(old)
                 console.print(
-                    f"  [dim]🗑️  Removed old checkpoint: {os.path.basename(old)}[/]"
-                )
+                        f"  [dim]🗑️  Removed old checkpoint: {os.path.basename(old)}[/]"
+                        )
             except OSError:
                 pass
 
 
 def _log_predictions_and_plots(
-    model: TinyGPT,
-    tokenizer: BPETokenizer,
-    batch: List,
-    device: str,
-    plotter: LivePlotter,
-    is_train: bool = True,
-):
+        model: TinyGPT,
+        tokenizer: BPETokenizer,
+        batch: List,
+        device: str,
+        plotter: LivePlotter,
+        is_train: bool = True,
+        ):
     """
     Get predictions for a batch and update plotter panels.
     Used by both train and val loops to avoid duplication.
@@ -3654,44 +3654,44 @@ def train(args: argparse.Namespace):
 
     # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
     plotter = LivePlotter(
-        enabled=not args.dont_plot,
-        update_every=args.plot_every,
-        topo_enabled=args.topo,
-        topo_every=args.topo_every,
-        topo_max_points=args.topo_max_points,
-        topo_pca_dim=30,
-        suppress_window=args.no_plot_window,
-        plot_file=args.plot_file,
-    )
+            enabled=not args.dont_plot,
+            update_every=args.plot_every,
+            topo_enabled=args.topo,
+            topo_every=args.topo_every,
+            topo_max_points=args.topo_max_points,
+            topo_pca_dim=30,
+            suppress_window=args.no_plot_window,
+            plot_file=args.plot_file,
+            )
 
     # ── Tokenizer ───────────────────────────────────────────────────────
     tokenizer = build_tokenizer_from_samples(
-        n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
-        max_params=args.max_params, max_ops=args.max_ops,
-        param_range=(args.param_min, args.param_max),
-        bpe_vocab_size=args.bpe_vocab_size,
-    )
+            n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
+            max_params=args.max_params, max_ops=args.max_ops,
+            param_range=(args.param_min, args.param_max),
+            bpe_vocab_size=args.bpe_vocab_size,
+            )
 
     # ── Model config ────────────────────────────────────────────────────
     if args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
         cfg = {
-            "d_model": args.d_model,
-            "n_heads": args.n_heads,
-            "n_layers": args.n_layers,
-        }
+                "d_model": args.d_model,
+                "n_heads": args.n_heads,
+                "n_layers": args.n_layers,
+                }
     else:
         console.print(f"[bold cyan]Searching for architecture "
                       f"(target ~{args.target_params:,} params)...[/]")
         cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len)
 
     model_config = LLVMGPTConfig(
-        vocab_size=tokenizer.vocab_size,
-        d_model=cfg["d_model"],
-        n_heads=cfg["n_heads"],
-        n_layers=cfg["n_layers"],
-        max_seq_len=args.max_seq_len,
-        dropout=args.dropout,
-    )
+            vocab_size=tokenizer.vocab_size,
+            d_model=cfg["d_model"],
+            n_heads=cfg["n_heads"],
+            n_layers=cfg["n_layers"],
+            max_seq_len=args.max_seq_len,
+            dropout=args.dropout,
+            )
 
     # ── Create model ────────────────────────────────────────────────────
     model = TinyGPT(model_config).to(device)
@@ -3700,19 +3700,19 @@ def train(args: argparse.Namespace):
     from torchinfo import summary as torchinfo_summary
 
     model_stats = torchinfo_summary(
-        model,
-        input_size=(1, 128),
-        dtypes=[torch.long],
-        verbose=0,
-    )
+            model,
+            input_size=(1, 128),
+            dtypes=[torch.long],
+            verbose=0,
+            )
 
     summary_panel = Panel(
-        Text(str(model_stats), style="white"),
-        title="[bold cyan]📐 Model Summary (torchinfo)",
-        border_style="cyan",
-        padding=(1, 2),
-        expand=False,
-    )
+            Text(str(model_stats), style="white"),
+            title="[bold cyan]📐 Model Summary (torchinfo)",
+            border_style="cyan",
+            padding=(1, 2),
+            expand=False,
+            )
     console.print(summary_panel)
 
     actual_params = model.count_parameters()
@@ -3729,7 +3729,7 @@ def train(args: argparse.Namespace):
         "scheduler": args.scheduler,
         "lr": args.lr,
         "device": device,
-    })
+        })
 
     # ── Resume from checkpoint ──────────────────────────────────────────
     start_epoch = 0
@@ -3761,22 +3761,22 @@ def train(args: argparse.Namespace):
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
         run_logger.log_config(args)
         run_logger.log_model_summary(
-            model_name="TinyGPT",
-            param_count=actual_params,
-            config_dict={
-                "d_model": cfg["d_model"],
-                "n_heads": cfg["n_heads"],
-                "n_layers": cfg["n_layers"],
-                "max_seq_len": args.max_seq_len,
-                "dropout": args.dropout,
-            },
-            vocab_size=tokenizer.vocab_size,
-        )
+                model_name="TinyGPT",
+                param_count=actual_params,
+                config_dict={
+                    "d_model": cfg["d_model"],
+                    "n_heads": cfg["n_heads"],
+                    "n_layers": cfg["n_layers"],
+                    "max_seq_len": args.max_seq_len,
+                    "dropout": args.dropout,
+                    },
+                vocab_size=tokenizer.vocab_size,
+                )
 
     # ── CSV Logger ──────────────────────────────────────────────────────
     csv_log = CSVTrainingLogger(
-        output_dir=run_dir if run_dir else "."
-    )
+            output_dir=run_dir if run_dir else "."
+            )
 
     csv_log.set_output_dir(run_dir)
 
@@ -3838,36 +3838,36 @@ def train(args: argparse.Namespace):
 
     # ── Shared batch generation kwargs ──────────────────────────────────
     batch_gen_kwargs = dict(
-        tokenizer=tokenizer,
-        batch_size=args.batch_size,
-        max_params=args.max_params,
-        max_ops=args.max_ops,
-        allowed_ops=allowed_ops,
-        param_range=(args.param_min, args.param_max),
-        max_seq_len=args.max_seq_len,
-        device=device,
-    )
+            tokenizer=tokenizer,
+            batch_size=args.batch_size,
+            max_params=args.max_params,
+            max_ops=args.max_ops,
+            allowed_ops=allowed_ops,
+            param_range=(args.param_min, args.param_max),
+            max_seq_len=args.max_seq_len,
+            device=device,
+            )
 
     # ── Shared loss kwargs ──────────────────────────────────────────────
     loss_kwargs = dict(
-        tokenizer=tokenizer,
-        device=device,
-        value_loss_alpha=args.value_loss_alpha,
-        structure_loss_alpha=args.structure_loss_alpha,
-        length_loss_alpha=args.length_loss_alpha,
-    )
+            tokenizer=tokenizer,
+            device=device,
+            value_loss_alpha=args.value_loss_alpha,
+            structure_loss_alpha=args.structure_loss_alpha,
+            length_loss_alpha=args.length_loss_alpha,
+            )
 
     # ── Training ────────────────────────────────────────────────────────
     console.print(
-        Panel(
-            f"[bold white]Training for {args.epochs} epochs  │  "
-            f"{args.batches_per_epoch} batches/epoch  │  "
-            f"batch_size={args.batch_size}  │  "
-            f"Press +/- to adjust epochs, q to stop[/]",
-            title="[bold green]🚀 Starting Training",
-            border_style="green",
-        )
-    )
+            Panel(
+                f"[bold white]Training for {args.epochs} epochs  │  "
+                f"{args.batches_per_epoch} batches/epoch  │  "
+                f"batch_size={args.batch_size}  │  "
+                f"Press +/- to adjust epochs, q to stop[/]",
+                title="[bold green]🚀 Starting Training",
+                border_style="green",
+                )
+            )
 
     best_val_loss = resumed_best_val_loss
     train_losses_hist: List[float] = list(resumed_train_losses)
@@ -3895,28 +3895,28 @@ def train(args: argparse.Namespace):
         plotter.clear_predictions()
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
-            BarColumn(bar_width=30),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]eta={task.fields[eta]}[/]"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-        ) as progress:
+                SpinnerColumn(),
+                TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
+                BarColumn(bar_width=30),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
+                TextColumn("•"),
+                TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
+                TextColumn("•"),
+                TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
+                TextColumn("•"),
+                TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
+                TextColumn("•"),
+                TextColumn("[dim]eta={task.fields[eta]}[/]"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+                ) as progress:
             task = progress.add_task(
-                "train", total=args.batches_per_epoch,
-                loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
-            )
+                    "train", total=args.batches_per_epoch,
+                    loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
+                    )
 
             ema_loss = None
 
@@ -3935,15 +3935,15 @@ def train(args: argparse.Namespace):
 
                 # ── Combined loss ───────────────────────────────────────
                 loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
-                    model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                    **loss_kwargs,
-                )
+                        model, inp, tgt, val_pos, val_tgt, ans_parseable,
+                        **loss_kwargs,
+                        )
 
                 optimizer.zero_grad()
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), args.grad_clip
-                )
+                        model.parameters(), args.grad_clip
+                        )
                 optimizer.step()
 
                 bl = loss.item()
@@ -3963,18 +3963,18 @@ def train(args: argparse.Namespace):
 
                 # ── CSV: log train batch ────────────────────────────────
                 csv_log.log_train_batch(
-                    epoch=epoch,
-                    batch_idx=batch_idx,
-                    total_loss=bl,
-                    ce_loss=ce_val,
-                    value_loss=vloss_val,
-                    structure_loss=struct_val,
-                    parse_rate=parse_rate,
-                    predictions=preds,
-                    lr=current_lr,
-                    grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
-                    n_samples_in_batch=len(batch),
-                )
+                        epoch=epoch,
+                        batch_idx=batch_idx,
+                        total_loss=bl,
+                        ce_loss=ce_val,
+                        value_loss=vloss_val,
+                        structure_loss=struct_val,
+                        parse_rate=parse_rate,
+                        predictions=preds,
+                        lr=current_lr,
+                        grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
+                        n_samples_in_batch=len(batch),
+                        )
 
                 # ── Plotter updates ─────────────────────────────────────
                 plotter.update_batch(bl)
@@ -3990,10 +3990,10 @@ def train(args: argparse.Namespace):
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
 
                 progress.update(
-                    task, advance=1, loss=bl, ema=ema_loss,
-                    vloss=vloss_val, parse=parse_rate,
-                    eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
-                )
+                        task, advance=1, loss=bl, ema=ema_loss,
+                        vloss=vloss_val, parse=parse_rate,
+                        eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
+                        )
 
         avg_train_loss = epoch_loss / max(n_batches, 1)
         avg_value_loss = epoch_value_loss / max(n_batches, 1)
@@ -4004,16 +4004,16 @@ def train(args: argparse.Namespace):
         val_batches = 0
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
-            BarColumn(bar_width=30),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-        ) as progress:
+                SpinnerColumn(),
+                TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
+                BarColumn(bar_width=30),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+                ) as progress:
             task = progress.add_task("val", total=args.val_batches, loss=0.0)
 
             with torch.no_grad():
@@ -4028,9 +4028,9 @@ def train(args: argparse.Namespace):
                     batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
 
                     vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = _compute_batch_loss(
-                        model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                        **loss_kwargs,
-                    )
+                            model, inp, tgt, val_pos, val_tgt, ans_parseable,
+                            **loss_kwargs,
+                            )
 
                     vl = vl_total.item()
                     val_loss += vl
@@ -4041,16 +4041,16 @@ def train(args: argparse.Namespace):
 
                     # ── CSV: log val batch ──────────────────────────────
                     csv_log.log_val_batch(
-                        epoch=epoch,
-                        batch_idx=val_batch_idx,
-                        total_loss=vl,
-                        ce_loss=vl_ce,
-                        value_loss=vl_value,
-                        structure_loss=vl_struct,
-                        parse_rate=vl_parse_rate,
-                        predictions=preds,
-                        lr=optimizer.param_groups[0]["lr"],
-                    )
+                            epoch=epoch,
+                            batch_idx=val_batch_idx,
+                            total_loss=vl,
+                            ce_loss=vl_ce,
+                            value_loss=vl_value,
+                            structure_loss=vl_struct,
+                            parse_rate=vl_parse_rate,
+                            predictions=preds,
+                            lr=optimizer.param_groups[0]["lr"],
+                            )
 
                     # ── Plotter + run logger ────────────────────────────
                     plotter.update_val_batch(vl)
@@ -4088,10 +4088,10 @@ def train(args: argparse.Namespace):
 
         # ── CSV: end epoch ──────────────────────────────────────────────
         csv_log.end_epoch(
-            epoch=epoch,
-            lr=current_lr,
-            epoch_time_sec=elapsed,
-        )
+                epoch=epoch,
+                lr=current_lr,
+                epoch_time_sec=elapsed,
+                )
 
         # ── Epoch summary ───────────────────────────────────────────────
         total_epochs = epoch_ctrl.epochs
@@ -4104,46 +4104,46 @@ def train(args: argparse.Namespace):
             epoch_table.add_column()
 
         epoch_table.add_row(
-            "[bold]train:[/]", f"[cyan]{avg_train_loss:.4f}[/]",
-            "[bold]val:[/]", f"[magenta]{avg_val_loss:.4f}[/]",
-            "[bold]lr:[/]", f"[green]{current_lr:.2e}[/]",
-            "[bold]samples:[/]", f"[yellow]{total_samples:,}[/]",
-            "[bold]time:[/]", f"{elapsed:.1f}s",
-            "[bold]eta:[/]", f"[dim]{eta_str}[/]{best_marker}",
-        )
+                "[bold]train:[/]", f"[cyan]{avg_train_loss:.4f}[/]",
+                "[bold]val:[/]", f"[magenta]{avg_val_loss:.4f}[/]",
+                "[bold]lr:[/]", f"[green]{current_lr:.2e}[/]",
+                "[bold]samples:[/]", f"[yellow]{total_samples:,}[/]",
+                "[bold]time:[/]", f"{elapsed:.1f}s",
+                "[bold]eta:[/]", f"[dim]{eta_str}[/]{best_marker}",
+                )
 
         console.print(
-            Panel(
-                epoch_table,
-                title=f"[bold]Epoch {epoch}/{total_epochs}  │  elapsed: {elapsed_str}[/]",
-                border_style="green" if is_best else "blue",
-                width=min(console.width, 120),
-            )
-        )
+                Panel(
+                    epoch_table,
+                    title=f"[bold]Epoch {epoch}/{total_epochs}  │  elapsed: {elapsed_str}[/]",
+                    border_style="green" if is_best else "blue",
+                    width=min(console.width, 120),
+                    )
+                )
 
         # ── Run Logger: epoch + samples ─────────────────────────────────
         if run_logger:
             run_logger.log_epoch(
-                epoch=epoch,
-                train_loss=avg_train_loss,
-                val_loss=avg_val_loss,
-                lr=current_lr,
-                elapsed_secs=elapsed,
-                total_samples=total_samples,
-                is_best=is_best,
-            )
+                    epoch=epoch,
+                    train_loss=avg_train_loss,
+                    val_loss=avg_val_loss,
+                    lr=current_lr,
+                    elapsed_secs=elapsed,
+                    total_samples=total_samples,
+                    is_best=is_best,
+                    )
 
             n_to_log = None if args.log_all_samples else args.log_samples
             example_samples = generate_example_samples(
-                model=model,
-                tokenizer=tokenizer,
-                device=device,
-                num_samples=n_to_log if n_to_log else 999999,
-                max_params=args.max_params,
-                max_ops=args.max_ops,
-                allowed_ops=allowed_ops,
-                param_range=(args.param_min, args.param_max),
-            )
+                    model=model,
+                    tokenizer=tokenizer,
+                    device=device,
+                    num_samples=n_to_log if n_to_log else 999999,
+                    max_params=args.max_params,
+                    max_ops=args.max_ops,
+                    allowed_ops=allowed_ops,
+                    param_range=(args.param_min, args.param_max),
+                    )
             run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
             run_logger.flush_losses()
 
@@ -4152,16 +4152,16 @@ def train(args: argparse.Namespace):
 
         # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
         ckpt_path = _save_checkpoint(
-            path=save_path,
-            filename=f"model_epoch_{epoch}.pt",
-            epoch=epoch,
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            train_loss=avg_train_loss,
-            val_loss=avg_val_loss,
-            best_val_loss=best_val_loss,
-        )
+                path=save_path,
+                filename=f"model_epoch_{epoch}.pt",
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                best_val_loss=best_val_loss,
+                )
         console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}[/]")
 
         # ── Clean up old checkpoints: keep only the last 10 ────────────
@@ -4170,24 +4170,24 @@ def train(args: argparse.Namespace):
         # ── Save best model (lowest val loss) ───────────────────────────
         if is_best and save_path:
             best_path = _save_checkpoint(
-                path=save_path,
-                filename="model_best.pt",
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                train_loss=avg_train_loss,
-                val_loss=avg_val_loss,
-                best_val_loss=best_val_loss,
-            )
+                    path=save_path,
+                    filename="model_best.pt",
+                    epoch=epoch,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    train_loss=avg_train_loss,
+                    val_loss=avg_val_loss,
+                    best_val_loss=best_val_loss,
+                    )
             # Also save in HuggingFace format for easy loading
             best_hf_path = f"{save_path}_best"
             model.save_pretrained(best_hf_path)
             tokenizer.save_pretrained(best_hf_path)
             console.print(
-                f"  [bold green]⭐ New best model saved: {best_path} "
-                f"(val_loss={avg_val_loss:.4f})[/]"
-            )
+                    f"  [bold green]⭐ New best model saved: {best_path} "
+                    f"(val_loss={avg_val_loss:.4f})[/]"
+                    )
 
         if _interrupt_count >= 1:
             console.print("[bold yellow]Graceful stop after epoch.[/]")
@@ -4199,10 +4199,10 @@ def train(args: argparse.Namespace):
     # ── Close CSV logger ────────────────────────────────────────────────
     csv_log.close()
     console.print(
-        f"[bold green]📊 CSV logs saved to: "
-        f"{os.path.join(run_dir if run_dir else '.', 'batch_log.csv')} "
-        f"and epoch_log.csv[/]"
-    )
+            f"[bold green]📊 CSV logs saved to: "
+            f"{os.path.join(run_dir if run_dir else '.', 'batch_log.csv')} "
+            f"and epoch_log.csv[/]"
+            )
 
     # ── Save final model ────────────────────────────────────────────────
     if save_path:
@@ -4211,15 +4211,15 @@ def train(args: argparse.Namespace):
         tokenizer.save_pretrained(save_path)
 
         meta = {
-            "train_losses": train_losses_hist,
-            "val_losses": val_losses_hist,
-            "best_val_loss": best_val_loss,
-            "total_samples": total_samples,
-            "actual_params": actual_params,
-            "total_epochs": epoch,
-            "elapsed": timer.elapsed_total(),
-            "args": vars(args),
-        }
+                "train_losses": train_losses_hist,
+                "val_losses": val_losses_hist,
+                "best_val_loss": best_val_loss,
+                "total_samples": total_samples,
+                "actual_params": actual_params,
+                "total_epochs": epoch,
+                "elapsed": timer.elapsed_total(),
+                "args": vars(args),
+                }
         with open(os.path.join(save_path, "training_meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
 
@@ -4246,8 +4246,8 @@ def compute_cross_layer_wasserstein(hidden_states, max_points=150, pca_dim=20):
         if pts.shape[1] > pca_dim:
             n_comp = min(pca_dim, pts.shape[0], pts.shape[1])
             pts = PCA(n_components=n_comp).fit_transform(
-                StandardScaler().fit_transform(pts)
-            )
+                    StandardScaler().fit_transform(pts)
+                    )
 
         dists = np.linalg.norm(pts[:, None] - pts[None, :], axis=-1)
         thresh = np.percentile(dists[dists > 0], 50)
