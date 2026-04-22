@@ -2526,8 +2526,9 @@ class LivePlotter:
             ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Absolute Difference")
-            ax_diffs.set_ylim(-50, 10000)
+            ax_diffs.set_ylabel("Error Score (0=perfect, 0.9=large diff, 1=unparseable)")
+            ax_diffs.set_ylim(-0.05, 1.05)
+
             ax_diffs.grid(True, alpha=0.3)
 
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
@@ -2551,8 +2552,9 @@ class LivePlotter:
             ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Absolute Difference")
-            ax_diffs.set_ylim(-50, 10000)
+            ax_diffs.set_ylabel("Error Score (0=perfect, 0.9=large diff, 1=unparseable)")
+            ax_diffs.set_ylim(-0.05, 1.05)
+
             ax_diffs.grid(True, alpha=0.3)
 
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
@@ -2974,11 +2976,19 @@ class LivePlotter:
             try:
                 pred_val = int(pred_cleaned)
             except (ValueError, TypeError):
-                scores.append(10000)  # unparseable → max score
+                scores.append(1.0)  # unparseable → 1.0
                 continue
 
             diff = abs(exp_val - pred_val)
-            scores.append(diff)
+            if diff == 0:
+                scores.append(0.0)  # perfect → 0.0
+            else:
+                # Map diff to (0, 0.9] using a saturating curve
+                # Uses 1 - exp(-k*diff) scaled to max out at 0.9
+                # k controls how fast it saturates; 0.01 means diffs
+                # around 200-300 are already near 0.9
+                score = 0.9 * (1.0 - math.exp(-0.01 * diff))
+                scores.append(score)
 
         if not scores:
             return
@@ -3019,18 +3029,23 @@ class LivePlotter:
             scatter_alpha, scatter_size = 0.30, 14
 
         if all_scatter_x:
+            # Color by score: green (0) → yellow (0.5) → red (0.9) → dark red (1.0)
+            import matplotlib.colors as mcolors
+            cmap = plt.cm.RdYlGn_r  # reversed: green=low, red=high
+            norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
+            colors = [cmap(norm(y)) for y in all_scatter_y]
+
             self._scatter_diffs = ax.scatter(
                     all_scatter_x, all_scatter_y,
-                    s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
+                    s=scatter_size, alpha=scatter_alpha, c=colors, zorder=1,
                     edgecolors="none",
                     )
 
         x_lo = max(scatter_start - 0.5, -0.5)
         x_hi = max(n_updates - 0.5, 0.5)
         ax.set_xlim(x_lo, x_hi)
-        ax.set_ylim(-50, 10000)
+        ax.set_ylim(-0.05, 1.05)
 
-        # No legend
         self._refresh()
 
 
