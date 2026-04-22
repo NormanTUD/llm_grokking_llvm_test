@@ -3127,7 +3127,7 @@ class LivePlotter:
                     transform=ax.transAxes)
             return
 
-        n_show = min(len(self._last_predictions), 16)
+        n_show = min(len(self._last_predictions), 10)
         y_positions = np.linspace(0.95, 0.05, n_show)
 
         for i, (expected, predicted, is_correct) in enumerate(
