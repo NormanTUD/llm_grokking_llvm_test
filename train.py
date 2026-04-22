@@ -3868,6 +3868,8 @@ def train(args: argparse.Namespace):
 
         avg_val_loss = val_loss / max(val_batches, 1)
 
+        plotter.finish_val_epoch()
+
         # ── Scheduler step ──────────────────────────────────────────────
         if is_plateau:
             scheduler.step(avg_val_loss)
