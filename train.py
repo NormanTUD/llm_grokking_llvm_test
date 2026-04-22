@@ -2664,24 +2664,19 @@ class LivePlotter:
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
             n_updates = len(self._abs_diffs_history)
             max_scatter_window = 500
-            max_line_points = 2000
+            max_line_points = 1500
+            recent_full_res = 300
 
             all_means = [np.mean(d) for d in self._abs_diffs_history]
             all_medians = [np.median(d) for d in self._abs_diffs_history]
 
-            # Downsample lines
-            if n_updates > max_line_points:
-                step = max(1, n_updates // max_line_points)
-                ds_indices = list(range(0, n_updates, step))
-                if ds_indices[-1] != n_updates - 1:
-                    ds_indices.append(n_updates - 1)
-                line_xs = [i for i in ds_indices]
-                line_means = [all_means[i] for i in ds_indices]
-                line_medians = [all_medians[i] for i in ds_indices]
-            else:
-                line_xs = list(range(n_updates))
-                line_means = all_means
-                line_medians = all_medians
+            # Two-tier downsampled lines
+            line_indices = self._downsample_line_indices(
+                n_updates, max_line_points, recent_full_res
+            )
+            line_xs = [i for i in line_indices]
+            line_means = [all_means[i] for i in line_indices]
+            line_medians = [all_medians[i] for i in line_indices]
 
             self.line_diffs_mean.set_data(line_xs, line_means)
             self.line_diffs_median.set_data(line_xs, line_medians)
@@ -2947,8 +2942,8 @@ class LivePlotter:
 
         WINDOWED DISPLAY: Only the most recent `max_display_points` updates
         are shown as scatter dots to prevent overloading the plot after many
-        epochs. The mean/median lines still use ALL historical data but are
-        downsampled for rendering when they exceed `max_line_points`.
+        epochs. The mean/median lines use a two-tier downsampling strategy:
+        recent data at full resolution, older data progressively thinned.
         """
         if not self.enabled:
             return
@@ -2991,27 +2986,23 @@ class LivePlotter:
 
         # ── Windowing / downsampling parameters ─────────────────────────
         max_scatter_window = 500    # Only show scatter for the last N updates
-        max_line_points = 2000      # Downsample mean/median lines beyond this
+        max_line_points = 1500      # Hard cap on rendered line points
+        recent_full_res = 300       # Keep last N points at full resolution
 
         # ── Compute mean/median over ALL history ────────────────────────
         all_means = [np.mean(d) for d in self._abs_diffs_history]
         all_medians = [np.median(d) for d in self._abs_diffs_history]
-        all_xs = list(range(n_updates))
 
-        # Downsample lines if too many points
-        if n_updates > max_line_points:
-            step = max(1, n_updates // max_line_points)
-            ds_indices = list(range(0, n_updates, step))
-            # Always include the last point
-            if ds_indices[-1] != n_updates - 1:
-                ds_indices.append(n_updates - 1)
-            line_xs = [all_xs[i] for i in ds_indices]
-            line_means = [all_means[i] for i in ds_indices]
-            line_medians = [all_medians[i] for i in ds_indices]
-        else:
-            line_xs = all_xs
-            line_means = all_means
-            line_medians = all_medians
+        # ── Two-tier downsampling for lines ─────────────────────────────
+        # Tier 1 (old): indices [0, n_updates - recent_full_res) — downsampled
+        # Tier 2 (recent): indices [n_updates - recent_full_res, n_updates) — full res
+        line_indices = self._downsample_line_indices(
+            n_updates, max_line_points, recent_full_res
+        )
+
+        line_xs = [i for i in line_indices]
+        line_means = [all_means[i] for i in line_indices]
+        line_medians = [all_medians[i] for i in line_indices]
 
         self.line_diffs_mean.set_data(line_xs, line_means)
         self.line_diffs_median.set_data(line_xs, line_medians)
@@ -3073,6 +3064,51 @@ class LivePlotter:
         # ── Force redraw ────────────────────────────────────────────────
         self._refresh()
 
+    @staticmethod
+    def _downsample_line_indices(
+        n_total: int,
+        max_points: int = 1500,
+        recent_full_res: int = 300,
+    ) -> List[int]:
+        """
+        Two-tier downsampling strategy for line data:
+          - The most recent `recent_full_res` points are kept at full resolution.
+          - Older points are uniformly downsampled so the total never exceeds
+            `max_points`.
+          - The first and last points of the old region are always included
+            to avoid visual jumps.
+
+        This keeps recent trends sharp while preventing matplotlib from
+        choking on tens of thousands of line segments.
+        """
+        if n_total <= max_points:
+            return list(range(n_total))
+
+        # Split into old region and recent region
+        recent_start = max(0, n_total - recent_full_res)
+        n_recent = n_total - recent_start
+        budget_for_old = max_points - n_recent
+
+        if recent_start == 0 or budget_for_old <= 2:
+            # Everything is "recent" or no budget for old
+            # Just uniformly downsample everything
+            step = max(1, n_total // max_points)
+            indices = list(range(0, n_total, step))
+            if indices[-1] != n_total - 1:
+                indices.append(n_total - 1)
+            return indices
+
+        # Old region: [0, recent_start) — downsample to budget_for_old points
+        old_step = max(1, recent_start // budget_for_old)
+        old_indices = list(range(0, recent_start, old_step))
+        # Ensure the boundary point is included for continuity
+        if old_indices[-1] != recent_start - 1:
+            old_indices.append(recent_start - 1)
+
+        # Recent region: [recent_start, n_total) — full resolution
+        recent_indices = list(range(recent_start, n_total))
+
+        return old_indices + recent_indices
 
     def _draw_predictions(self):
         """Draw the last batch's expected vs predicted with differences."""
