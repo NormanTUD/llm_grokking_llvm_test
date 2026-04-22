@@ -3293,7 +3293,7 @@ class LivePlotter:
                     pass
 
         # Fixed line spacing instead of np.linspace
-        line_height = 0.045
+        line_height = 0.06
         y_start = 0.95
 
         for i, line in enumerate(info_lines):
