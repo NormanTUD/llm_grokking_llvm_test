@@ -2662,12 +2662,23 @@ class LivePlotter:
         if self.ax_bd is not None:
             self.ax_bd.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
                                   fontsize=10, fontweight="bold")
-            self.ax_bd.text(
-                0.5, 0.5, "Waiting for data...",
-                ha="center", va="center",
-                transform=self.ax_bd.transAxes,
-                fontsize=11, alpha=0.4,
+            # Create a dummy 1x1 image and a PERMANENT colorbar
+            self._wass_im = self.ax_bd.imshow(
+                np.zeros((1, 1)),
+                cmap="inferno",
+                interpolation="nearest",
+                origin="lower",
+                aspect="equal",
+                vmin=0.0,
+                vmax=1.0,
             )
+            self._wass_cbar = self.fig.colorbar(
+                self._wass_im, ax=self.ax_bd, fraction=0.046, pad=0.04,
+            )
+            self._wass_cbar.ax.tick_params(labelsize=6)
+            self._wass_cbar.set_label("Relative W₁", fontsize=7)
+            # Store the axes position so we can restore it if needed
+            self._wass_ax_pos = self.ax_bd.get_position()
 
 
         # ── Predictions panel (text only) ───────────────────────────────────
