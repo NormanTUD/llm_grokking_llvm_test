@@ -4036,7 +4036,7 @@ def train(args: argparse.Namespace):
                     if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
                         preds = get_batch_predictions(model, tokenizer, batch, device)
                         if preds:
-                            plotter.accumulate_predictions(preds)
+                            plotter.update_predictions(preds)  # replaces, doesn't accumulate
                             plotter.update_prediction_diffs(preds)
 
                     if run_logger:
@@ -4062,7 +4062,7 @@ def train(args: argparse.Namespace):
         train_losses_hist.append(avg_train_loss)
         val_losses_hist.append(avg_val_loss)
 
-        is_best = avg_val_loss < best_val_loss
+        is_best = bool(acc.val_losses) and val_mean < self._best_val_loss
         if is_best:
             best_val_loss = avg_val_loss
 
