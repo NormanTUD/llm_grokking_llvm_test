@@ -78,6 +78,13 @@ import select
 import matplotlib
 import matplotlib.pyplot as plt
 import tkinter
+from ripser import ripser
+try:
+    from gudhi.representations import Landscape as _Landscape
+    _HAS_GUDHI = True
+except ImportError:
+    _HAS_GUDHI = False
+from persim import wasserstein
 
 import warnings
 warnings.filterwarnings("ignore", message="Glyph .* missing from font")
@@ -1944,6 +1951,7 @@ class LivePlotter:
                  model_info: dict = None, kelp_every: int = args.kelp_every):
         self.enabled = enabled
         self._model_info = model_info or {}
+        self._wass_cbar = None  # colorbar handle for Wasserstein heatmap
         self._last_predictions = []
         self.update_every = update_every
         self._global_batch = 0
@@ -1962,13 +1970,17 @@ class LivePlotter:
         self._kelp_time_offset = 0.0
 
         # ── TDA config ──────────────────────────────────────────────────
-        self.topo_enabled = topo_enabled and _HAS_RIPSER and enabled
+        self.topo_enabled = topo_enabled and _HAS_RIPSER and _HAS_GUDHI and enabled
         self.topo_every = topo_every
         self.topo_max_points = topo_max_points
         self.topo_pca_dim = topo_pca_dim
         self._topo_step = 0
         self._topo_dgms = None
         self._topo_layer_name = ""
+
+        if topo_enabled and not _HAS_GUDHI:
+            console.print("[yellow][TopoPlotter] gudhi not installed. "
+                          "pip install gudhi  — TDA panels disabled.[/]")
 
         if not enabled:
             return
@@ -2637,7 +2649,7 @@ class LivePlotter:
 
         # ── TDA panels (only when topo_enabled) ─────────────────────────────
         if self.ax_barcode is not None:
-            self.ax_barcode.set_title("TDA Barcode (Embedding Space)",
+            self.ax_barcode.set_title("Persistence Landscapes (H₁, all layers)",
                                        fontsize=10, fontweight="bold")
             self.ax_barcode.text(
                 0.5, 0.5, "Waiting for data...",
@@ -2645,10 +2657,10 @@ class LivePlotter:
                 transform=self.ax_barcode.transAxes,
                 fontsize=11, alpha=0.4,
             )
-            self.ax_barcode.grid(True, alpha=0.2, axis="x")
+            self.ax_barcode.grid(True, alpha=0.2)
 
         if self.ax_bd is not None:
-            self.ax_bd.set_title("TDA Birth / Death (Persistence)",
+            self.ax_bd.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
                                   fontsize=10, fontweight="bold")
             self.ax_bd.text(
                 0.5, 0.5, "Waiting for data...",
@@ -2656,7 +2668,7 @@ class LivePlotter:
                 transform=self.ax_bd.transAxes,
                 fontsize=11, alpha=0.4,
             )
-            self.ax_bd.grid(True, alpha=0.2)
+
 
         # ── Predictions panel (text only) ───────────────────────────────────
         ax_preds.set_xlim(0, 1)
@@ -2881,6 +2893,10 @@ class LivePlotter:
 
     @torch.no_grad()
     def update_topo(self, model: nn.Module, input_ids: torch.Tensor):
+        """
+        Compute per-layer persistence landscapes and cross-layer Wasserstein
+        heatmap, then render them onto the two TDA panels.
+        """
         if not self.topo_enabled:
             return
 
@@ -2894,56 +2910,41 @@ class LivePlotter:
         try:
             output = model(input_ids=input_ids, output_hidden_states=True)
             hidden_states = output.hidden_states
-            if hidden_states is None:
+            if hidden_states is None or len(hidden_states) < 2:
                 return
 
-            n_layers = len(hidden_states)
-            if n_layers >= 3:
-                layer_idx = n_layers // 2
-                layer_name = f"Block {layer_idx - 1}"
-            else:
-                layer_idx = n_layers - 1
-                layer_name = "Embed+Pos" if layer_idx == 0 else f"Block {layer_idx - 1}"
+            # ── Persistence Landscapes (replaces barcode) ───────────────
+            n_landscapes = 5
+            resolution = 100
+            landscapes, sample_range = compute_persistence_landscapes(
+                hidden_states,
+                n_landscapes=n_landscapes,
+                resolution=resolution,
+                max_points=self.topo_max_points,
+                pca_dim=self.topo_pca_dim,
+            )
+            self._draw_persistence_landscapes(
+                landscapes, sample_range, n_landscapes, resolution,
+            )
 
-            hs = hidden_states[layer_idx]
-            points = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
-
-            if points.shape[0] > self.topo_max_points:
-                idx = np.random.choice(points.shape[0],
-                                       self.topo_max_points, replace=False)
-                points = points[idx]
-
-            if _HAS_SKLEARN and points.shape[1] > self.topo_pca_dim:
-                scaler = _StandardScaler()
-                points = scaler.fit_transform(points)
-                n_comp = min(self.topo_pca_dim, points.shape[0], points.shape[1])
-                pca = _PCA(n_components=n_comp)
-                points = pca.fit_transform(points)
-
-            if points.shape[0] > 100:
-                sample = points[np.random.choice(points.shape[0], 100, replace=False)]
-            else:
-                sample = points
-
-            dists = np.linalg.norm(sample[:, None] - sample[None, :], axis=-1)
-            thresh = np.percentile(dists[dists > 0], 50)
-
-            result = _ripser_fn(points, maxdim=1, thresh=thresh)
-            dgms = result["dgms"]
-
-            self._topo_dgms = dgms
-            self._topo_layer_name = layer_name
-
-            self._draw_barcode(dgms, layer_name)
-            self._draw_birth_death(dgms, layer_name)
+            # ── Wasserstein Heatmap (replaces birth/death) ──────────────
+            W = compute_cross_layer_wasserstein(
+                hidden_states,
+                max_points=self.topo_max_points,
+                pca_dim=self.topo_pca_dim,
+            )
+            self._draw_wasserstein_heatmap(W)
 
             self._refresh()
 
-        except Exception:
-            pass
+        except Exception as e:
+            # Silently skip — don't crash training for a viz failure
+            import traceback
+            traceback.print_exc()
         finally:
             if was_training:
                 model.train()
+
 
     def update_prediction_diffs(self, predictions: list):
         """
@@ -3319,107 +3320,107 @@ class LivePlotter:
         self._refresh()
 
 
-    def _draw_barcode(self, dgms: list, layer_name: str):
+    def _draw_persistence_landscapes(self, landscapes_per_layer, sample_range, n_landscapes, resolution):
+        """Draw overlaid persistence landscapes (one curve per layer) on ax_barcode."""
         ax = self.ax_barcode
         if ax is None:
             return
 
         ax.clear()
-        ax.set_title(f"TDA Barcode — {layer_name}  (step {self._topo_step})",
-                      fontsize=9, fontweight="bold")
+        ax.set_title(
+            f"Persistence Landscapes (H₁) — step {self._topo_step}",
+            fontsize=9, fontweight="bold",
+        )
 
-        colors = ["#2196F3", "#FF5722", "#4CAF50"]
-        dim_labels = ["H₀ (components)", "H₁ (loops)", "H₂ (voids)"]
+        if not landscapes_per_layer:
+            ax.text(0.5, 0.5, "No H₁ features detected",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    transform=ax.transAxes)
+            return
 
-        y_offset = 0
-        y_ticks = []
-        y_tick_labels = []
+        n_layers = len(landscapes_per_layer)
+        x_grid = np.linspace(sample_range[0], sample_range[1], resolution)
 
-        for dim, dgm in enumerate(dgms):
-            if dim > 1:
-                break
+        # Use a colormap: early layers cool, late layers warm
+        cmap = plt.cm.viridis
+        colors = [cmap(i / max(n_layers - 1, 1)) for i in range(n_layers)]
 
-            finite = dgm[np.isfinite(dgm[:, 1])]
-            if len(finite) == 0:
-                continue
+        for li, ls_flat in enumerate(landscapes_per_layer):
+            # ls_flat has shape (n_landscapes * resolution,)
+            # Reshape to (n_landscapes, resolution) and plot only k=1 (the dominant landscape)
+            ls_matrix = ls_flat.reshape(n_landscapes, resolution)
+            dominant = ls_matrix[0]  # k=1 landscape
 
-            persistences = finite[:, 1] - finite[:, 0]
-            order = np.argsort(-persistences)
-            finite = finite[order]
+            if np.max(np.abs(dominant)) < 1e-12:
+                continue  # skip flat-zero layers
 
-            start_y = y_offset
-            for bar in finite:
-                birth, death = bar
-                ax.plot(
-                    [birth, death], [y_offset, y_offset],
-                    color=colors[dim % len(colors)],
-                    linewidth=2.0, alpha=0.8,
-                    solid_capstyle="butt",
-                )
-                y_offset += 1
-
-            mid_y = (start_y + y_offset) / 2
-            y_ticks.append(mid_y)
-            y_tick_labels.append(
-                dim_labels[dim] if dim < len(dim_labels) else f"H_{dim}"
+            ax.plot(
+                x_grid, dominant,
+                color=colors[li],
+                linewidth=1.4,
+                alpha=0.7,
+                label=f"L{li}" if li % max(1, n_layers // 6) == 0 else None,
             )
 
         ax.set_xlabel("Filtration value", fontsize=8)
-        if y_ticks:
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels(y_tick_labels, fontsize=8)
-        else:
-            ax.set_yticks([])
-        ax.grid(True, alpha=0.2, axis="x")
-        ax.tick_params(axis="x", labelsize=7)
+        ax.set_ylabel("λ₁(t)", fontsize=8)
+        ax.legend(fontsize=6, loc="upper right", ncol=2, framealpha=0.6)
+        ax.grid(True, alpha=0.2)
+        ax.tick_params(labelsize=7)
 
-    def _draw_birth_death(self, dgms: list, layer_name: str):
+
+    def _draw_wasserstein_heatmap(self, W_matrix):
+        """Draw the cross-layer Wasserstein-1 distance heatmap on ax_bd."""
         ax = self.ax_bd
         if ax is None:
             return
 
         ax.clear()
-        ax.set_title(f"TDA Birth/Death — {layer_name}  (step {self._topo_step})",
-                      fontsize=9, fontweight="bold")
+        ax.set_title(
+            f"Wasserstein-1 Distance (layers) — step {self._topo_step}",
+            fontsize=9, fontweight="bold",
+        )
 
-        colors = ["#2196F3", "#FF5722", "#4CAF50"]
-        labels = ["H₀", "H₁", "H₂"]
+        if W_matrix is None or W_matrix.size == 0:
+            ax.text(0.5, 0.5, "Waiting for data...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    transform=ax.transAxes)
+            return
 
-        all_vals = []
-        for dim, dgm in enumerate(dgms):
-            if dim > 1:
-                break
-            finite = dgm[np.isfinite(dgm[:, 1])]
-            if len(finite) == 0:
-                continue
+        n = W_matrix.shape[0]
+        im = ax.imshow(
+            W_matrix,
+            cmap="inferno",
+            interpolation="nearest",
+            origin="lower",
+            aspect="equal",
+        )
 
-            all_vals.extend(finite.flatten().tolist())
-            ax.scatter(
-                finite[:, 0], finite[:, 1],
-                s=25, alpha=0.7,
-                color=colors[dim % len(colors)],
-                label=labels[dim] if dim < len(labels) else f"H_{dim}",
-                edgecolors="white", linewidth=0.4,
-                zorder=3,
-            )
+        # Colorbar
+        if hasattr(self, '_wass_cbar') and self._wass_cbar is not None:
+            try:
+                self._wass_cbar.remove()
+            except Exception:
+                pass
+        self._wass_cbar = self.fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        self._wass_cbar.ax.tick_params(labelsize=6)
 
-        if all_vals:
-            lo, hi = min(all_vals), max(all_vals)
-            margin = (hi - lo) * 0.1 + 1e-6
-            ax.plot(
-                [lo - margin, hi + margin],
-                [lo - margin, hi + margin],
-                "k--", alpha=0.3, linewidth=1, zorder=1,
-            )
-            ax.set_xlim(lo - margin, hi + margin)
-            ax.set_ylim(lo - margin, hi + margin)
+        # Axis labels
+        tick_positions = list(range(n))
+        tick_labels = [f"L{i}" for i in range(n)]
+        # Show every other label if too many layers
+        if n > 10:
+            for i in range(len(tick_labels)):
+                if i % 2 != 0:
+                    tick_labels[i] = ""
 
-        ax.set_xlabel("Birth", fontsize=8)
-        ax.set_ylabel("Death", fontsize=8)
-        ax.legend(fontsize=7, loc="lower right")
-        ax.grid(True, alpha=0.2)
-        ax.tick_params(labelsize=7)
-        ax.set_aspect("equal", adjustable="box")
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels, fontsize=6, rotation=45)
+        ax.set_yticks(tick_positions)
+        ax.set_yticklabels(tick_labels, fontsize=6)
+        ax.set_xlabel("Layer", fontsize=8)
+        ax.set_ylabel("Layer", fontsize=8)
+
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
@@ -4214,6 +4215,180 @@ def train(args: argparse.Namespace):
 # ════════════════════════════════════════════════════════════════════════════
 # 11.  ENTRY POINT
 # ════════════════════════════════════════════════════════════════════════════
+
+def compute_cross_layer_wasserstein(hidden_states, max_points=150, pca_dim=20):
+    """Compute persistence diagrams per layer, then pairwise Wasserstein-1."""
+    from ripser import ripser
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    from persim import wasserstein as wasserstein_dist
+
+    dgms_per_layer = []
+    for hs in hidden_states:
+        pts = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
+        if pts.shape[0] > max_points:
+            idx = np.random.choice(pts.shape[0], max_points, replace=False)
+            pts = pts[idx]
+        if pts.shape[1] > pca_dim:
+            n_comp = min(pca_dim, pts.shape[0], pts.shape[1])
+            pts = PCA(n_components=n_comp).fit_transform(
+                StandardScaler().fit_transform(pts)
+            )
+
+        dists = np.linalg.norm(pts[:, None] - pts[None, :], axis=-1)
+        thresh = np.percentile(dists[dists > 0], 50)
+        result = ripser(pts, maxdim=1, thresh=thresh)
+        dgms_per_layer.append(result['dgms'])
+
+    n = len(dgms_per_layer)
+    W = np.zeros((n, n))
+    for i in range(n):
+        for j in range(i + 1, n):
+            total_dist = 0.0
+            for dim in range(min(len(dgms_per_layer[i]), len(dgms_per_layer[j]))):
+                d_i = dgms_per_layer[i][dim]
+                d_j = dgms_per_layer[j][dim]
+                d_i = d_i[np.isfinite(d_i[:, 1])]
+                d_j = d_j[np.isfinite(d_j[:, 1])]
+                if len(d_i) > 0 and len(d_j) > 0:
+                    total_dist += wasserstein_dist(d_i, d_j)
+            W[i, j] = W[j, i] = total_dist
+    return W
+
+def compute_jacobian_spectra(model, input_ids, device):
+    """Compute singular values of the per-layer Jacobian via finite differences."""
+    model.eval()
+    output = model(input_ids=input_ids, output_hidden_states=True)
+    hidden_states = output.hidden_states
+
+    spectra = []
+    for ell in range(len(hidden_states) - 1):
+        h_in = hidden_states[ell][0].detach()    # (T, D)
+        h_out = hidden_states[ell + 1][0].detach()  # (T, D)
+        delta = h_out - h_in  # residual delta
+
+        # Estimate local Jacobian via SVD of the delta cloud
+        # Center both
+        h_in_c = h_in - h_in.mean(0)
+        delta_c = delta - delta.mean(0)
+
+        # Least-squares Jacobian: delta ≈ h_in @ J^T
+        # J = (h_in^T h_in)^{-1} h_in^T delta
+        try:
+            J = torch.linalg.lstsq(h_in_c, delta_c).solution  # (D, D)
+            svs = torch.linalg.svdvals(J).cpu().numpy()
+        except:
+            svs = np.zeros(h_in.shape[-1])
+        spectra.append(svs)
+
+    return spectra
+
+def compute_jacobian_invariants(spectra_or_jacobians):
+    """From per-layer Jacobians, extract div/curl/shear per token."""
+    results = []
+    for J in jacobians:  # J: (D, D) per layer
+        div = torch.trace(J).item()
+        J_antisym = (J - J.T) / 2
+        curl = torch.norm(J_antisym, p='fro').item()
+        J_sym = (J + J.T) / 2
+        shear_mat = J_sym - (torch.trace(J_sym) / J.shape[0]) * torch.eye(J.shape[0], device=J.device)
+        shear = torch.norm(shear_mat, p='fro').item()
+        results.append({'div': div, 'curl': curl, 'shear': shear})
+    return results
+
+def compute_cka_matrix(hidden_states):
+    """Layer-to-layer CKA similarity."""
+    def linear_cka(X, Y):
+        X = X - X.mean(0)
+        Y = Y - Y.mean(0)
+        hsic_xy = torch.norm(X.T @ Y, p='fro') ** 2
+        hsic_xx = torch.norm(X.T @ X, p='fro') ** 2
+        hsic_yy = torch.norm(Y.T @ Y, p='fro') ** 2
+        return (hsic_xy / (torch.sqrt(hsic_xx * hsic_yy) + 1e-8)).item()
+
+    n = len(hidden_states)
+    cka = np.zeros((n, n))
+    for i in range(n):
+        for j in range(i, n):
+            X = hidden_states[i].reshape(-1, hidden_states[i].shape[-1]).float()
+            Y = hidden_states[j].reshape(-1, hidden_states[j].shape[-1]).float()
+            cka[i, j] = cka[j, i] = linear_cka(X, Y)
+    return cka
+
+def compute_persistence_landscapes(hidden_states, n_landscapes=5, resolution=100,
+                                   max_points=150, pca_dim=20):
+    """
+    Compute persistence landscapes per layer for cross-layer comparison.
+
+    Args:
+        hidden_states: tuple of tensors (B, T, D), one per layer
+        n_landscapes:  number of landscape functions (k=1..n_landscapes)
+        resolution:    number of sample points along the filtration axis
+        max_points:    subsample limit per layer
+        pca_dim:       PCA target dimension
+
+    Returns:
+        landscapes_per_layer: list of (n_landscapes * resolution,) arrays, one per layer
+        sample_range:         (min_birth, max_death) across all layers for consistent x-axis
+    """
+    from ripser import ripser
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+
+    # ── Pass 1: compute all persistence diagrams and find global range ──
+    all_dgms_h1 = []
+    global_min = float('inf')
+    global_max = float('-inf')
+
+    for hs in hidden_states:
+        pts = hs.reshape(-1, hs.shape[-1]).cpu().float().numpy()
+
+        if pts.shape[0] > max_points:
+            idx = np.random.choice(pts.shape[0], max_points, replace=False)
+            pts = pts[idx]
+
+        if pts.shape[1] > pca_dim:
+            pts = PCA(n_components=min(pca_dim, pts.shape[0], pts.shape[1])).fit_transform(
+                StandardScaler().fit_transform(pts)
+            )
+
+        dists = np.linalg.norm(pts[:, None] - pts[None, :], axis=-1)
+        thresh = np.percentile(dists[dists > 0], 50)
+
+        result = ripser(pts, maxdim=1, thresh=thresh)
+        dgm_h1 = result['dgms'][1]  # H1 = loops
+        finite = dgm_h1[np.isfinite(dgm_h1[:, 1])]
+
+        if len(finite) > 0:
+            global_min = min(global_min, finite[:, 0].min())
+            global_max = max(global_max, finite[:, 1].max())
+
+        all_dgms_h1.append(finite)
+
+    # Handle edge case: no finite H1 features anywhere
+    if global_min >= global_max:
+        global_min, global_max = 0.0, 1.0
+
+    sample_range = (global_min, global_max)
+
+    # ── Pass 2: compute landscapes on a SHARED grid ─────────────────────
+    landscape_fn = _Landscape(
+        num_landscapes=n_landscapes,
+        resolution=resolution,
+        sample_range=sample_range,
+    )
+
+    landscapes_per_layer = []
+    for finite in all_dgms_h1:
+        if len(finite) >= 2:
+            # gudhi expects a list of diagrams
+            ls = landscape_fn.fit_transform([finite])  # (1, n_landscapes * resolution)
+            landscapes_per_layer.append(ls[0])
+        else:
+            # No features → flat zero landscape
+            landscapes_per_layer.append(np.zeros(n_landscapes * resolution))
+
+    return landscapes_per_layer, sample_range
 
 if __name__ == "__main__":
     console.print(

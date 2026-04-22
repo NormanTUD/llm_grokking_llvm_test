@@ -1,4 +1,5 @@
 llvmlite
+gudhi
 ripser
 persim
 tokenizers
