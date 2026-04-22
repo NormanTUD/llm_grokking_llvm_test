@@ -2526,10 +2526,8 @@ class LivePlotter:
             ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Error Score (0 = perfect, 1 = garbage)")
-            ax_diffs.axhline(y=0, color="green", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
-            ax_diffs.axhline(y=1, color="red", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
-            ax_diffs.set_ylim(-0.05, 1.05)
+            ax_diffs.set_ylabel("Absolute Difference")
+            ax_diffs.set_ylim(-50, 10000)
             ax_diffs.grid(True, alpha=0.3)
 
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
@@ -2553,10 +2551,8 @@ class LivePlotter:
             ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Error Score (0 = perfect, 1 = garbage)")
-            ax_diffs.axhline(y=0, color="green", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
-            ax_diffs.axhline(y=1, color="red", linewidth=0.8, linestyle="-", alpha=0.4, label="_nolegend_")
-            ax_diffs.set_ylim(-0.05, 1.05)
+            ax_diffs.set_ylabel("Absolute Difference")
+            ax_diffs.set_ylim(-50, 10000)
             ax_diffs.grid(True, alpha=0.3)
 
             ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
