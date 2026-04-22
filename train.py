@@ -70,6 +70,7 @@ from random_llvm_gen import generate_random_function, list_supported_ops
 from generate_samples import generate_example_samples
 import subprocess
 from run_logger import RunLogger
+from csv_logger import CSVTrainingLogger
 import threading
 import tty
 import termios
@@ -80,6 +81,8 @@ import tkinter
 
 import warnings
 warnings.filterwarnings("ignore", message="Glyph .* missing from font")
+
+csv_log = CSVTrainingLogger()
 
 OPTIMIZERS = {
     "adam": torch.optim.Adam,
@@ -3480,6 +3483,146 @@ class TimeEstimator:
 # 9.  TRAINING LOOP
 # ════════════════════════════════════════════════════════════════════════════
 
+# ════════════════════════════════════════════════════════════════════════════
+# 9a. HELPER FUNCTIONS (extracted from train loop to eliminate duplication)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _prepare_batch(
+    tokenizer: BPETokenizer,
+    batch_size: int,
+    max_params: int,
+    max_ops: int,
+    allowed_ops: List[str],
+    param_range: Tuple[int, int],
+    max_seq_len: int,
+    device: str,
+) -> Optional[Tuple]:
+    """
+    Generate a batch, collate it, and move tensors to device.
+
+    Returns:
+        (batch_raw, inp, tgt, val_pos, val_tgt, ans_parseable)
+        or None if the batch is too small.
+    """
+    batch = generate_batch(
+        tokenizer, batch_size, max_params, max_ops,
+        allowed_ops, param_range, max_seq_len,
+    )
+    if len(batch) < 2:
+        return None
+
+    inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
+        batch,
+        pad_id=tokenizer.SPECIAL["<pad>"],
+        tokenizer=tokenizer,
+    )
+    return (
+        batch,
+        inp.to(device),
+        tgt.to(device),
+        val_pos.to(device),
+        val_tgt.to(device),
+        ans_parseable.to(device),
+    )
+
+
+def _compute_batch_loss(
+    model: TinyGPT,
+    inp: torch.Tensor,
+    tgt: torch.Tensor,
+    val_pos: torch.Tensor,
+    val_tgt: torch.Tensor,
+    ans_parseable: torch.Tensor,
+    tokenizer: BPETokenizer,
+    device: str,
+    value_loss_alpha: float,
+    structure_loss_alpha: float,
+    length_loss_alpha: float,
+) -> Tuple[torch.Tensor, float, float, float, float]:
+    """
+    Thin wrapper around compute_structured_loss with standard args.
+
+    Returns:
+        (loss_tensor, ce_val, vloss_val, struct_val, parse_rate)
+    """
+    return compute_structured_loss(
+        model, inp, tgt, val_pos, val_tgt, ans_parseable,
+        tokenizer=tokenizer,
+        device=device,
+        alpha_value=value_loss_alpha,
+        alpha_structure=structure_loss_alpha,
+        alpha_length=length_loss_alpha,
+        use_log_scale=True,
+    )
+
+
+def _save_checkpoint(
+    path: str,
+    filename: str,
+    epoch: int,
+    model: TinyGPT,
+    optimizer,
+    scheduler,
+    train_loss: float,
+    val_loss: float,
+    best_val_loss: float,
+) -> str:
+    """Save a .pt checkpoint to path/filename. Returns the full path."""
+    os.makedirs(path, exist_ok=True)
+    full_path = os.path.join(path, filename)
+    torch.save({
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "train_loss": train_loss,
+        "val_loss": val_loss,
+        "best_val_loss": best_val_loss,
+    }, full_path)
+    return full_path
+
+
+def _prune_checkpoints(save_path: str, max_keep: int = 10):
+    """Remove old model_epoch_*.pt files, keeping only the most recent max_keep."""
+    import glob
+    existing = sorted(
+        glob.glob(os.path.join(save_path, "model_epoch_*.pt")),
+        key=lambda p: int(
+            os.path.basename(p).replace("model_epoch_", "").replace(".pt", "")
+        ),
+    )
+    if len(existing) > max_keep:
+        for old in existing[:-max_keep]:
+            try:
+                os.remove(old)
+                console.print(
+                    f"  [dim]🗑️  Removed old checkpoint: {os.path.basename(old)}[/]"
+                )
+            except OSError:
+                pass
+
+
+def _log_predictions_and_plots(
+    model: TinyGPT,
+    tokenizer: BPETokenizer,
+    batch: List,
+    device: str,
+    plotter: LivePlotter,
+    is_train: bool = True,
+):
+    """
+    Get predictions for a batch and update plotter panels.
+    Used by both train and val loops to avoid duplication.
+
+    Returns:
+        List of (expected_str, predicted_str, is_correct) tuples.
+    """
+    preds = get_batch_predictions(model, tokenizer, batch, device)
+    if preds:
+        plotter.accumulate_predictions(preds)
+        plotter.update_prediction_diffs(preds)
+    return preds
+
 def train(args: argparse.Namespace):
     allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
     valid_ops = list(list_supported_ops().keys())
@@ -3545,13 +3688,11 @@ def train(args: argparse.Namespace):
         model,
         input_size=(1, 128),
         dtypes=[torch.long],
-        verbose=0,  # suppress direct printing
+        verbose=0,
     )
 
-    # Build a Rich table from the summary string
-    summary_text = str(model_stats)
     summary_panel = Panel(
-        Text(summary_text, style="white"),
+        Text(str(model_stats), style="white"),
         title="[bold cyan]📐 Model Summary (torchinfo)",
         border_style="cyan",
         padding=(1, 2),
@@ -3589,19 +3730,17 @@ def train(args: argparse.Namespace):
 
         console.print(f"[bold yellow]🔄 Resuming from checkpoint: {args.resume}[/]")
         checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
-
         model.load_state_dict(checkpoint["model_state_dict"])
         console.print("  [green]✓ Model weights loaded[/]")
-
-        # We'll load optimizer & scheduler state AFTER they're created below
         _resumed_checkpoint = checkpoint
     else:
         _resumed_checkpoint = None
 
+    # ── Run logger ──────────────────────────────────────────────────────
     run_logger = None
+    global run_dir
     if not args.no_run_log:
         run_logger = RunLogger(base_dir=args.run_dir)
-        global run_dir
         run_dir = run_logger.get_base_dir()
 
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
@@ -3618,6 +3757,13 @@ def train(args: argparse.Namespace):
             },
             vocab_size=tokenizer.vocab_size,
         )
+
+    # ── CSV Logger ──────────────────────────────────────────────────────
+    csv_log = CSVTrainingLogger(
+        output_dir=run_dir if run_dir else "."
+    )
+
+    csv_log.set_output_dir(run_dir)
 
     # ── Config table ────────────────────────────────────────────────────
     config_table = Table(title="Configuration", box=box.ROUNDED, show_lines=True)
@@ -3675,6 +3821,27 @@ def train(args: argparse.Namespace):
     # ── Time estimator ──────────────────────────────────────────────────
     timer = TimeEstimator()
 
+    # ── Shared batch generation kwargs ──────────────────────────────────
+    batch_gen_kwargs = dict(
+        tokenizer=tokenizer,
+        batch_size=args.batch_size,
+        max_params=args.max_params,
+        max_ops=args.max_ops,
+        allowed_ops=allowed_ops,
+        param_range=(args.param_min, args.param_max),
+        max_seq_len=args.max_seq_len,
+        device=device,
+    )
+
+    # ── Shared loss kwargs ──────────────────────────────────────────────
+    loss_kwargs = dict(
+        tokenizer=tokenizer,
+        device=device,
+        value_loss_alpha=args.value_loss_alpha,
+        structure_loss_alpha=args.structure_loss_alpha,
+        length_loss_alpha=args.length_loss_alpha,
+    )
+
     # ── Training ────────────────────────────────────────────────────────
     console.print(
         Panel(
@@ -3691,6 +3858,7 @@ def train(args: argparse.Namespace):
     train_losses_hist: List[float] = list(resumed_train_losses)
     val_losses_hist: List[float] = list(resumed_val_losses)
     total_samples = resumed_total_samples
+    save_path = f"{run_dir}/"
 
     epoch = start_epoch
     while True:
@@ -3709,9 +3877,7 @@ def train(args: argparse.Namespace):
         epoch_value_loss = 0.0
         n_batches = 0
 
-        # Hyperparameter: weight of the value regression loss
-        # You can also expose this as a CLI arg
-        value_loss_alpha = args.value_loss_alpha
+        plotter.clear_predictions()
 
         with Progress(
             SpinnerColumn(),
@@ -3740,44 +3906,29 @@ def train(args: argparse.Namespace):
             ema_loss = None
 
             for batch_idx in range(args.batches_per_epoch):
-                batch = generate_batch(
-                    tokenizer, args.batch_size, args.max_params, args.max_ops,
-                    allowed_ops, (args.param_min, args.param_max), args.max_seq_len,
-                )
-                total_samples += len(batch)
+                csv_log.start_batch_timer()
 
-                if len(batch) < 2:
+                prepared = _prepare_batch(**batch_gen_kwargs)
+                if prepared is None:
                     progress.update(task, advance=1, loss=0.0,
                                     ema=ema_loss or 0.0, vloss=0.0,
                                     eta=timer.eta(epoch - 1, epoch_ctrl.epochs))
                     continue
 
-                # ── Collate with value targets ──────────────────────────
-                inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
-                    batch,
-                    pad_id=tokenizer.SPECIAL["<pad>"],
-                    tokenizer=tokenizer,
-                )
-                inp = inp.to(device)
-                tgt = tgt.to(device)
-                val_pos = val_pos.to(device)
-                val_tgt = val_tgt.to(device)
-                ans_parseable = ans_parseable.to(device)
+                batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
+                total_samples += len(batch)
 
-                # ── Combined loss: CE + alpha * value regression ────────
-                loss, ce_val, vloss_val, struct_val, parse_rate = compute_structured_loss(
+                # ── Combined loss ───────────────────────────────────────
+                loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
                     model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                    tokenizer=tokenizer,
-                    device=device,
-                    alpha_value=value_loss_alpha,
-                    alpha_structure=args.structure_loss_alpha,
-                    alpha_length=args.length_loss_alpha,
-                    use_log_scale=True,
+                    **loss_kwargs,
                 )
 
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), args.grad_clip
+                )
                 optimizer.step()
 
                 bl = loss.item()
@@ -3790,17 +3941,38 @@ def train(args: argparse.Namespace):
                 else:
                     ema_loss = 0.05 * bl + 0.95 * ema_loss
 
+                current_lr = optimizer.param_groups[0]["lr"]
+
+                # ── Get predictions for this batch ──────────────────────
+                preds = get_batch_predictions(model, tokenizer, batch, device)
+
+                # ── CSV: log train batch ────────────────────────────────
+                csv_log.log_train_batch(
+                    epoch=epoch,
+                    batch_idx=batch_idx,
+                    total_loss=bl,
+                    ce_loss=ce_val,
+                    value_loss=vloss_val,
+                    structure_loss=struct_val,
+                    parse_rate=parse_rate,
+                    predictions=preds,
+                    lr=current_lr,
+                    grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
+                    n_samples_in_batch=len(batch),
+                )
+
+                # ── Plotter updates ─────────────────────────────────────
                 plotter.update_batch(bl)
                 plotter.update_topo(model, inp)
                 plotter.update_kelp_forest(model, inp)
 
+                if preds:
+                    plotter.accumulate_predictions(preds)
+                    plotter.update_prediction_diffs(preds)
+
+                # ── Run logger ──────────────────────────────────────────
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
-
-                if batch:
-                    preds = get_batch_predictions(model, tokenizer, batch, device)
-                    plotter.update_predictions(preds)
-                    plotter.update_prediction_diffs(preds)
 
                 progress.update(
                     task, advance=1, loss=bl, ema=ema_loss,
@@ -3830,42 +4002,48 @@ def train(args: argparse.Namespace):
             task = progress.add_task("val", total=args.val_batches, loss=0.0)
 
             with torch.no_grad():
-                for _ in range(args.val_batches):
-                    batch = generate_batch(
-                        tokenizer, args.batch_size, args.max_params, args.max_ops,
-                        allowed_ops, (args.param_min, args.param_max), args.max_seq_len,
-                    )
+                for val_batch_idx in range(args.val_batches):
+                    csv_log.start_batch_timer()
 
-                    if len(batch) < 2:
+                    prepared = _prepare_batch(**batch_gen_kwargs)
+                    if prepared is None:
                         progress.update(task, advance=1, loss=0.0)
                         continue
 
-                    inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
-                        batch,
-                        pad_id=tokenizer.SPECIAL["<pad>"],
-                        tokenizer=tokenizer,
-                    )
-                    inp = inp.to(device)
-                    tgt = tgt.to(device)
-                    val_pos = val_pos.to(device)
-                    val_tgt = val_tgt.to(device)
-                    ans_parseable = ans_parseable.to(device)
+                    batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
 
-                    # Use the same combined loss for validation metrics
-                    vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = compute_structured_loss(
+                    vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = _compute_batch_loss(
                         model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                        tokenizer=tokenizer,
-                        device=device,
-                        alpha_value=value_loss_alpha,
-                        alpha_structure=args.structure_loss_alpha,
-                        use_log_scale=True,
+                        **loss_kwargs,
                     )
 
                     vl = vl_total.item()
                     val_loss += vl
                     val_batches += 1
 
+                    # ── Get predictions for val batch ───────────────────
+                    preds = get_batch_predictions(model, tokenizer, batch, device)
+
+                    # ── CSV: log val batch ──────────────────────────────
+                    csv_log.log_val_batch(
+                        epoch=epoch,
+                        batch_idx=val_batch_idx,
+                        total_loss=vl,
+                        ce_loss=vl_ce,
+                        value_loss=vl_value,
+                        structure_loss=vl_struct,
+                        parse_rate=vl_parse_rate,
+                        predictions=preds,
+                        lr=optimizer.param_groups[0]["lr"],
+                    )
+
+                    # ── Plotter + run logger ────────────────────────────
                     plotter.update_val_batch(vl)
+
+                    if preds:
+                        plotter.accumulate_predictions(preds)
+                        plotter.update_prediction_diffs(preds)
+
                     if run_logger:
                         run_logger.log_batch_loss_val(epoch, val_batches, vl)
 
@@ -3892,6 +4070,13 @@ def train(args: argparse.Namespace):
         is_best = avg_val_loss < best_val_loss
         if is_best:
             best_val_loss = avg_val_loss
+
+        # ── CSV: end epoch ──────────────────────────────────────────────
+        csv_log.end_epoch(
+            epoch=epoch,
+            lr=current_lr,
+            epoch_time_sec=elapsed,
+        )
 
         # ── Epoch summary ───────────────────────────────────────────────
         total_epochs = epoch_ctrl.epochs
@@ -3950,67 +4135,63 @@ def train(args: argparse.Namespace):
         # ── Update epoch plot ───────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
-        save_path = f"{run_dir}/"
-
         # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
-        epoch_ckpt_path = os.path.join(save_path, f"model_epoch_{epoch}.pt")
-        os.makedirs(save_path, exist_ok=True)
-        torch.save({
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "scheduler_state_dict": scheduler.state_dict(),
-            "train_loss": avg_train_loss,
-            "val_loss": avg_val_loss,
-            "best_val_loss": best_val_loss,
-        }, epoch_ckpt_path)
-        console.print(f"  [dim]💾 Saved checkpoint: {epoch_ckpt_path}[/]")
+        ckpt_path = _save_checkpoint(
+            path=save_path,
+            filename=f"model_epoch_{epoch}.pt",
+            epoch=epoch,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            train_loss=avg_train_loss,
+            val_loss=avg_val_loss,
+            best_val_loss=best_val_loss,
+        )
+        console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}[/]")
 
         # ── Clean up old checkpoints: keep only the last 10 ────────────
-        max_keep = 10
-        import glob
-        existing_ckpts = sorted(
-            glob.glob(os.path.join(save_path, "model_epoch_*.pt")),
-            key=lambda p: int(os.path.basename(p).replace("model_epoch_", "").replace(".pt", ""))
-        )
-        if len(existing_ckpts) > max_keep:
-            for old_ckpt in existing_ckpts[:-max_keep]:
-                try:
-                    os.remove(old_ckpt)
-                    console.print(f"  [dim]🗑️  Removed old checkpoint: {os.path.basename(old_ckpt)}[/]")
-                except OSError:
-                    pass
+        _prune_checkpoints(save_path, max_keep=10)
 
         # ── Save best model (lowest val loss) ───────────────────────────
         if is_best and save_path:
-            best_path = os.path.join(save_path, "model_best.pt")
-            os.makedirs(save_path, exist_ok=True)
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-                "train_loss": avg_train_loss,
-                "val_loss": avg_val_loss,
-                "best_val_loss": best_val_loss,
-            }, best_path)
+            best_path = _save_checkpoint(
+                path=save_path,
+                filename="model_best.pt",
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                best_val_loss=best_val_loss,
+            )
             # Also save in HuggingFace format for easy loading
             best_hf_path = f"{save_path}_best"
             model.save_pretrained(best_hf_path)
             tokenizer.save_pretrained(best_hf_path)
-            console.print(f"  [bold green]⭐ New best model saved: {best_path} (val_loss={avg_val_loss:.4f})[/]")
+            console.print(
+                f"  [bold green]⭐ New best model saved: {best_path} "
+                f"(val_loss={avg_val_loss:.4f})[/]"
+            )
 
         if _interrupt_count >= 1:
             console.print("[bold yellow]Graceful stop after epoch.[/]")
             break
 
-
     # ── Stop controller ─────────────────────────────────────────────────
     epoch_ctrl.stop()
 
+    # ── Close CSV logger ────────────────────────────────────────────────
+    csv_log.close()
+    console.print(
+        f"[bold green]📊 CSV logs saved to: "
+        f"{os.path.join(run_dir if run_dir else '.', 'batch_log.csv')} "
+        f"and epoch_log.csv[/]"
+    )
+
     # ── Save final model ────────────────────────────────────────────────
     if save_path:
-        console.print(f"\n[bold cyan]Saving final model to {save_path}/ ...[/]")
+        console.print(f"\n[bold cyan]Saving final model to {save_path} ...[/]")
         model.save_pretrained(save_path)
         tokenizer.save_pretrained(save_path)
 
@@ -4029,63 +4210,6 @@ def train(args: argparse.Namespace):
 
         console.print(f"[green]✓ Saved: {save_path}/[/]")
         console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
-
-    # ── Final summary ───────────────────────────────────────────────────
-    summary_table = Table(
-        title="Training Complete",
-        box=box.DOUBLE_EDGE,
-        show_lines=True,
-        title_style="bold green",
-    )
-    summary_table.add_column("Metric", style="bold")
-    summary_table.add_column("Value", style="cyan")
-
-    summary_table.add_row("Final Train Loss", f"{train_losses_hist[-1]:.4f}")
-    summary_table.add_row("Final Val Loss", f"{val_losses_hist[-1]:.4f}")
-    summary_table.add_row("Best Val Loss", f"{best_val_loss:.4f}")
-    summary_table.add_row("Model Parameters", f"{actual_params:,}")
-    summary_table.add_row("Total Samples", f"{total_samples:,}")
-    summary_table.add_row("Total Epochs", str(epoch))
-    summary_table.add_row("Total Time", timer.elapsed_total())
-    summary_table.add_row("Avg Epoch Time", f"{timer.avg_epoch_time:.1f}s")
-
-    save_path = f"{run_dir}/"
-
-    summary_table.add_row("Save Path", save_path)
-
-    console.print()
-    console.print(summary_table)
-
-    if save_path:
-        console.print(
-            Panel(
-                f'[bold]from train_llvm_gpt import TinyGPT, BPETokenizer\n\n'
-                f'model = TinyGPT.from_pretrained("{save_path}")\n'
-                f'model.eval()\n\n'
-                f'tokenizer = BPETokenizer.from_pretrained("{save_path}")\n'
-                f'config = model.config[/]',
-                title="[bold green]📦 Load your model",
-                border_style="green",
-            )
-        )
-
-    console.print("Finalizing plotters")
-    plotter.finalize()
-
-    if run_logger:
-        run_logger.log_final_summary(
-            train_losses=train_losses_hist,
-            val_losses=val_losses_hist,
-            best_val_loss=best_val_loss,
-            total_samples=total_samples,
-            total_epochs=epoch,
-            total_time=timer.elapsed_total(),
-            param_count=actual_params,
-            save_path=save_path,
-        )
-        console.print(f"[bold green]📁 Run data saved to: {run_logger.path}[/]")
-
-    return model, tokenizer
 
 # ════════════════════════════════════════════════════════════════════════════
 # 11.  ENTRY POINT
