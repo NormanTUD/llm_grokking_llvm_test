@@ -3242,10 +3242,6 @@ class LivePlotter:
             f"n_layers:      {self._model_info.get('n_layers', '?')}",
             f"max_seq_len:   {self._model_info.get('max_seq_len', '?')}",
             f"vocab_size:    {self._model_info.get('vocab_size', '?')}",
-            f"dropout:       {self._model_info.get('dropout', '?')}",
-            f"optimizer:     {self._model_info.get('optimizer', '?')}",
-            f"scheduler:     {self._model_info.get('scheduler', '?')}",
-            f"lr:            {self._model_info.get('lr', '?')}",
             f"device:        {self._model_info.get('device', '?')}",
         ]
 
