@@ -48,31 +48,42 @@ while true; do
     # 1. Plots neu generieren
     bash plot_errors.sh "$RUN_DIR"
 
-    # 2. Alle Bilder im Run-Ordner finden (egal wo)
-    IMAGES=$(find "$RUN_DIR" -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.svg" \))
+    # 2. Alle relevanten Dateien im Run-Ordner finden (Bilder + csv + txt + html)
+    FILES=$(find "$RUN_DIR" -type f \( \
+        -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.svg" \
+        -o -iname "*.csv" -o -iname "*.txt" -o -iname "*.html" \
+    \))
 
-    if [ -n "$IMAGES" ]; then
-        COUNT=$(echo "$IMAGES" | wc -l)
+    if [ -n "$FILES" ]; then
+        COUNT=$(echo "$FILES" | wc -l)
         echo ""
-        echo "Gefundene Bilder ($COUNT):"
-        echo "$IMAGES" | sed 's/^/  /'
+        echo "Gefundene Dateien ($COUNT):"
+        echo "$FILES" | sed 's/^/  /'
 
         # 3. Optional: rsync zu Remote-Server
         if [ -n "$COPY_TO" ]; then
-            # Zielverzeichnis mit Run-Ordnername erstellen
-            RUN_NAME=$(basename "${RUN_DIR%/}")
-            REMOTE_TARGET="${COPY_TO%/}/${RUN_NAME}/"
+            REMOTE_TARGET="${COPY_TO%/}/"
 
             echo ""
-            echo "Synce $COUNT Bilder nach $REMOTE_TARGET ..."
+            echo "Synce $COUNT Dateien nach $REMOTE_TARGET ..."
 
-            # Alle Bilder mit relativer Struktur hochladen
-            rsync -az --relative --include='*/' --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' --exclude='*' "$RUN_DIR" "$REMOTE_TARGET"
+            # Sync contents of RUN_DIR directly into REMOTE_TARGET (no extra subdirectory)
+            rsync -az \
+                --include='*/' \
+                --include='*.png' \
+                --include='*.jpg' \
+                --include='*.jpeg' \
+                --include='*.svg' \
+                --include='*.csv' \
+                --include='*.txt' \
+                --include='*.html' \
+                --exclude='*' \
+                "${RUN_DIR}" "$REMOTE_TARGET"
 
             echo "Sync abgeschlossen."
         fi
     else
-        echo "Keine Bilder gefunden in $RUN_DIR"
+        echo "Keine Dateien gefunden in $RUN_DIR"
     fi
 
     echo "--- Warte ${INTERVAL}s ---"
