@@ -3616,28 +3616,6 @@ def _prune_checkpoints(save_path: str, max_keep: int = 10):
             except OSError:
                 pass
 
-
-def _log_predictions_and_plots(
-        model: TinyGPT,
-        tokenizer: BPETokenizer,
-        batch: List,
-        device: str,
-        plotter: LivePlotter,
-        is_train: bool = True,
-        ):
-    """
-    Get predictions for a batch and update plotter panels.
-    Used by both train and val loops to avoid duplication.
-
-    Returns:
-        List of (expected_str, predicted_str, is_correct) tuples.
-    """
-    preds = get_batch_predictions(model, tokenizer, batch, device)
-    if preds:
-        plotter.accumulate_predictions(preds)
-        plotter.update_prediction_diffs(preds)
-    return preds
-
 def train(args: argparse.Namespace):
     allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
     valid_ops = list(list_supported_ops().keys())
