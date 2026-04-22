@@ -3258,9 +3258,6 @@ class LivePlotter:
             # No nvidia-smi — show CPU/system info instead
             import platform
             info_lines.append(f"GPU:           N/A (no nvidia-smi)")
-            info_lines.append(f"Platform:      {platform.system()} {platform.release()}")
-            info_lines.append(f"Python:        {platform.python_version()}")
-            info_lines.append(f"PyTorch:       {torch.__version__}")
             if torch.cuda.is_available():
                 info_lines.append(f"CUDA:          {torch.version.cuda}")
                 info_lines.append(
