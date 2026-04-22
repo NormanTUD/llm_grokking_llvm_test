@@ -446,7 +446,7 @@ class CSVTrainingLogger:
 
         # Best val loss tracking
         val_mean = self._safe_mean(acc.val_losses)
-        is_best = val_mean < self._best_val_loss and acc.val_losses
+        is_best = bool(acc.val_losses) and val_mean < self._best_val_loss
         if is_best:
             self._best_val_loss = val_mean
 

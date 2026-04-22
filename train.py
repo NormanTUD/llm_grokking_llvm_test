@@ -92,7 +92,7 @@ warnings.filterwarnings("ignore", message="Glyph .* missing from font")
 warnings.filterwarnings("ignore", message="No artists with labels found to put in legend")
 warnings.filterwarnings("ignore", message="This figure includes Axes that are not compatible with tight_layout")
 
-csv_log = CSVTrainingLogger()
+csv_log = None
 
 OPTIMIZERS = {
     "adam": torch.optim.Adam,
@@ -3752,6 +3752,7 @@ def train(args: argparse.Namespace):
                 )
 
     # ── CSV Logger ──────────────────────────────────────────────────────
+    global csv_log
     csv_log = CSVTrainingLogger(
             output_dir=run_dir if run_dir else "."
             )
@@ -4062,7 +4063,7 @@ def train(args: argparse.Namespace):
         train_losses_hist.append(avg_train_loss)
         val_losses_hist.append(avg_val_loss)
 
-        is_best = bool(acc.val_losses) and val_mean < self._best_val_loss
+        is_best = avg_val_loss < best_val_loss
         if is_best:
             best_val_loss = avg_val_loss
 
