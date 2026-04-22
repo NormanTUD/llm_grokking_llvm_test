@@ -272,7 +272,7 @@ generate_html() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🧠 Grokking Dashboard</title>
+<title>Grokking Dashboard</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
@@ -568,7 +568,7 @@ HEADER
     # --- Hero ---
     cat >> "$OUT" <<EOF
 <div class="hero">
-  <h1>🧠 Grokking Dashboard</h1>
+  <h1>Grokking Dashboard</h1>
   <div class="subtitle">Live training monitor</div>
   <div class="meta-row">
 EOF
