@@ -910,16 +910,43 @@ def compute_structured_loss(
 
     # ── Value regression loss ───────────────────────────────────────────
     val_loss_val = 0.0
+
+    # ── Sign-aware value regression loss ────────────────────────────────
     value_loss_term = torch.tensor(0.0, device=device)
     if value_preds is not None and alpha_value > 0:
         valid_mask = (value_positions > 0) & answer_parseable & (~torch.isnan(value_targets))
         if valid_mask.any():
             vp = value_preds[valid_mask]
             vt = value_targets[valid_mask]
+
+            # Component 1: Sign correctness
+            # If signs match → 0 penalty; if signs differ → penalty
+            # Uses a soft sign via tanh so gradients flow smoothly
+            pred_sign = torch.tanh(vp * 0.5)       # soft sign: ~-1 or ~+1
+            target_sign = torch.sign(vt)            # hard sign: -1, 0, or +1
+            # When signs match: (1 - pred_sign * target_sign) ≈ 0
+            # When signs differ: (1 - pred_sign * target_sign) ≈ 2
+            sign_penalty = (1.0 - pred_sign * target_sign).mean()
+
+            # Component 2: Log-scaled magnitude difference
+            # This compresses large differences so they don't dominate,
+            # but still distinguishes "off by 1" from "off by 1000"
             if use_log_scale:
-                value_loss_term = torch.log1p(torch.abs(vp - vt)).mean()
+                magnitude_loss = torch.log1p(torch.abs(vp - vt)).mean()
             else:
-                value_loss_term = F.l1_loss(vp, vt)
+                magnitude_loss = F.l1_loss(vp, vt)
+
+            # Component 3: Relative error (treats large vs small numbers fairly)
+            # Being off by 5 when the answer is 10 is worse than
+            # being off by 5 when the answer is 1000
+            relative_error = (torch.abs(vp - vt) / (torch.abs(vt) + 1.0)).mean()
+
+            # Combine: sign matters a LOT, magnitude matters proportionally
+            value_loss_term = (
+                0.4 * sign_penalty +
+                0.35 * magnitude_loss +
+                0.25 * relative_error
+            )
             val_loss_val = value_loss_term.item()
 
     # ── Length penalty loss (differentiable) ────────────────────────────
@@ -1476,6 +1503,10 @@ def _compute_structure_penalty(
     Hierarchy (strictly ordered, NO overlap between levels):
       0.0            — perfect integer match (numeric comparison)
       (0, 0.99]      — wrong integer, valid format
+                       Sub-scoring accounts for:
+                         • Sign correctness (same sign = lower penalty)
+                         • Magnitude difference (log-scaled)
+                         • Relative error (proportional to target size)
       [1.0, 1.49]    — integer with leading/trailing whitespace
       [1.5, 1.99]    — starts with a valid integer but has trailing chars
       [2.0, 2.99]    — float-like string
@@ -1493,28 +1524,70 @@ def _compute_structure_penalty(
 
     stripped = cleaned.strip()
 
-    # Level 0: Perfect match
+    # ── Helper: sign-aware, magnitude-sensitive sub-score ───────────────
+    # Returns a value in [0.0, 1.0) where:
+    #   0.0 = perfect match
+    #   Higher = worse
+    # Accounts for:
+    #   1. Sign match/mismatch (large bonus/penalty)
+    #   2. Log-scaled absolute difference (compresses large diffs)
+    #   3. Relative error (off-by-5 on target=10 is worse than on target=1000)
+    def _sub_score(expected: float, predicted: float) -> float:
+        diff = abs(expected - predicted)
+        if diff == 0:
+            return 0.0
+
+        # Component 1: Sign match
+        # Same sign (or one is zero) → 0.0 penalty
+        # Opposite signs → 0.35 penalty
+        exp_sign = (expected > 0) - (expected < 0)   # -1, 0, or +1
+        pred_sign = (predicted > 0) - (predicted < 0)
+        if exp_sign == 0 or pred_sign == 0:
+            sign_penalty = 0.0
+        elif exp_sign == pred_sign:
+            sign_penalty = 0.0
+        else:
+            sign_penalty = 0.35
+
+        # Component 2: Log-scaled magnitude difference
+        # log1p compresses large diffs: off-by-1 → 0.69, off-by-1000 → 6.9
+        # Normalize with a sigmoid-like curve to [0, 1)
+        log_diff = math.log1p(diff)
+        magnitude_score = 1.0 - 1.0 / (1.0 + log_diff * 0.3)
+        # Scale to contribute at most 0.40
+        magnitude_component = 0.40 * magnitude_score
+
+        # Component 3: Relative error
+        # off-by-5 when target=10 → rel=0.45, when target=1000 → rel=0.005
+        # Clamp to [0, 1] and scale to contribute at most 0.24
+        rel_error = diff / (abs(expected) + 1.0)
+        rel_component = 0.24 * min(1.0, rel_error / (1.0 + rel_error))
+
+        # Combine (max possible ≈ 0.35 + 0.40 + 0.24 = 0.99)
+        return min(0.99, sign_penalty + magnitude_component + rel_component)
+
+    # ── Level 0: Perfect match or close integer ────────────────────────
     if _RE_INT.match(stripped):
         try:
             pred_int = int(stripped)
             diff = abs(expected_int - pred_int)
             if diff == 0:
                 return 0.0
-            return 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+            return _sub_score(expected_int, pred_int)
         except (ValueError, OverflowError):
             pass
 
-    # Level 1.5: Whitespace-padded integer
+    # ── Level 1: Whitespace-padded integer ─────────────────────────────
     padded_match = _RE_PADDED_INT.match(cleaned)
     if padded_match:
         try:
             pred_int = int(padded_match.group(1))
-            diff = abs(expected_int - pred_int)
-            return 1.0 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+            sub = _sub_score(expected_int, pred_int)
+            return 1.0 + 0.49 * sub
         except (ValueError, OverflowError):
             pass
 
-    # Level 2: Starts with valid integer + trailing stuff
+    # ── Level 1.5: Starts with valid integer + trailing stuff ──────────
     leading_match = _RE_LEADING_INT.match(cleaned)
     if leading_match:
         int_part = leading_match.group(1).strip()
@@ -1522,23 +1595,23 @@ def _compute_structure_penalty(
         if int_part and trailing:
             try:
                 pred_int = int(int_part)
-                diff = abs(expected_int - pred_int)
-                base = 1.5 + 0.3 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+                sub = _sub_score(expected_int, pred_int)
+                base = 1.5 + 0.3 * sub
                 trailing_penalty = min(0.19, len(trailing) * 0.03)
                 return base + trailing_penalty
             except (ValueError, OverflowError):
                 pass
 
-    # Level 3: Float-like string
+    # ── Level 2: Float-like string ─────────────────────────────────────
     if _RE_FLOAT.match(stripped):
         try:
             pred_float = float(stripped)
-            diff = abs(expected_int - pred_float)
-            return 2.0 + 0.99 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+            sub = _sub_score(expected_int, pred_float)
+            return 2.0 + 0.99 * sub
         except (ValueError, OverflowError):
             return 2.5
 
-    # Float with trailing
+    # ── Level 2.5: Float with trailing ─────────────────────────────────
     leading_float_match = _RE_LEADING_FLOAT.match(cleaned)
     if leading_float_match:
         float_part = leading_float_match.group(1).strip()
@@ -1546,22 +1619,22 @@ def _compute_structure_penalty(
         if float_part and trailing:
             try:
                 pred_float = float(float_part)
-                diff = abs(expected_int - pred_float)
-                return 2.5 + 0.49 * (1.0 - 1.0 / (1.0 + math.log1p(diff)))
+                sub = _sub_score(expected_int, pred_float)
+                return 2.5 + 0.49 * sub
             except (ValueError, OverflowError):
                 pass
 
-    # Shared length penalty
+    # ── Shared length penalty ──────────────────────────────────────────
     len_diff = abs(len(cleaned) - len(expected_str))
     len_penalty = min(0.5, math.log1p(len_diff) * 0.2)
 
-    # Level 4: Partially numeric
+    # ── Level 3–4: Partially numeric ───────────────────────────────────
     if cleaned.startswith('-') or _RE_PARTIAL_NUMERIC.match(cleaned):
         numeric_chars = sum(1 for c in cleaned if c in '-0123456789.')
         numeric_ratio = numeric_chars / max(len(cleaned), 1)
         return 3.0 + (1.0 - numeric_ratio) * 1.5 + len_penalty
 
-    # Level 5: Pure garbage
+    # ── Level 5: Pure garbage ──────────────────────────────────────────
     return 5.0 + len_penalty + min(0.49, math.log1p(len(cleaned)) * 0.15)
 
 class _ModelOutput(dict):
