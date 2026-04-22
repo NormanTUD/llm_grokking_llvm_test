@@ -1,4 +1,6 @@
 llvmlite
+ripser
+persim
 tokenizers
 torchinfo
 rich
