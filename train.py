@@ -3205,7 +3205,6 @@ class LivePlotter:
                 ha="right", va="bottom", fontsize=9, fontweight="bold",
                 transform=ax.transAxes, alpha=0.7)
 
-
     def _draw_model_info(self):
         """Draw basic model information + GPU/system stats."""
         ax = self.ax_info
@@ -3281,9 +3280,15 @@ class LivePlotter:
                 except Exception:
                     pass
 
-        y_positions = np.linspace(0.95, 0.005, len(info_lines))
+        # Fixed line spacing instead of np.linspace
+        line_height = 0.045
+        y_start = 0.95
+
         for i, line in enumerate(info_lines):
-            ax.text(0.05, y_positions[i], line,
+            y_pos = y_start - i * line_height
+            if y_pos < 0.0:
+                break  # don't draw lines that would go off the bottom
+            ax.text(0.05, y_pos, line,
                     fontsize=8, fontfamily="monospace",
                     color="black",
                     transform=ax.transAxes,
