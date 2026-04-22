@@ -178,6 +178,9 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--structure-loss-alpha", type=float, default=0.5,
                help="Weight for the structure-aware penalty loss term. "
                     "0 = disabled, higher = more emphasis on producing valid numbers.")
+    g.add_argument("--length-loss-alpha", type=float, default=0.3,
+                   help="Weight for the length penalty loss term. "
+                        "0 = disabled, higher = more emphasis on correct answer length.")
 
     g = p.add_argument_group("Tokenizer")
     g.add_argument("--tokenizer_initial_nr", type=int, default=1000,
@@ -870,7 +873,6 @@ class TinyGPT(nn.Module):
         model.load_state_dict(state_dict)
         return model
 
-
 def compute_structured_loss(
     model: 'TinyGPT',
     inp: torch.Tensor,
@@ -882,15 +884,19 @@ def compute_structured_loss(
     device: str,
     alpha_value: float = 0.1,
     alpha_structure: float = 0.5,
+    alpha_length: float = 0.3,
     use_log_scale: bool = True,
 ) -> Tuple[torch.Tensor, float, float, float, float]:
     """
     Combined loss:
       1. Cross-entropy (teacher-forced, standard)
-      2. Value regression (L1 on value head)  
+      2. Value regression (L1 on value head)
       3. Generation reward loss — ACTUALLY GENERATE, score the output,
          and use the log-probability of the generated sequence weighted
          by the reward as a REINFORCE-style gradient signal.
+      4. Length penalty — penalizes the model when the predicted answer
+         length (measured via EOS token probability) differs from the
+         expected answer length. This is fully differentiable.
     """
     output = model(
         input_ids=inp,
@@ -916,6 +922,16 @@ def compute_structured_loss(
                 value_loss_term = F.l1_loss(vp, vt)
             val_loss_val = value_loss_term.item()
 
+    # ── Length penalty loss (differentiable) ────────────────────────────
+    length_loss_term = _compute_length_penalty(
+        logits=logits,
+        tgt=tgt,
+        value_positions=value_positions,
+        answer_parseable=answer_parseable,
+        tokenizer=tokenizer,
+        device=device,
+    )
+
     # ── Generation reward loss (REINFORCE-style) ────────────────────────
     gen_loss_term, parsability_rate = _compute_generation_reward_loss(
         model=model,
@@ -931,7 +947,12 @@ def compute_structured_loss(
     structure_loss_val = gen_loss_term.item() if isinstance(gen_loss_term, torch.Tensor) else 0.0
 
     # ── Combine ─────────────────────────────────────────────────────────
-    total_loss = ce_loss + alpha_value * value_loss_term + alpha_structure * gen_loss_term
+    total_loss = (
+        ce_loss
+        + alpha_value * value_loss_term
+        + alpha_structure * gen_loss_term
+        + alpha_length * length_loss_term
+    )
 
     return (
         total_loss,
@@ -940,6 +961,94 @@ def compute_structured_loss(
         structure_loss_val,
         parsability_rate,
     )
+
+
+def _compute_length_penalty(
+    logits: torch.Tensor,           # (B, T, V)
+    tgt: torch.Tensor,              # (B, T)
+    value_positions: torch.Tensor,  # (B,)
+    answer_parseable: torch.Tensor, # (B,)
+    tokenizer: 'BPETokenizer',
+    device: str,
+) -> torch.Tensor:
+    """
+    Differentiable length penalty.
+
+    For each sample, we know the expected answer length (number of tokens
+    between the last <sep> and <eos>/<pad> in the target). We compute the
+    model's "predicted length" as the expected position of EOS under the
+    model's softmax distribution over the answer region:
+
+        predicted_len = sum_{t in answer_region} t * P(EOS at position t)
+
+    where P(EOS at position t) is the softmax probability of the EOS token
+    at each answer position, normalized to form a distribution.
+
+    The loss is the squared difference between expected and predicted lengths,
+    scaled by 1/expected_len to be scale-invariant (so a 1-token error on a
+    2-token answer is penalized the same as a 5-token error on a 10-token answer).
+
+    This is fully differentiable because it operates on softmax(logits).
+    """
+    B, T, V = logits.shape
+    pad_id = tokenizer.pad_token_id
+    eos_id = tokenizer.eos_token_id
+
+    if eos_id is None:
+        return torch.tensor(0.0, device=device)
+
+    probs = F.softmax(logits, dim=-1)  # (B, T, V)
+
+    length_losses = []
+
+    for b in range(B):
+        vp = value_positions[b].item()
+        if vp == 0:
+            continue
+
+        # Find expected answer length from target
+        answer_start = vp  # position after last <sep> in the shifted target
+        answer_end = T
+        for t_idx in range(answer_start, T):
+            tok = tgt[b, t_idx].item()
+            if tok == pad_id or tok == eos_id:
+                answer_end = t_idx
+                break
+
+        expected_len = answer_end - answer_start
+        if expected_len <= 0:
+            continue
+
+        # The full answer region including the EOS position
+        # We look at answer_start to answer_end (inclusive of EOS position)
+        region_end = min(answer_end + 1, T)  # +1 to include the EOS slot
+        region_len = region_end - answer_start
+        if region_len <= 0:
+            continue
+
+        # P(EOS) at each position in the answer region
+        eos_probs = probs[b, answer_start:region_end, eos_id]  # (region_len,)
+
+        # Normalize to form a distribution (where does the model think EOS is?)
+        eos_dist = eos_probs / (eos_probs.sum() + 1e-8)
+
+        # Expected position of EOS (0-indexed from answer_start)
+        positions = torch.arange(region_len, dtype=torch.float, device=device)
+        predicted_len = (eos_dist * positions).sum()
+
+        # Scale-invariant squared error
+        # Dividing by expected_len makes a 1-token error on a 2-token answer
+        # equivalent to a 5-token error on a 10-token answer
+        len_diff = predicted_len - float(expected_len)
+        scale = max(float(expected_len), 1.0)
+        length_loss = (len_diff / scale) ** 2
+
+        length_losses.append(length_loss)
+
+    if not length_losses:
+        return torch.tensor(0.0, device=device)
+
+    return torch.stack(length_losses).mean()
 
 def _compute_generation_reward_loss(
     model: 'TinyGPT',
@@ -2551,38 +2660,61 @@ class LivePlotter:
         self._draw_predictions()
         self._draw_model_info()
 
-        # Restore diff plot
+        # Restore diff plot (windowed)
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
-            means = [np.mean(d) for d in self._abs_diffs_history]
-            medians = [np.median(d) for d in self._abs_diffs_history]
-            xs = list(range(len(means)))
-            self.line_diffs_mean.set_data(xs, means)
-            self.line_diffs_median.set_data(xs, medians)
+            n_updates = len(self._abs_diffs_history)
+            max_scatter_window = 500
+            max_line_points = 2000
 
+            all_means = [np.mean(d) for d in self._abs_diffs_history]
+            all_medians = [np.median(d) for d in self._abs_diffs_history]
+
+            # Downsample lines
+            if n_updates > max_line_points:
+                step = max(1, n_updates // max_line_points)
+                ds_indices = list(range(0, n_updates, step))
+                if ds_indices[-1] != n_updates - 1:
+                    ds_indices.append(n_updates - 1)
+                line_xs = [i for i in ds_indices]
+                line_means = [all_means[i] for i in ds_indices]
+                line_medians = [all_medians[i] for i in ds_indices]
+            else:
+                line_xs = list(range(n_updates))
+                line_means = all_means
+                line_medians = all_medians
+
+            self.line_diffs_mean.set_data(line_xs, line_means)
+            self.line_diffs_median.set_data(line_xs, line_medians)
+
+            # Windowed scatter
+            scatter_start = max(0, n_updates - max_scatter_window)
             all_scatter_x = []
             all_scatter_y = []
-            for i, batch_scores in enumerate(self._abs_diffs_history):
-                for s in batch_scores:
+            for i in range(scatter_start, n_updates):
+                for s in self._abs_diffs_history[i]:
                     all_scatter_x.append(i)
                     all_scatter_y.append(s)
 
             if all_scatter_x:
+                n_scatter = len(all_scatter_x)
+                scatter_alpha = 0.30 if n_scatter < 500 else (0.15 if n_scatter < 2000 else 0.08)
+                scatter_size = 14 if n_scatter < 500 else (10 if n_scatter < 2000 else 6)
                 self._scatter_diffs = self.ax_diffs.scatter(
                     all_scatter_x, all_scatter_y,
-                    s=14, alpha=0.30, color="steelblue", zorder=1,
+                    s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
                     edgecolors="none",
                 )
 
-            n_updates = len(self._abs_diffs_history)
             self.ax_diffs.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
             self.ax_diffs.set_ylim(-0.05, 1.05)
 
             from matplotlib.lines import Line2D
+            window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
             legend_elements = [
                 Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
                 Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
                 Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                       markersize=6, alpha=0.5, linestyle='None', label="Individual"),
+                       markersize=6, alpha=0.5, linestyle='None', label=window_label),
             ]
             self.ax_diffs.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
@@ -2812,6 +2944,11 @@ class LivePlotter:
 
         Key invariant: ANY valid integer prediction (even wildly wrong) scores
         strictly below 1.0.  Only non-numeric outputs score exactly 1.0.
+
+        WINDOWED DISPLAY: Only the most recent `max_display_points` updates
+        are shown as scatter dots to prevent overloading the plot after many
+        epochs. The mean/median lines still use ALL historical data but are
+        downsampled for rendering when they exceed `max_line_points`.
         """
         if not self.enabled:
             return
@@ -2850,13 +2987,34 @@ class LivePlotter:
             return
 
         ax = self.ax_diffs
+        n_updates = len(self._abs_diffs_history)
 
-        # ── Update mean/median lines ────────────────────────────────────
-        means = [np.mean(d) for d in self._abs_diffs_history]
-        medians = [np.median(d) for d in self._abs_diffs_history]
-        xs = list(range(len(means)))
-        self.line_diffs_mean.set_data(xs, means)
-        self.line_diffs_median.set_data(xs, medians)
+        # ── Windowing / downsampling parameters ─────────────────────────
+        max_scatter_window = 500    # Only show scatter for the last N updates
+        max_line_points = 2000      # Downsample mean/median lines beyond this
+
+        # ── Compute mean/median over ALL history ────────────────────────
+        all_means = [np.mean(d) for d in self._abs_diffs_history]
+        all_medians = [np.median(d) for d in self._abs_diffs_history]
+        all_xs = list(range(n_updates))
+
+        # Downsample lines if too many points
+        if n_updates > max_line_points:
+            step = max(1, n_updates // max_line_points)
+            ds_indices = list(range(0, n_updates, step))
+            # Always include the last point
+            if ds_indices[-1] != n_updates - 1:
+                ds_indices.append(n_updates - 1)
+            line_xs = [all_xs[i] for i in ds_indices]
+            line_means = [all_means[i] for i in ds_indices]
+            line_medians = [all_medians[i] for i in ds_indices]
+        else:
+            line_xs = all_xs
+            line_means = all_means
+            line_medians = all_medians
+
+        self.line_diffs_mean.set_data(line_xs, line_means)
+        self.line_diffs_median.set_data(line_xs, line_medians)
 
         # ── Remove old scatter ──────────────────────────────────────────
         if self._scatter_diffs is not None:
@@ -2866,34 +3024,49 @@ class LivePlotter:
                 pass
             self._scatter_diffs = None
 
-        # ── Build new scatter data ──────────────────────────────────────
+        # ── Build new scatter data (WINDOWED) ───────────────────────────
+        scatter_start = max(0, n_updates - max_scatter_window)
         all_scatter_x = []
         all_scatter_y = []
-        for i, batch_scores in enumerate(self._abs_diffs_history):
-            for s in batch_scores:
+        for i in range(scatter_start, n_updates):
+            for s in self._abs_diffs_history[i]:
                 all_scatter_x.append(i)
                 all_scatter_y.append(s)
+
+        # Adaptive alpha: fewer points = more opaque, many = more transparent
+        n_scatter = len(all_scatter_x)
+        if n_scatter > 5000:
+            scatter_alpha = 0.08
+            scatter_size = 6
+        elif n_scatter > 2000:
+            scatter_alpha = 0.15
+            scatter_size = 10
+        elif n_scatter > 500:
+            scatter_alpha = 0.22
+            scatter_size = 12
+        else:
+            scatter_alpha = 0.30
+            scatter_size = 14
 
         if all_scatter_x:
             self._scatter_diffs = ax.scatter(
                 all_scatter_x, all_scatter_y,
-                s=14, alpha=0.30, color="steelblue", zorder=1,
+                s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
                 edgecolors="none",
             )
 
-        # ── Set axis limits explicitly (scatter is invisible to relim) ──
-        n_updates = len(self._abs_diffs_history)
+        # ── Set axis limits explicitly ──────────────────────────────────
         ax.set_xlim(-0.5, max(n_updates - 0.5, 0.5))
         ax.set_ylim(-0.05, 1.05)
 
-        # ── Update legend to include individual dots ────────────────────
-        # Rebuild legend with a proxy artist for the scatter
+        # ── Update legend ───────────────────────────────────────────────
         from matplotlib.lines import Line2D
+        window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
         legend_elements = [
             Line2D([0], [0], color="darkorange", linewidth=2, label="Mean score"),
             Line2D([0], [0], color="purple", linewidth=1.5, linestyle="--", label="Median score"),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                   markersize=6, alpha=0.5, linestyle='None', label="Individual"),
+                   markersize=6, alpha=0.5, linestyle='None', label=window_label),
         ]
         ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
@@ -3576,6 +3749,7 @@ def train(args: argparse.Namespace):
                     device=device,
                     alpha_value=value_loss_alpha,
                     alpha_structure=args.structure_loss_alpha,
+                    alpha_length=args.length_loss_alpha,
                     use_log_scale=True,
                 )
 
