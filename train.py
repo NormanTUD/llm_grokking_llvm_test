@@ -3301,7 +3301,7 @@ class LivePlotter:
             if y_pos < 0.0:
                 break  # don't draw lines that would go off the bottom
             ax.text(0.05, y_pos, line,
-                    fontsize=8, fontfamily="monospace",
+                    fontsize=7, fontfamily="monospace",
                     color="black",
                     transform=ax.transAxes,
                     verticalalignment="center")
