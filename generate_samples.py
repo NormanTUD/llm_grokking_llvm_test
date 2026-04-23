@@ -8,7 +8,7 @@ Used by the run logger during training.
 import torch
 from typing import List, Dict, Optional
 
-from random_latex_gen import generate_random_function
+from random_infix_gen import generate_random_function
 
 def generate_example_samples(
     model,
