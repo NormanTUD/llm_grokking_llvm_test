@@ -1899,7 +1899,11 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
             generated_answer = generated_answer.replace(special, "")
         generated_answer = generated_answer.strip()
 
-        is_correct = generated_answer.strip() == expected_answer.strip()
+        try:
+            is_correct = int(generated_answer.strip()) == int(expected_answer.strip())
+        except (ValueError, TypeError):
+            is_correct = generated_answer.strip() == expected_answer.strip()
+
         predictions.append((expected_answer, generated_answer, is_correct))
 
     model.train()
