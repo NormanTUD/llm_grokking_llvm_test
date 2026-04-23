@@ -244,6 +244,16 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--topo-max-points", type=int, default=200,
                    help="Max points to subsample for persistence computation")
 
+    g = p.add_argument_group("Replay Buffer")
+    g.add_argument("--replay-save-rate", type=float, default=0.2,
+                   help="Probability of saving each generated sample to the replay buffer. "
+                   "0 = disabled, 0.10 = save ~10%% of samples.")
+    g.add_argument("--replay-sprinkle-rate", type=float, default=0.10,
+                   help="Fraction of each batch to fill from the replay buffer "
+                   "(only active when replay-save-rate > 0)")
+    g.add_argument("--replay-max-size", type=int, default=10000,
+                   help="Maximum number of samples to retain in the replay buffer")
+
     return p.parse_args()
 
 
@@ -3497,35 +3507,51 @@ def _prepare_batch(
         param_range: Tuple[int, int],
         max_seq_len: int,
         device: str,
+        replay_buffer: Optional['ReplayBuffer'] = None,
         ) -> Optional[Tuple]:
     """
-    Generate a batch, collate it, and move tensors to device.
-
-    Returns:
-        (batch_raw, inp, tgt, val_pos, val_tgt, ans_parseable)
-        or None if the batch is too small.
+    Generate a batch, optionally sprinkle in replay samples,
+    collate it, and move tensors to device.
     """
+    # Determine how many fresh samples we need
+    sprinkled = []
+    if replay_buffer is not None:
+        sprinkled = replay_buffer.sprinkle(batch_size)
+
+    n_fresh = batch_size - len(sprinkled)
+
     batch = generate_batch(
-            tokenizer, batch_size, max_params, max_ops,
+            tokenizer, n_fresh, max_params, max_ops,
             allowed_ops, param_range, max_seq_len,
             )
-    if len(batch) < 2:
+
+    if len(batch) < 2 and not sprinkled:
+        return None
+
+    # Save fresh samples to the buffer BEFORE mixing
+    if replay_buffer is not None and batch:
+        replay_buffer.maybe_save(batch)
+
+    # Combine fresh + sprinkled (shuffle so the model can't learn position bias)
+    combined = batch + sprinkled
+    random.shuffle(combined)
+
+    if len(combined) < 2:
         return None
 
     inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
-            batch,
+            combined,
             pad_id=tokenizer.SPECIAL["<pad>"],
             tokenizer=tokenizer,
             )
     return (
-            batch,
+            combined,
             inp.to(device),
             tgt.to(device),
             val_pos.to(device),
             val_tgt.to(device),
             ans_parseable.to(device),
             )
-
 
 def _compute_batch_loss(
         model: TinyGPT,
@@ -3801,17 +3827,33 @@ def train(args: argparse.Namespace):
     # ── Time estimator ──────────────────────────────────────────────────
     timer = TimeEstimator()
 
-    # ── Shared batch generation kwargs ──────────────────────────────────
+    # ── Replay buffer ───────────────────────────────────────────────────
+    replay_buffer = None
+    if args.replay_save_rate > 0:
+        replay_buffer = ReplayBuffer(
+            save_rate=args.replay_save_rate,
+            sprinkle_rate=args.replay_sprinkle_rate,
+            max_size=args.replay_max_size,
+        )
+        console.print(
+            f"[bold cyan]🔄 Replay buffer enabled: "
+            f"save_rate={args.replay_save_rate:.0%}, "
+            f"sprinkle_rate={args.replay_sprinkle_rate:.0%}, "
+            f"max_size={args.replay_max_size:,}[/]"
+        )
+
+    # Update batch_gen_kwargs to include the buffer
     batch_gen_kwargs = dict(
-            tokenizer=tokenizer,
-            batch_size=args.batch_size,
-            max_params=args.max_params,
-            max_ops=args.max_ops,
-            allowed_ops=allowed_ops,
-            param_range=(args.param_min, args.param_max),
-            max_seq_len=args.max_seq_len,
-            device=device,
-            )
+        tokenizer=tokenizer,
+        batch_size=args.batch_size,
+        max_params=args.max_params,
+        max_ops=args.max_ops,
+        allowed_ops=allowed_ops,
+        param_range=(args.param_min, args.param_max),
+        max_seq_len=args.max_seq_len,
+        device=device,
+        replay_buffer=replay_buffer,  # <-- NEW
+    )
 
     # ── Shared loss kwargs ──────────────────────────────────────────────
     loss_kwargs = dict(
@@ -4370,6 +4412,75 @@ def compute_persistence_landscapes(hidden_states, n_landscapes=5, resolution=100
             landscapes_per_layer.append(np.zeros(n_landscapes * resolution))
 
     return landscapes_per_layer, sample_range
+
+# ════════════════════════════════════════════════════════════════════════════
+# REPLAY BUFFER — save & sprinkle back generated programs
+# ════════════════════════════════════════════════════════════════════════════
+
+class ReplayBuffer:
+    """
+    Stores a fraction of generated programs and mixes them back into
+    future batches.
+
+    Args:
+        save_rate:    probability of saving any given generated sample (e.g. 0.10)
+        sprinkle_rate: fraction of each batch to fill from the buffer (e.g. 0.10)
+        max_size:     maximum number of samples to retain in the buffer
+    """
+
+    def __init__(self, save_rate: float = 0.10, sprinkle_rate: float = 0.10,
+                 max_size: int = 5000):
+        self.save_rate = save_rate
+        self.sprinkle_rate = sprinkle_rate
+        self.max_size = max_size
+        self._buffer: List[Tuple[List[int], int]] = []  # (token_ids, prompt_len)
+        self._lock = threading.Lock()
+        self._total_saved = 0
+        self._total_sprinkled = 0
+
+    def maybe_save(self, samples: List[Tuple[List[int], int]]):
+        """
+        Probabilistically save samples into the buffer.
+        Each sample is independently saved with probability `save_rate`.
+        """
+        with self._lock:
+            for sample in samples:
+                if random.random() < self.save_rate:
+                    self._buffer.append(sample)
+                    self._total_saved += 1
+                    # Evict oldest if over capacity
+                    if len(self._buffer) > self.max_size:
+                        self._buffer.pop(0)
+
+    def sprinkle(self, batch_size: int) -> List[Tuple[List[int], int]]:
+        """
+        Return a list of replayed samples to mix into the current batch.
+        The number of samples is `floor(batch_size * sprinkle_rate)`,
+        capped by buffer availability.
+        """
+        n_sprinkle = int(batch_size * self.sprinkle_rate)
+        if n_sprinkle == 0 or not self._buffer:
+            return []
+
+        with self._lock:
+            n_sprinkle = min(n_sprinkle, len(self._buffer))
+            chosen = random.sample(self._buffer, n_sprinkle)
+            self._total_sprinkled += n_sprinkle
+            return chosen
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._buffer)
+
+    @property
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "buffer_size": len(self._buffer),
+                "total_saved": self._total_saved,
+                "total_sprinkled": self._total_sprinkled,
+            }
 
 if __name__ == "__main__":
     console.print(
