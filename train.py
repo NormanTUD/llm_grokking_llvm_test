@@ -134,9 +134,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     g = p.add_argument_group("Data Generation")
-    g.add_argument("--batches-per-epoch", type=int, default=150,
+    g.add_argument("--batches-per-epoch", type=int, default=300,
                    help="Training batches per epoch")
-    g.add_argument("--val-batches", type=int, default=20,
+    g.add_argument("--val-batches", type=int, default=200,
                    help="Validation batches per epoch")
     g.add_argument("--max-params", type=int, default=3,
                    help="Max function parameters")
