@@ -66,7 +66,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 
-from random_llvm_gen import generate_random_function, list_supported_ops
+from random_latex_gen import generate_random_function, list_supported_ops
 from generate_samples import generate_example_samples
 import subprocess
 from run_logger import RunLogger
