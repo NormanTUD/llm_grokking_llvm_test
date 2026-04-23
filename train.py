@@ -251,7 +251,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--replay-sprinkle-rate", type=float, default=0.10,
                    help="Fraction of each batch to fill from the replay buffer "
                    "(only active when replay-save-rate > 0)")
-    g.add_argument("--replay-max-size", type=int, default=10000,
+    g.add_argument("--replay-max-size", type=int, default=100000,
                    help="Maximum number of samples to retain in the replay buffer")
 
     return p.parse_args()
