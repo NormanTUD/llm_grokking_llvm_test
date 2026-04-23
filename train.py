@@ -140,13 +140,13 @@ def parse_args() -> argparse.Namespace:
                    help="Validation batches per epoch")
     g.add_argument("--max-params", type=int, default=3,
                    help="Max function parameters")
-    g.add_argument("--max-ops", type=int, default=6,
+    g.add_argument("--max-ops", type=int, default=3,
                    help="Max operations in random DAG")
     g.add_argument("--allowed-ops", type=str, default="add,sub",
                    help="Comma-separated LLVM ops")
-    g.add_argument("--param-min", type=int, default=-20,
+    g.add_argument("--param-min", type=int, default=-200,
                    help="Min random parameter value")
-    g.add_argument("--param-max", type=int, default=20,
+    g.add_argument("--param-max", type=int, default=200,
                    help="Max random parameter value")
 
     g = p.add_argument_group("Model Architecture")
