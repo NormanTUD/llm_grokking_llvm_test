@@ -245,7 +245,7 @@ def parse_args() -> argparse.Namespace:
                    help="Max points to subsample for persistence computation")
 
     g = p.add_argument_group("Replay Buffer")
-    g.add_argument("--replay-save-rate", type=float, default=0.2,
+    g.add_argument("--replay-save-rate", type=float, default=0.5,
                    help="Probability of saving each generated sample to the replay buffer. "
                    "0 = disabled, 0.10 = save ~10%% of samples.")
     g.add_argument("--replay-sprinkle-rate", type=float, default=0.10,
