@@ -1909,6 +1909,46 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
     model.train()
     return predictions
 
+def _prediction_error_score(exp_val: int, pred_val: int) -> float:
+    """
+    Score in [0, 0.9] where 0 = perfect, higher = worse.
+    
+    Uses symmetric relative error so that:
+      - 0 vs 0   → 0.0  (perfect)
+      - -0 vs 0  → 0.0  (numerically identical)
+      - -10 vs 10 → small score (magnitudes match, only sign differs)
+      - 5 vs 500  → large score (magnitudes very different)
+    """
+    # Treat as numerically identical (handles -0 vs 0 too)
+    if exp_val == pred_val:
+        return 0.0
+    
+    abs_exp = abs(exp_val)
+    abs_pred = abs(pred_val)
+    
+    # Magnitude closeness: symmetric relative error on absolute values
+    # This makes |10| vs |10| = 0 even if signs differ
+    mag_diff = abs(abs_exp - abs_pred)
+    mag_scale = max(abs_exp, abs_pred, 1)  # avoid div-by-zero
+    magnitude_error = mag_diff / mag_scale  # in [0, 1+]
+    
+    # Sign penalty: 0 if same sign (or either is zero), small penalty otherwise
+    exp_sign = (exp_val > 0) - (exp_val < 0)
+    pred_sign = (pred_val > 0) - (pred_val < 0)
+    if exp_sign == 0 or pred_sign == 0:
+        sign_penalty = 0.0
+    elif exp_sign != pred_sign:
+        sign_penalty = 0.15  # fixed small penalty for wrong sign
+    else:
+        sign_penalty = 0.0
+    
+    # Combine: magnitude dominates, sign is a secondary signal
+    # Saturate magnitude_error with 1 - exp(-k*x) curve
+    mag_score = 0.75 * (1.0 - math.exp(-2.0 * magnitude_error))
+    
+    score = mag_score + sign_penalty
+    return min(0.9, score)
+
 def get_gpu_info() -> Optional[Dict[str, any]]:
     """
     Query nvidia-smi for GPU stats. Returns a dict with GPU info,
@@ -2993,16 +3033,7 @@ class LivePlotter:
                 scores.append(1.0)  # unparseable → 1.0
                 continue
 
-            diff = abs(exp_val - pred_val)
-            if diff == 0:
-                scores.append(0.0)  # perfect → 0.0
-            else:
-                # Map diff to (0, 0.9] using a saturating curve
-                # Uses 1 - exp(-k*diff) scaled to max out at 0.9
-                # k controls how fast it saturates; 0.01 means diffs
-                # around 200-300 are already near 0.9
-                score = 0.9 * (1.0 - math.exp(-0.01 * diff))
-                scores.append(score)
+            scores.append(_prediction_error_score(exp_val, pred_val))
 
         if not scores:
             return
@@ -3153,24 +3184,22 @@ class LivePlotter:
 
             # ── Determine color and marker from NUMERIC comparison ──────
             if exp_parseable and pred_parseable:
+                score = _prediction_error_score(exp_val, pred_val)
                 diff = abs(exp_val - pred_val)
-                if diff == 0:
-                    color = "green"
-                    marker = "✓"
-                elif diff <= 5:
-                    color = "orange"
-                    marker = "≈"
-                elif diff <= 50:
-                    color = "darkorange"
-                    marker = "✗"
+                
+                if score == 0.0:
+                    color, marker = "green", "✓"
+                elif score < 0.2:
+                    color, marker = "orange", "≈"
+                elif score < 0.5:
+                    color, marker = "darkorange", "~"
                 else:
-                    color = "red"
-                    marker = "✗"
-
+                    color, marker = "red", "✗"
+                
                 text = (
-                        f"{marker}  expected: {exp_val:>6d}  │  "
-                        f"got: {pred_val:>6d}  │  diff: {diff}"
-                        )
+                    f"{marker}  expected: {exp_val:>6d}  │  "
+                    f"got: {pred_val:>6d}  │  diff: {diff}  │  score: {score:.2f}"
+                )
 
             elif exp_parseable and not pred_parseable:
                 color = "red"
