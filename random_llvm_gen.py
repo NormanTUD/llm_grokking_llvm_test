@@ -153,7 +153,7 @@ def generate_random_function(
         Concrete parameter values to feed into the function.
         len(params) must equal num_params.
     allowed_ops : list of str, optional
-        Which operations to use.  Defaults to ["add", "sub", "mul"].
+        Which operations to use.  Defaults to ["add", "sub"].
         See list_supported_ops() for all valid names.
     num_operations : int
         How many binary operations to chain together (>= 1).
@@ -176,7 +176,7 @@ def generate_random_function(
 
     # ── Defaults & validation ───────────────────────────────────────────
     if allowed_ops is None:
-        allowed_ops = ["add", "sub", "mul"]
+        allowed_ops = ["add", "sub"]
 
     _validate_ops(allowed_ops)
 

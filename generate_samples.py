@@ -36,7 +36,7 @@ def generate_example_samples(
     import random
 
     if allowed_ops is None:
-        allowed_ops = ["add", "sub", "mul"]
+        allowed_ops = ["add", "sub"]
 
     model.eval()
     samples = []

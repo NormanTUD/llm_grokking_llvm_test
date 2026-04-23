@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
                    help="Max function parameters")
     g.add_argument("--max-ops", type=int, default=4,
                    help="Max operations in random DAG")
-    g.add_argument("--allowed-ops", type=str, default="add,sub,mul",
+    g.add_argument("--allowed-ops", type=str, default="add,sub",
                    help="Comma-separated LLVM ops")
     g.add_argument("--param-min", type=int, default=-20,
                    help="Min random parameter value")
@@ -442,7 +442,7 @@ def generate_single_sample(
         max_seq_len: int = 2048,
         ) -> Optional[List[int]]:
     if allowed_ops is None:
-        allowed_ops = ["add", "sub", "mul"]
+        allowed_ops = ["add", "sub"]
 
     num_params = random.randint(2, max(2, max_params))
     num_ops = random.randint(1, max(1, max_ops))
@@ -580,7 +580,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     Generate n_programs random LLVM IR functions to build a tokenizer.
     """
     if allowed_ops is None:
-        allowed_ops = ["add", "sub", "mul"]
+        allowed_ops = ["add", "sub"]
 
     # ── Step 1: Generate corpus ─────────────────────────────────────────
     corpus: List[str] = []
