@@ -188,7 +188,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--resume", type=str, default=None,
                    help="Path to a .pt checkpoint to resume training from "
                    "(e.g. llvm_gpt_model/model_epoch_15.pt)")
-    g.add_argument("--structure-loss-alpha", type=float, default=0.5,
+    g.add_argument("--structure-loss-alpha", type=float, default=0.0,
                    help="Weight for the structure-aware penalty loss term. "
                    "0 = disabled, higher = more emphasis on producing valid numbers.")
     g.add_argument("--length-loss-alpha", type=float, default=0.3,
