@@ -4054,6 +4054,15 @@ def train(args: argparse.Namespace):
                 torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
             console.print("  [green]✓ RNG states restored[/]")
 
+        # ── Verify weights actually changed from init ───────────────────
+        # Quick sanity check: compare a few parameter values
+        sample_param = next(iter(model.parameters()))
+        ckpt_sample = list(checkpoint["model_state_dict"].values())[0]
+        if torch.allclose(sample_param.cpu(), ckpt_sample.cpu(), atol=1e-6):
+            console.print("  [green]✓ Verified: weights differ from random init[/]")
+        else:
+            console.print("  [bold red]⚠ WARNING: loaded weights may match random init![/]")
+
     elif args.resume is not None:
         if not os.path.isfile(args.resume):
             console.print(f"[bold red]❌ Checkpoint not found: {args.resume}[/]")
