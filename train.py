@@ -3905,53 +3905,49 @@ def _prune_checkpoints(save_path: str, max_keep: int = 10):
             except OSError:
                 pass
 
-def train(args: argparse.Namespace):
-    allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
-    valid_ops = list(list_supported_ops().keys())
-    for op in allowed_ops:
-        if op not in valid_ops:
-            raise ValueError(f"Invalid op '{op}'. Valid: {valid_ops}")
+# ════════════════════════════════════════════════════════════════════════════
+# 9a. SETUP HELPER FUNCTIONS (extracted from train)
+# ════════════════════════════════════════════════════════════════════════════
 
-    device = args.device
-    if device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+def _resolve_device(device_arg: str) -> str:
+    """Resolve 'auto' device to the best available hardware."""
+    if device_arg == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return device_arg
 
-    torch.manual_seed(args.seed)
-    random.seed(args.seed)
-    np.random.seed(args.seed)
 
-    # ── Continue-mode state (populated below if --continue is used) ──────
-    start_epoch = 0
-    resumed_train_losses = []
-    resumed_val_losses = []
-    resumed_best_val_loss = float("inf")
-    resumed_total_samples = 0
-    _resumed_checkpoint = None
-    _resumed_plotter_state = None
-    _resumed_replay_state = None
-    _resumed_ema_train = None
-    _resumed_global_batch = 0
+def _seed_everything(seed: int):
+    """Set random seeds for reproducibility across all libraries."""
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
-    # ── Tokenizer ───────────────────────────────────────────────────────
-    # When continuing, load the ORIGINAL tokenizer so vocab is identical.
+
+def _load_or_build_tokenizer(args, allowed_ops: List[str]) -> BPETokenizer:
+    """Load tokenizer from a continued run, or build a fresh one from samples."""
     if args.continue_run is not None:
         tok_dir = args.continue_run
         tok_file = os.path.join(tok_dir, "tokenizer.json")
         if os.path.exists(tok_file):
             tokenizer = BPETokenizer.from_pretrained(tok_dir)
             console.print(f"  [green]✓ Tokenizer restored from {tok_dir}[/]")
+            return tokenizer
         else:
             console.print(f"[bold red]❌ No tokenizer.json in {tok_dir}. Cannot continue.[/]")
             sys.exit(1)
     else:
-        tokenizer = build_tokenizer_from_samples(
-                n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
-                max_params=args.max_params, max_ops=args.max_ops,
-                param_range=(args.param_min, args.param_max),
-                bpe_vocab_size=args.bpe_vocab_size,
-                )
+        return build_tokenizer_from_samples(
+            n_programs=args.tokenizer_initial_nr,
+            allowed_ops=allowed_ops,
+            max_params=args.max_params,
+            max_ops=args.max_ops,
+            param_range=(args.param_min, args.param_max),
+            bpe_vocab_size=args.bpe_vocab_size,
+        )
 
-    # ── Model config ────────────────────────────────────────────────────
+
+def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTConfig]:
+    """Determine model architecture config from args, --continue, or auto-search."""
     if args.continue_run is not None:
         config_path = os.path.join(args.continue_run, "config.json")
         if os.path.exists(config_path):
@@ -3962,61 +3958,65 @@ def train(args: argparse.Namespace):
                 "n_layers": model_config.n_layers,
             }
             console.print(f"  [green]✓ Model config restored from {args.continue_run}[/]")
+            return cfg, model_config
         else:
             console.print(f"[bold red]❌ No config.json in {args.continue_run}. Cannot continue.[/]")
             sys.exit(1)
+
     elif args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
         cfg = {
-                "d_model": args.d_model,
-                "n_heads": args.n_heads,
-                "n_layers": args.n_layers,
-                }
-        model_config = LLVMGPTConfig(
-                vocab_size=tokenizer.vocab_size,
-                d_model=cfg["d_model"],
-                n_heads=cfg["n_heads"],
-                n_layers=cfg["n_layers"],
-                max_seq_len=args.max_seq_len,
-                dropout=args.dropout,
-                )
+            "d_model": args.d_model,
+            "n_heads": args.n_heads,
+            "n_layers": args.n_layers,
+        }
     else:
-        console.print(f"[bold cyan]Searching for architecture "
-                      f"(target ~{args.target_params:,} params)...[/]")
+        console.print(
+            f"[bold cyan]Searching for architecture "
+            f"(target ~{args.target_params:,} params)...[/]"
+        )
         cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len)
-        model_config = LLVMGPTConfig(
-                vocab_size=tokenizer.vocab_size,
-                d_model=cfg["d_model"],
-                n_heads=cfg["n_heads"],
-                n_layers=cfg["n_layers"],
-                max_seq_len=args.max_seq_len,
-                dropout=args.dropout,
-                )
 
-    # ── Create model ────────────────────────────────────────────────────
-    model = TinyGPT(model_config).to(device)
+    model_config = LLVMGPTConfig(
+        vocab_size=tokenizer.vocab_size,
+        d_model=cfg["d_model"],
+        n_heads=cfg["n_heads"],
+        n_layers=cfg["n_layers"],
+        max_seq_len=args.max_seq_len,
+        dropout=args.dropout,
+    )
+    return cfg, model_config
 
-    # ── Model summary in Rich panel ────────────────────────────────────
+
+def _create_model(model_config: LLVMGPTConfig, device: str) -> TinyGPT:
+    """Instantiate the model and move to device."""
+    return TinyGPT(model_config).to(device)
+
+
+def _print_model_summary(model: TinyGPT):
+    """Print a Rich panel with the torchinfo model summary."""
     from torchinfo import summary as torchinfo_summary
 
     model_stats = torchinfo_summary(
-            model,
-            input_size=(1, 128),
-            dtypes=[torch.long],
-            verbose=0,
-            )
-
+        model,
+        input_size=(1, 128),
+        dtypes=[torch.long],
+        verbose=0,
+    )
     summary_panel = Panel(
-            Text(str(model_stats), style="white"),
-            title="[bold cyan]📐 Model Summary (torchinfo)",
-            border_style="cyan",
-            padding=(1, 2),
-            expand=False,
-            )
+        Text(str(model_stats), style="white"),
+        title="[bold cyan]📐 Model Summary (torchinfo)",
+        border_style="cyan",
+        padding=(1, 2),
+        expand=False,
+    )
     console.print(summary_panel)
 
-    actual_params = model.count_parameters()
 
-    # ── Load checkpoint for --continue ──────────────────────────────────
+def _load_checkpoint_for_continue(args, model: TinyGPT, device: str) -> Optional[dict]:
+    """
+    Load checkpoint weights and state for --continue or --resume.
+    Returns the checkpoint dict (or None if no resume).
+    """
     if args.continue_run is not None:
         run_path = args.continue_run
         if not os.path.isdir(run_path):
@@ -4030,38 +4030,18 @@ def train(args: argparse.Namespace):
 
         console.print(f"[bold yellow]🔄 Continuing from: {ckpt_file}[/]")
         checkpoint = torch.load(ckpt_file, map_location=device, weights_only=False)
-
         model.load_state_dict(checkpoint["model_state_dict"])
         console.print("  [green]✓ Model weights loaded[/]")
 
-        start_epoch = checkpoint.get("epoch", 0)
-        resumed_train_losses = checkpoint.get("train_losses_hist", [])
-        resumed_val_losses = checkpoint.get("val_losses_hist", [])
-        resumed_best_val_loss = checkpoint.get("best_val_loss", float("inf"))
-        resumed_total_samples = checkpoint.get("total_samples", 0)
-        _resumed_plotter_state = checkpoint.get("plotter_state", None)
-        _resumed_replay_state = checkpoint.get("replay_buffer_state", None)
-        _resumed_ema_train = checkpoint.get("ema_train", None)
-        _resumed_global_batch = checkpoint.get("global_batch", 0)
-        _resumed_checkpoint = checkpoint
-
-        rng_state = checkpoint.get("rng_state", None)
-        if rng_state:
-            random.setstate(rng_state["python"])
-            np.random.set_state(rng_state["numpy"])
-            torch.random.set_rng_state(rng_state["torch"])
-            if torch.cuda.is_available() and "torch_cuda" in rng_state:
-                torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
-            console.print("  [green]✓ RNG states restored[/]")
-
-        # ── Verify weights actually changed from init ───────────────────
-        # Quick sanity check: compare a few parameter values
+        # Verify weights differ from random init
         sample_param = next(iter(model.parameters()))
         ckpt_sample = list(checkpoint["model_state_dict"].values())[0]
         if torch.allclose(sample_param.cpu(), ckpt_sample.cpu(), atol=1e-6):
             console.print("  [green]✓ Verified: weights differ from random init[/]")
         else:
             console.print("  [bold red]⚠ WARNING: loaded weights may match random init![/]")
+
+        return checkpoint
 
     elif args.resume is not None:
         if not os.path.isfile(args.resume):
@@ -4072,19 +4052,69 @@ def train(args: argparse.Namespace):
         checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])
         console.print("  [green]✓ Model weights loaded[/]")
-        _resumed_checkpoint = checkpoint
+        return checkpoint
 
-    # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
+    return None
+
+
+def _extract_resumed_state(checkpoint: Optional[dict]) -> dict:
+    """
+    Extract all resumable state from a checkpoint dict.
+    Returns a dict with keys for epoch, losses, plotter state, etc.
+    """
+    if checkpoint is None:
+        return {
+            "start_epoch": 0,
+            "train_losses": [],
+            "val_losses": [],
+            "best_val_loss": float("inf"),
+            "total_samples": 0,
+            "plotter_state": None,
+            "replay_state": None,
+            "ema_train": None,
+            "global_batch": 0,
+        }
+
+    return {
+        "start_epoch": checkpoint.get("epoch", 0),
+        "train_losses": checkpoint.get("train_losses_hist", []),
+        "val_losses": checkpoint.get("val_losses_hist", []),
+        "best_val_loss": checkpoint.get("best_val_loss", float("inf")),
+        "total_samples": checkpoint.get("total_samples", 0),
+        "plotter_state": checkpoint.get("plotter_state", None),
+        "replay_state": checkpoint.get("replay_buffer_state", None),
+        "ema_train": checkpoint.get("ema_train", None),
+        "global_batch": checkpoint.get("global_batch", 0),
+    }
+
+
+def _restore_rng_state(checkpoint: Optional[dict]):
+    """Restore Python/NumPy/Torch RNG states from a checkpoint."""
+    if checkpoint is None:
+        return
+    rng_state = checkpoint.get("rng_state", None)
+    if rng_state:
+        random.setstate(rng_state["python"])
+        np.random.set_state(rng_state["numpy"])
+        torch.random.set_rng_state(rng_state["torch"])
+        if torch.cuda.is_available() and "torch_cuda" in rng_state:
+            torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
+        console.print("  [green]✓ RNG states restored[/]")
+
+
+def _create_plotter(args, cfg: dict, actual_params: int, tokenizer: BPETokenizer,
+                    device: str, resumed_state: dict) -> LivePlotter:
+    """Create and configure the LivePlotter, restoring state if resuming."""
     plotter = LivePlotter(
-            enabled=not args.dont_plot,
-            update_every=args.plot_every,
-            topo_enabled=args.topo,
-            topo_every=args.topo_every,
-            topo_max_points=args.topo_max_points,
-            topo_pca_dim=30,
-            suppress_window=args.no_plot_window,
-            plot_file=args.plot_file,
-            )
+        enabled=not args.dont_plot,
+        update_every=args.plot_every,
+        topo_enabled=args.topo,
+        topo_every=args.topo_every,
+        topo_max_points=args.topo_max_points,
+        topo_pca_dim=30,
+        suppress_window=args.no_plot_window,
+        plot_file=args.plot_file,
+    )
 
     plotter.set_model_info({
         "params": actual_params,
@@ -4098,59 +4128,70 @@ def train(args: argparse.Namespace):
         "scheduler": args.scheduler,
         "lr": args.lr,
         "device": device,
-        })
+    })
 
-    # ── Restore plotter state (graphs continue seamlessly) ──────────────
-    if _resumed_plotter_state is not None:
-        plotter.restore_state(_resumed_plotter_state)
-        if _resumed_ema_train is not None:
-            plotter._ema_train = _resumed_ema_train
-        if _resumed_global_batch > 0:
-            plotter._global_batch = _resumed_global_batch
+    if resumed_state["plotter_state"] is not None:
+        plotter.restore_state(resumed_state["plotter_state"])
+        if resumed_state["ema_train"] is not None:
+            plotter._ema_train = resumed_state["ema_train"]
+        if resumed_state["global_batch"] > 0:
+            plotter._global_batch = resumed_state["global_batch"]
 
-    # ── Run logger ──────────────────────────────────────────────────────
-    run_logger = None
+    return plotter
+
+
+def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
+                      actual_params: int) -> Tuple[Optional[RunLogger], Optional[str]]:
+    """Set up the run logger and run directory. Returns (logger, run_dir)."""
     global run_dir
-    if not args.no_run_log:
-        if args.continue_run is not None:
-            # Reuse the existing run directory — don't create a new one
-            run_dir = args.continue_run
-            run_logger = RunLogger(base_dir=args.run_dir, reuse_path=run_dir)
-            console.print(f"[bold cyan]📁 Continuing run log in: {run_dir}[/]")
-        else:
-            run_logger = RunLogger(base_dir=args.run_dir)
-            run_dir = run_logger.get_base_dir()
-            console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
-            run_logger.log_config(args)
-            run_logger.log_model_summary(
-                    model_name="TinyGPT",
-                    param_count=actual_params,
-                    config_dict={
-                        "d_model": cfg["d_model"],
-                        "n_heads": cfg["n_heads"],
-                        "n_layers": cfg["n_layers"],
-                        "max_seq_len": args.max_seq_len,
-                        "dropout": args.dropout,
-                        },
-                    vocab_size=tokenizer.vocab_size,
-                    )
-    else:
-        run_dir = None
 
-    # ── Save tokenizer + config early (so --continue can find them) ─────
+    if args.no_run_log:
+        run_dir = None
+        return None, None
+
+    if args.continue_run is not None:
+        run_dir = args.continue_run
+        run_logger = RunLogger(base_dir=args.run_dir, reuse_path=run_dir)
+        console.print(f"[bold cyan]📁 Continuing run log in: {run_dir}[/]")
+    else:
+        run_logger = RunLogger(base_dir=args.run_dir)
+        run_dir = run_logger.get_base_dir()
+        console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
+        run_logger.log_config(args)
+        run_logger.log_model_summary(
+            model_name="TinyGPT",
+            param_count=actual_params,
+            config_dict={
+                "d_model": cfg["d_model"],
+                "n_heads": cfg["n_heads"],
+                "n_layers": cfg["n_layers"],
+                "max_seq_len": args.max_seq_len,
+                "dropout": args.dropout,
+            },
+            vocab_size=tokenizer.vocab_size,
+        )
+
+    # Save tokenizer + config early for --continue support
     if run_dir is not None and args.continue_run is None:
         tokenizer.save_pretrained(run_dir)
-        model_config.save_pretrained(run_dir)
+        model.config.save_pretrained(run_dir)
         console.print(f"  [green]✓ Tokenizer + config saved to {run_dir}/ (for --continue)[/]")
 
-    # ── CSV Logger ──────────────────────────────────────────────────────
-    global csv_log
-    csv_log = CSVTrainingLogger(
-            output_dir=run_dir if run_dir else "."
-            )
-    csv_log.set_output_dir(run_dir)
+    return run_logger, run_dir
 
-    # ── Config table ────────────────────────────────────────────────────
+
+def _setup_csv_logger(run_dir_path: Optional[str]) -> CSVTrainingLogger:
+    """Create and configure the CSV training logger."""
+    global csv_log
+    csv_log = CSVTrainingLogger(output_dir=run_dir_path if run_dir_path else ".")
+    csv_log.set_output_dir(run_dir_path)
+    return csv_log
+
+
+def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
+                        actual_params: int, device: str, allowed_ops: List[str],
+                        start_epoch: int, resumed_total_samples: int):
+    """Print the Rich configuration summary table."""
     config_table = Table(title="Configuration", box=box.ROUNDED, show_lines=True)
     config_table.add_column("Category", style="bold cyan")
     config_table.add_column("Parameter", style="bold")
@@ -4191,299 +4232,632 @@ def train(args: argparse.Namespace):
 
     console.print(config_table)
 
-    # ── Optimizer ───────────────────────────────────────────────────────
+
+def _build_optimizer(args, model: TinyGPT) -> torch.optim.Optimizer:
+    """Create the optimizer from args."""
     opt_cls = OPTIMIZERS[args.optimizer]
     opt_kwargs = {"lr": args.lr, "weight_decay": args.weight_decay}
     if args.optimizer == "sgd":
         opt_kwargs["momentum"] = args.momentum
-    optimizer = opt_cls(model.parameters(), **opt_kwargs)
+    return opt_cls(model.parameters(), **opt_kwargs)
 
+
+def _build_scheduler(args, optimizer):
+    """Create the LR scheduler from args. Returns (scheduler, is_plateau)."""
     if args.scheduler == "warmup_cosine":
-        scheduler = build_warmup_cosine(optimizer, args.epochs, warmup_epochs=min(5, args.epochs // 5))
+        scheduler = build_warmup_cosine(
+            optimizer, args.epochs, warmup_epochs=min(5, args.epochs // 5)
+        )
     else:
         scheduler = SCHEDULERS[args.scheduler](optimizer, args.epochs)
     is_plateau = args.scheduler == "plateau"
+    return scheduler, is_plateau
 
-    # ── Restore optimizer & scheduler state from checkpoint ─────────────
-    if _resumed_checkpoint is not None:
-        if "optimizer_state_dict" in _resumed_checkpoint:
-            try:
-                optimizer.load_state_dict(_resumed_checkpoint["optimizer_state_dict"])
-                # Move optimizer state tensors to correct device (needed for Adam/AdamW)
-                for state in optimizer.state.values():
-                    for k, v in state.items():
-                        if isinstance(v, torch.Tensor):
-                            state[k] = v.to(device)
-                console.print("  [green]✓ Optimizer state restored[/]")
-            except Exception as e:
-                console.print(f"  [yellow]⚠ Could not restore optimizer state: {e}[/]")
 
-        if "scheduler_state_dict" in _resumed_checkpoint:
-            try:
-                scheduler.load_state_dict(_resumed_checkpoint["scheduler_state_dict"])
-                console.print("  [green]✓ Scheduler state restored[/]")
-            except Exception as e:
-                console.print(f"  [yellow]⚠ Could not restore scheduler state: {e}[/]")
+def _restore_optimizer_and_scheduler(checkpoint: Optional[dict], optimizer, scheduler,
+                                     device: str):
+    """Restore optimizer and scheduler state dicts from a checkpoint."""
+    if checkpoint is None:
+        return
 
-    # ── Epoch controller (keyboard) ─────────────────────────────────────
-    epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10, plotter=plotter)
-    epoch_ctrl.start()
+    if "optimizer_state_dict" in checkpoint:
+        try:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
+            console.print("  [green]✓ Optimizer state restored[/]")
+        except Exception as e:
+            console.print(f"  [yellow]⚠ Could not restore optimizer state: {e}[/]")
 
-    # ── Time estimator ──────────────────────────────────────────────────
-    timer = TimeEstimator()
+    if "scheduler_state_dict" in checkpoint:
+        try:
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            console.print("  [green]✓ Scheduler state restored[/]")
+        except Exception as e:
+            console.print(f"  [yellow]⚠ Could not restore scheduler state: {e}[/]")
 
-    # ── Replay buffer ───────────────────────────────────────────────────
-    replay_buffer = None
-    if args.replay_save_rate > 0:
-        replay_buffer = ReplayBuffer(
-            save_rate=args.replay_save_rate,
-            sprinkle_rate=args.replay_sprinkle_rate,
-            max_size=args.replay_max_size,
+
+def _setup_replay_buffer(args, resumed_state: dict) -> Optional[ReplayBuffer]:
+    """Create and optionally restore the replay buffer."""
+    if args.replay_save_rate <= 0:
+        return None
+
+    replay_buffer = ReplayBuffer(
+        save_rate=args.replay_save_rate,
+        sprinkle_rate=args.replay_sprinkle_rate,
+        max_size=args.replay_max_size,
+    )
+    console.print(
+        f"[bold cyan]🔄 Replay buffer enabled: "
+        f"save_rate={args.replay_save_rate:.0%}, "
+        f"sprinkle_rate={args.replay_sprinkle_rate:.0%}, "
+        f"max_size={args.replay_max_size:,}[/]"
+    )
+
+    if resumed_state["replay_state"] is not None:
+        replay_buffer.restore_state(resumed_state["replay_state"])
+
+    return replay_buffer
+
+
+def _validate_allowed_ops(allowed_ops: List[str]):
+    """Validate that all specified ops are supported."""
+    valid_ops = list(list_supported_ops().keys())
+    for op in allowed_ops:
+        if op not in valid_ops:
+            raise ValueError(f"Invalid op '{op}'. Valid: {valid_ops}")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 9b. EPOCH-LEVEL HELPER FUNCTIONS
+# ════════════════════════════════════════════════════════════════════════════
+
+def _run_train_epoch(
+        epoch: int,
+        total_epochs: int,
+        model: TinyGPT,
+        optimizer,
+        args,
+        batch_gen_kwargs: dict,
+        loss_kwargs: dict,
+        tokenizer: BPETokenizer,
+        device: str,
+        plotter: LivePlotter,
+        run_logger: Optional[RunLogger],
+        csv_log: CSVTrainingLogger,
+        timer: TimeEstimator,
+        epoch_ctrl: EpochController,
+        total_samples: int,
+) -> Tuple[float, float, int]:
+    """
+    Run one training epoch.
+
+    Returns:
+        (avg_train_loss, avg_value_loss, updated_total_samples)
+    """
+    model.train()
+    epoch_loss = 0.0
+    epoch_value_loss = 0.0
+    n_batches = 0
+
+    plotter.clear_predictions()
+
+    with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
+            BarColumn(bar_width=30),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
+            TextColumn("•"),
+            TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
+            TextColumn("•"),
+            TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
+            TextColumn("•"),
+            TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
+            TextColumn("•"),
+            TextColumn("[dim]eta={task.fields[eta]}[/]"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+    ) as progress:
+        task = progress.add_task(
+            "train", total=args.batches_per_epoch,
+            loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
         )
-        console.print(
-            f"[bold cyan]🔄 Replay buffer enabled: "
-            f"save_rate={args.replay_save_rate:.0%}, "
-            f"sprinkle_rate={args.replay_sprinkle_rate:.0%}, "
-            f"max_size={args.replay_max_size:,}[/]"
+
+        ema_loss = None
+
+        for batch_idx in range(args.batches_per_epoch):
+            csv_log.start_batch_timer()
+
+            prepared = _prepare_batch(**batch_gen_kwargs)
+            if prepared is None:
+                progress.update(task, advance=1, loss=0.0,
+                                ema=ema_loss or 0.0, vloss=0.0,
+                                eta=timer.eta(epoch - 1, epoch_ctrl.epochs))
+                continue
+
+            batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
+            total_samples += len(batch)
+
+            loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
+                model, inp, tgt, val_pos, val_tgt, ans_parseable,
+                **loss_kwargs,
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), args.grad_clip
+            )
+            optimizer.step()
+
+            bl = loss.item()
+            epoch_loss += bl
+            epoch_value_loss += vloss_val
+            n_batches += 1
+
+            if ema_loss is None:
+                ema_loss = bl
+            else:
+                ema_loss = 0.05 * bl + 0.95 * ema_loss
+
+            current_lr = optimizer.param_groups[0]["lr"]
+            preds = get_batch_predictions(model, tokenizer, batch, device)
+
+            csv_log.log_train_batch(
+                epoch=epoch, batch_idx=batch_idx,
+                total_loss=bl, ce_loss=ce_val,
+                value_loss=vloss_val, structure_loss=struct_val,
+                parse_rate=parse_rate, predictions=preds,
+                lr=current_lr,
+                grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
+                n_samples_in_batch=len(batch),
+            )
+
+            plotter.update_batch(bl)
+            plotter.update_topo(model, inp)
+            plotter.update_kelp_forest(model, inp)
+
+            if preds:
+                plotter.accumulate_predictions(preds)
+                plotter.update_prediction_diffs(preds)
+
+            if run_logger:
+                run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
+
+            progress.update(
+                task, advance=1, loss=bl, ema=ema_loss,
+                vloss=vloss_val, parse=parse_rate,
+                eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
+            )
+
+    avg_train_loss = epoch_loss / max(n_batches, 1)
+    avg_value_loss = epoch_value_loss / max(n_batches, 1)
+    return avg_train_loss, avg_value_loss, total_samples
+
+
+def _run_val_epoch(
+        epoch: int,
+        total_epochs: int,
+        model: TinyGPT,
+        args,
+        batch_gen_kwargs: dict,
+        loss_kwargs: dict,
+        tokenizer: BPETokenizer,
+        device: str,
+        optimizer,
+        plotter: LivePlotter,
+        run_logger: Optional[RunLogger],
+        csv_log: CSVTrainingLogger,
+) -> float:
+    """
+    Run one validation epoch.
+
+    Returns:
+        avg_val_loss
+    """
+    model.eval()
+    val_loss = 0.0
+    val_batches = 0
+
+    with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
+            BarColumn(bar_width=30),
+            MofNCompleteColumn(),
+            TextColumn("•"),
+            TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
+            TimeElapsedColumn(),
+            console=console,
+            transient=True,
+    ) as progress:
+        task = progress.add_task("val", total=args.val_batches, loss=0.0)
+
+        with torch.no_grad():
+            for val_batch_idx in range(args.val_batches):
+                csv_log.start_batch_timer()
+
+                prepared = _prepare_batch(**batch_gen_kwargs)
+                if prepared is None:
+                    progress.update(task, advance=1, loss=0.0)
+                    continue
+
+                batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
+
+                vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = _compute_batch_loss(
+                    model, inp, tgt, val_pos, val_tgt, ans_parseable,
+                    **loss_kwargs,
+                )
+
+                vl = vl_total.item()
+                val_loss += vl
+                val_batches += 1
+
+                preds = get_batch_predictions(model, tokenizer, batch, device)
+
+                csv_log.log_val_batch(
+                    epoch=epoch, batch_idx=val_batch_idx,
+                    total_loss=vl, ce_loss=vl_ce,
+                    value_loss=vl_value, structure_loss=vl_struct,
+                    parse_rate=vl_parse_rate, predictions=preds,
+                    lr=optimizer.param_groups[0]["lr"],
+                )
+
+                plotter.update_val_batch(vl)
+
+                if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
+                    preds = get_batch_predictions(model, tokenizer, batch, device)
+                    if preds:
+                        plotter.update_predictions(preds)
+                        plotter.update_prediction_diffs(preds)
+
+                if run_logger:
+                    run_logger.log_batch_loss_val(epoch, val_batches, vl)
+
+                progress.update(task, advance=1, loss=vl)
+
+    plotter.finish_val_epoch()
+    return val_loss / max(val_batches, 1)
+
+
+def _step_scheduler(scheduler, is_plateau: bool, avg_val_loss: float):
+    """Advance the LR scheduler by one step."""
+    if is_plateau:
+        scheduler.step(avg_val_loss)
+    else:
+        scheduler.step()
+
+
+def _print_epoch_summary(
+        epoch: int,
+        total_epochs: int,
+        avg_train_loss: float,
+        avg_val_loss: float,
+        current_lr: float,
+        total_samples: int,
+        elapsed: float,
+        timer: TimeEstimator,
+        is_best: bool,
+):
+    """Print the Rich epoch summary panel."""
+    eta_str = timer.eta(epoch, total_epochs)
+    elapsed_str = timer.elapsed_total()
+    best_marker = " [bold green]★ best[/]" if is_best else ""
+
+    epoch_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+    for _ in range(12):
+        epoch_table.add_column()
+
+    epoch_table.add_row(
+        "[bold]train:[/]", f"[cyan]{avg_train_loss:.4f}[/]",
+        "[bold]val:[/]", f"[magenta]{avg_val_loss:.4f}[/]",
+        "[bold]lr:[/]", f"[green]{current_lr:.2e}[/]",
+        "[bold]samples:[/]", f"[yellow]{total_samples:,}[/]",
+        "[bold]time:[/]", f"{elapsed:.1f}s",
+        "[bold]eta:[/]", f"[dim]{eta_str}[/]{best_marker}",
+    )
+
+    console.print(
+        Panel(
+            epoch_table,
+            title=f"[bold]Epoch {epoch}/{total_epochs}  │  elapsed: {elapsed_str}[/]",
+            border_style="green" if is_best else "blue",
+            width=min(console.width, 120),
         )
+    )
 
-    # ── Restore replay buffer state ─────────────────────────────────────
-    if replay_buffer is not None and _resumed_replay_state is not None:
-        replay_buffer.restore_state(_resumed_replay_state)
 
-    # Update batch_gen_kwargs to include the buffer
-    batch_gen_kwargs = dict(
+def _log_epoch_to_run_logger(
+        run_logger: Optional[RunLogger],
+        epoch: int,
+        avg_train_loss: float,
+        avg_val_loss: float,
+        current_lr: float,
+        elapsed: float,
+        total_samples: int,
+        is_best: bool,
+        model: TinyGPT,
+        tokenizer: BPETokenizer,
+        device: str,
+        args,
+        allowed_ops: List[str],
+):
+    """Log epoch summary and example samples to the run logger."""
+    if run_logger is None:
+        return
+
+    run_logger.log_epoch(
+        epoch=epoch,
+        train_loss=avg_train_loss,
+        val_loss=avg_val_loss,
+        lr=current_lr,
+        elapsed_secs=elapsed,
+        total_samples=total_samples,
+        is_best=is_best,
+    )
+
+    n_to_log = None if args.log_all_samples else args.log_samples
+    example_samples = generate_example_samples(
+        model=model,
         tokenizer=tokenizer,
-        batch_size=args.batch_size,
+        device=device,
+        num_samples=n_to_log if n_to_log else 999999,
         max_params=args.max_params,
         max_ops=args.max_ops,
         allowed_ops=allowed_ops,
         param_range=(args.param_min, args.param_max),
-        max_seq_len=args.max_seq_len,
-        device=device,
-        replay_buffer=replay_buffer,
+    )
+    run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
+    run_logger.flush_losses()
+
+
+def _do_checkpointing(
+        epoch: int,
+        model: TinyGPT,
+        optimizer,
+        scheduler,
+        avg_train_loss: float,
+        avg_val_loss: float,
+        best_val_loss: float,
+        train_losses_hist: List[float],
+        val_losses_hist: List[float],
+        total_samples: int,
+        plotter: LivePlotter,
+        replay_buffer: Optional['ReplayBuffer'],
+        tokenizer: BPETokenizer,
+        save_path: str,
+        is_best: bool,
+        args,
+):
+    """Save epoch checkpoint, prune old ones, and save best model if needed."""
+    ckpt_path = _save_checkpoint(
+        path=save_path,
+        filename=f"model_epoch_{epoch}.pt",
+        epoch=epoch,
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        train_loss=avg_train_loss,
+        val_loss=avg_val_loss,
+        best_val_loss=best_val_loss,
+        train_losses_hist=train_losses_hist,
+        val_losses_hist=val_losses_hist,
+        total_samples=total_samples,
+        plotter_state=plotter.get_state() if plotter.enabled else None,
+        replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
+        args_dict=vars(args),
+        ema_train=plotter._ema_train if plotter.enabled else None,
+        global_batch=plotter._global_batch if plotter.enabled else 0,
+    )
+    console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}[/]")
+
+    _prune_checkpoints(save_path, max_keep=10)
+
+    if is_best and save_path:
+        best_path = _save_checkpoint(
+            path=save_path,
+            filename="model_best.pt",
+            epoch=epoch,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            train_loss=avg_train_loss,
+            val_loss=avg_val_loss,
+            best_val_loss=best_val_loss,
+            train_losses_hist=train_losses_hist,
+            val_losses_hist=val_losses_hist,
+            total_samples=total_samples,
+            plotter_state=plotter.get_state() if plotter.enabled else None,
+            replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
+            args_dict=vars(args),
+            ema_train=plotter._ema_train if plotter.enabled else None,
+            global_batch=plotter._global_batch if plotter.enabled else 0,
+        )
+
+        best_hf_path = f"{save_path}_best"
+        model.save_pretrained(best_hf_path)
+        tokenizer.save_pretrained(best_hf_path)
+        console.print(
+            f"  [bold green]⭐ New best model saved: {best_path} "
+            f"(val_loss={avg_val_loss:.4f})[/]"
+        )
+
+
+def _save_final_model(
+        model: TinyGPT,
+        tokenizer: BPETokenizer,
+        save_path: str,
+        train_losses_hist: List[float],
+        val_losses_hist: List[float],
+        best_val_loss: float,
+        total_samples: int,
+        actual_params: int,
+        epoch: int,
+        timer: TimeEstimator,
+        args,
+):
+    """Save the final model, tokenizer, and training metadata."""
+    if not save_path:
+        return
+
+    console.print(f"\n[bold cyan]Saving final model to {save_path} ...[/]")
+    model.save_pretrained(save_path)
+    tokenizer.save_pretrained(save_path)
+
+    meta = {
+        "train_losses": train_losses_hist,
+        "val_losses": val_losses_hist,
+        "best_val_loss": best_val_loss,
+        "total_samples": total_samples,
+        "actual_params": actual_params,
+        "total_epochs": epoch,
+        "elapsed": timer.elapsed_total(),
+        "args": vars(args),
+    }
+    with open(os.path.join(save_path, "training_meta.json"), "w") as f:
+        json.dump(meta, f, indent=2)
+
+    console.print(f"[green]✓ Saved: {save_path}/[/]")
+    console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
+
+
+def _finalize_training(
+        epoch_ctrl: EpochController,
+        csv_log: CSVTrainingLogger,
+        plotter: LivePlotter,
+        run_dir_path: Optional[str],
+):
+    """Stop controllers, close loggers, finalize plots."""
+    epoch_ctrl.stop()
+
+    csv_log.close()
+    console.print(
+        f"[bold green]📊 CSV logs saved to: "
+        f"{os.path.join(run_dir_path if run_dir_path else '.', 'batch_log.csv')} "
+        f"and epoch_log.csv[/]"
     )
 
-    # ── Shared loss kwargs ──────────────────────────────────────────────
+    plotter.finalize()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 9c. REFACTORED TRAIN — the coordinator
+# ════════════════════════════════════════════════════════════════════════════
+
+def train(args: argparse.Namespace):
+    # ── Parse & validate ────────────────────────────────────────────────
+    allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
+    _validate_allowed_ops(allowed_ops)
+
+    device = _resolve_device(args.device)
+    _seed_everything(args.seed)
+
+    # ── Tokenizer ───────────────────────────────────────────────────────
+    tokenizer = _load_or_build_tokenizer(args, allowed_ops)
+
+    # ── Model config & creation ─────────────────────────────────────────
+    cfg, model_config = _resolve_model_config(args, tokenizer)
+    model = _create_model(model_config, device)
+    _print_model_summary(model)
+    actual_params = model.count_parameters()
+
+    # ── Load checkpoint (--continue / --resume) ─────────────────────────
+    checkpoint = _load_checkpoint_for_continue(args, model, device)
+    resumed = _extract_resumed_state(checkpoint)
+    _restore_rng_state(checkpoint)
+
+    # ── Plotter (open immediately) ──────────────────────────────────────
+    plotter = _create_plotter(args, cfg, actual_params, tokenizer, device, resumed)
+
+    # ── Run logger & CSV logger ─────────────────────────────────────────
+    run_logger, run_dir_path = _setup_run_logger(args, cfg, model, tokenizer, actual_params)
+    csv_log = _setup_csv_logger(run_dir_path)
+
+    # ── Config summary ──────────────────────────────────────────────────
+    _print_config_table(args, cfg, tokenizer, actual_params, device,
+                        allowed_ops, resumed["start_epoch"],
+                        resumed["total_samples"])
+
+    # ── Optimizer & scheduler ───────────────────────────────────────────
+    optimizer = _build_optimizer(args, model)
+    scheduler, is_plateau = _build_scheduler(args, optimizer)
+    _restore_optimizer_and_scheduler(checkpoint, optimizer, scheduler, device)
+
+    # ── Epoch controller & timer ────────────────────────────────────────
+    epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10, plotter=plotter)
+    epoch_ctrl.start()
+    timer = TimeEstimator()
+
+    # ── Replay buffer ───────────────────────────────────────────────────
+    replay_buffer = _setup_replay_buffer(args, resumed)
+
+    # ── Shared kwargs for batch generation & loss ───────────────────────
+    batch_gen_kwargs = dict(
+        tokenizer=tokenizer, batch_size=args.batch_size,
+        max_params=args.max_params, max_ops=args.max_ops,
+        allowed_ops=allowed_ops,
+        param_range=(args.param_min, args.param_max),
+        max_seq_len=args.max_seq_len, device=device,
+        replay_buffer=replay_buffer,
+    )
     loss_kwargs = dict(
-            tokenizer=tokenizer,
-            device=device,
-            value_loss_alpha=args.value_loss_alpha,
-            structure_loss_alpha=args.structure_loss_alpha,
-            length_loss_alpha=args.length_loss_alpha,
-            )
+        tokenizer=tokenizer, device=device,
+        value_loss_alpha=args.value_loss_alpha,
+        structure_loss_alpha=args.structure_loss_alpha,
+        length_loss_alpha=args.length_loss_alpha,
+    )
 
-    # ── Training ────────────────────────────────────────────────────────
-    console.print(
-            Panel(
-                f"[bold white]Training for {args.epochs} epochs  │  "
-                f"{args.batches_per_epoch} batches/epoch  │  "
-                f"batch_size={args.batch_size}  │  "
-                f"Press +/- to adjust epochs, q to stop[/]"
-                + (f"\n[bold yellow]Resuming from epoch {start_epoch}[/]" if start_epoch > 0 else ""),
-                title="[bold green]🚀 Starting Training",
-                border_style="green",
-                )
-            )
+    # ── State variables ─────────────────────────────────────────────────
+    best_val_loss = resumed["best_val_loss"]
+    train_losses_hist = list(resumed["train_losses"])
+    val_losses_hist = list(resumed["val_losses"])
+    total_samples = resumed["total_samples"]
+    save_path = f"{run_dir_path}/" if run_dir_path else "llvm_gpt_model/"
 
-    best_val_loss = resumed_best_val_loss
-    train_losses_hist: List[float] = list(resumed_train_losses)
-    val_losses_hist: List[float] = list(resumed_val_losses)
-    total_samples = resumed_total_samples
-    save_path = f"{run_dir}/" if run_dir else "llvm_gpt_model/"
+    # ── Banner ──────────────────────────────────────────────────────────
+    console.print(Panel(
+        f"[bold white]Training for {args.epochs} epochs  │  "
+        f"{args.batches_per_epoch} batches/epoch  │  "
+        f"batch_size={args.batch_size}  │  "
+        f"Press +/- to adjust epochs, q to stop[/]"
+        + (f"\n[bold yellow]Resuming from epoch {resumed['start_epoch']}[/]"
+           if resumed["start_epoch"] > 0 else ""),
+        title="[bold green]🚀 Starting Training",
+        border_style="green",
+    ))
 
-    epoch = start_epoch
+    # ════════════════════════════════════════════════════════════════════
+    # EPOCH LOOP
+    # ════════════════════════════════════════════════════════════════════
+    epoch = resumed["start_epoch"]
     while True:
         epoch += 1
         total_epochs = epoch_ctrl.epochs
         if epoch > total_epochs:
             break
         epoch_ctrl.set_min(epoch)
-
         t0 = time.time()
 
-        # ── Train epoch ─────────────────────────────────────────────────
-        model.train()
-        epoch_loss = 0.0
-        epoch_value_loss = 0.0
-        n_batches = 0
+        # ── Train ───────────────────────────────────────────────────────
+        avg_train_loss, avg_value_loss, total_samples = _run_train_epoch(
+            epoch, total_epochs, model, optimizer, args,
+            batch_gen_kwargs, loss_kwargs, tokenizer, device,
+            plotter, run_logger, csv_log, timer, epoch_ctrl, total_samples,
+        )
 
-        plotter.clear_predictions()
-
-        with Progress(
-                SpinnerColumn(),
-                TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
-                BarColumn(bar_width=30),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
-                TextColumn("•"),
-                TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
-                TextColumn("•"),
-                TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
-                TextColumn("•"),
-                TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
-                TextColumn("•"),
-                TextColumn("[dim]eta={task.fields[eta]}[/]"),
-                TimeElapsedColumn(),
-                console=console,
-                transient=True,
-                ) as progress:
-            task = progress.add_task(
-                    "train", total=args.batches_per_epoch,
-                    loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
-                    )
-
-            ema_loss = None
-
-            for batch_idx in range(args.batches_per_epoch):
-                csv_log.start_batch_timer()
-
-                prepared = _prepare_batch(**batch_gen_kwargs)
-                if prepared is None:
-                    progress.update(task, advance=1, loss=0.0,
-                                    ema=ema_loss or 0.0, vloss=0.0,
-                                    eta=timer.eta(epoch - 1, epoch_ctrl.epochs))
-                    continue
-
-                batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
-                total_samples += len(batch)
-
-                loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
-                        model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                        **loss_kwargs,
-                        )
-
-                optimizer.zero_grad()
-                loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), args.grad_clip
-                        )
-                optimizer.step()
-
-                bl = loss.item()
-                epoch_loss += bl
-                epoch_value_loss += vloss_val
-                n_batches += 1
-
-                if ema_loss is None:
-                    ema_loss = bl
-                else:
-                    ema_loss = 0.05 * bl + 0.95 * ema_loss
-
-                current_lr = optimizer.param_groups[0]["lr"]
-
-                preds = get_batch_predictions(model, tokenizer, batch, device)
-
-                csv_log.log_train_batch(
-                        epoch=epoch,
-                        batch_idx=batch_idx,
-                        total_loss=bl,
-                        ce_loss=ce_val,
-                        value_loss=vloss_val,
-                        structure_loss=struct_val,
-                        parse_rate=parse_rate,
-                        predictions=preds,
-                        lr=current_lr,
-                        grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
-                        n_samples_in_batch=len(batch),
-                        )
-
-                plotter.update_batch(bl)
-                plotter.update_topo(model, inp)
-                plotter.update_kelp_forest(model, inp)
-
-                if preds:
-                    plotter.accumulate_predictions(preds)
-                    plotter.update_prediction_diffs(preds)
-
-                if run_logger:
-                    run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
-
-                progress.update(
-                        task, advance=1, loss=bl, ema=ema_loss,
-                        vloss=vloss_val, parse=parse_rate,
-                        eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
-                        )
-
-        avg_train_loss = epoch_loss / max(n_batches, 1)
-        avg_value_loss = epoch_value_loss / max(n_batches, 1)
-
-        # ── Validation ──────────────────────────────────────────────────
-        model.eval()
-        val_loss = 0.0
-        val_batches = 0
-
-        with Progress(
-                SpinnerColumn(),
-                TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
-                BarColumn(bar_width=30),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
-                TimeElapsedColumn(),
-                console=console,
-                transient=True,
-                ) as progress:
-            task = progress.add_task("val", total=args.val_batches, loss=0.0)
-
-            with torch.no_grad():
-                for val_batch_idx in range(args.val_batches):
-                    csv_log.start_batch_timer()
-
-                    prepared = _prepare_batch(**batch_gen_kwargs)
-                    if prepared is None:
-                        progress.update(task, advance=1, loss=0.0)
-                        continue
-
-                    batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
-
-                    vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = _compute_batch_loss(
-                            model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                            **loss_kwargs,
-                            )
-
-                    vl = vl_total.item()
-                    val_loss += vl
-                    val_batches += 1
-
-                    preds = get_batch_predictions(model, tokenizer, batch, device)
-
-                    csv_log.log_val_batch(
-                            epoch=epoch,
-                            batch_idx=val_batch_idx,
-                            total_loss=vl,
-                            ce_loss=vl_ce,
-                            value_loss=vl_value,
-                            structure_loss=vl_struct,
-                            parse_rate=vl_parse_rate,
-                            predictions=preds,
-                            lr=optimizer.param_groups[0]["lr"],
-                            )
-
-                    plotter.update_val_batch(vl)
-
-                    if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
-                        preds = get_batch_predictions(model, tokenizer, batch, device)
-                        if preds:
-                            plotter.update_predictions(preds)
-                            plotter.update_prediction_diffs(preds)
-
-                    if run_logger:
-                        run_logger.log_batch_loss_val(epoch, val_batches, vl)
-
-                    progress.update(task, advance=1, loss=vl)
-
-        avg_val_loss = val_loss / max(val_batches, 1)
-
-        plotter.finish_val_epoch()
+        # ── Validate ────────────────────────────────────────────────────
+        avg_val_loss = _run_val_epoch(
+            epoch, total_epochs, model, args,
+            batch_gen_kwargs, loss_kwargs, tokenizer, device,
+            optimizer, plotter, run_logger, csv_log,
+        )
 
         # ── Scheduler step ──────────────────────────────────────────────
-        if is_plateau:
-            scheduler.step(avg_val_loss)
-        else:
-            scheduler.step()
-
+        _step_scheduler(scheduler, is_plateau, avg_val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
         elapsed = time.time() - t0
         timer.add_epoch(elapsed)
@@ -4491,166 +4865,46 @@ def train(args: argparse.Namespace):
         # ── Track best ──────────────────────────────────────────────────
         train_losses_hist.append(avg_train_loss)
         val_losses_hist.append(avg_val_loss)
-
         is_best = avg_val_loss < best_val_loss
         if is_best:
             best_val_loss = avg_val_loss
 
-        csv_log.end_epoch(
-                epoch=epoch,
-                lr=current_lr,
-                epoch_time_sec=elapsed,
-                )
+        csv_log.end_epoch(epoch=epoch, lr=current_lr, epoch_time_sec=elapsed)
 
         # ── Epoch summary ───────────────────────────────────────────────
-        total_epochs = epoch_ctrl.epochs
-        eta_str = timer.eta(epoch, total_epochs)
-        elapsed_str = timer.elapsed_total()
-        best_marker = " [bold green]★ best[/]" if is_best else ""
+        _print_epoch_summary(epoch, total_epochs, avg_train_loss, avg_val_loss,
+                             current_lr, total_samples, elapsed, timer, is_best)
 
-        epoch_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-        for _ in range(12):
-            epoch_table.add_column()
+        # ── Logging ─────────────────────────────────────────────────────
+        _log_epoch_to_run_logger(
+            run_logger, epoch, avg_train_loss, avg_val_loss, current_lr,
+            elapsed, total_samples, is_best, model, tokenizer, device,
+            args, allowed_ops,
+        )
 
-        epoch_table.add_row(
-                "[bold]train:[/]", f"[cyan]{avg_train_loss:.4f}[/]",
-                "[bold]val:[/]", f"[magenta]{avg_val_loss:.4f}[/]",
-                "[bold]lr:[/]", f"[green]{current_lr:.2e}[/]",
-                "[bold]samples:[/]", f"[yellow]{total_samples:,}[/]",
-                "[bold]time:[/]", f"{elapsed:.1f}s",
-                "[bold]eta:[/]", f"[dim]{eta_str}[/]{best_marker}",
-                )
-
-        console.print(
-                Panel(
-                    epoch_table,
-                    title=f"[bold]Epoch {epoch}/{total_epochs}  │  elapsed: {elapsed_str}[/]",
-                    border_style="green" if is_best else "blue",
-                    width=min(console.width, 120),
-                    )
-                )
-
-        # ── Run Logger: epoch + samples ─────────────────────────────────
-        if run_logger:
-            run_logger.log_epoch(
-                    epoch=epoch,
-                    train_loss=avg_train_loss,
-                    val_loss=avg_val_loss,
-                    lr=current_lr,
-                    elapsed_secs=elapsed,
-                    total_samples=total_samples,
-                    is_best=is_best,
-                    )
-
-            n_to_log = None if args.log_all_samples else args.log_samples
-            example_samples = generate_example_samples(
-                    model=model,
-                    tokenizer=tokenizer,
-                    device=device,
-                    num_samples=n_to_log if n_to_log else 999999,
-                    max_params=args.max_params,
-                    max_ops=args.max_ops,
-                    allowed_ops=allowed_ops,
-                    param_range=(args.param_min, args.param_max),
-                    )
-            run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
-            run_logger.flush_losses()
-
-        # ── Update epoch plot ───────────────────────────────────────────
+        # ── Plot update ─────────────────────────────────────────────────
         plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
 
-        # ── Checkpoint: save every epoch as model_epoch_N.pt ────────────
-        ckpt_path = _save_checkpoint(
-                path=save_path,
-                filename=f"model_epoch_{epoch}.pt",
-                epoch=epoch,
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                train_loss=avg_train_loss,
-                val_loss=avg_val_loss,
-                best_val_loss=best_val_loss,
-                train_losses_hist=train_losses_hist,
-                val_losses_hist=val_losses_hist,
-                total_samples=total_samples,
-                plotter_state=plotter.get_state() if plotter.enabled else None,
-                replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
-                args_dict=vars(args),
-                ema_train=plotter._ema_train if plotter.enabled else None,
-                global_batch=plotter._global_batch if plotter.enabled else 0,
-                )
+        # ── Checkpointing ───────────────────────────────────────────────
+        _do_checkpointing(
+            epoch, model, optimizer, scheduler,
+            avg_train_loss, avg_val_loss, best_val_loss,
+            train_losses_hist, val_losses_hist, total_samples,
+            plotter, replay_buffer, tokenizer, save_path, is_best, args,
+        )
 
-        console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}[/]")
-
-        # ── Clean up old checkpoints: keep only the last 10 ────────────
-        _prune_checkpoints(save_path, max_keep=10)
-
-        # ── Save best model (lowest val loss) ───────────────────────────
-        if is_best and save_path:
-            best_path = _save_checkpoint(
-                    path=save_path,
-                    filename="model_best.pt",
-                    epoch=epoch,
-                    model=model,
-                    optimizer=optimizer,
-                    scheduler=scheduler,
-                    train_loss=avg_train_loss,
-                    val_loss=avg_val_loss,
-                    best_val_loss=best_val_loss,
-                    train_losses_hist=train_losses_hist,
-                    val_losses_hist=val_losses_hist,
-                    total_samples=total_samples,
-                    plotter_state=plotter.get_state() if plotter.enabled else None,
-                    replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
-                    args_dict=vars(args),
-                    ema_train=plotter._ema_train if plotter.enabled else None,
-                    global_batch=plotter._global_batch if plotter.enabled else 0,
-                    )
-
-            best_hf_path = f"{save_path}_best"
-            model.save_pretrained(best_hf_path)
-            tokenizer.save_pretrained(best_hf_path)
-            console.print(
-                    f"  [bold green]⭐ New best model saved: {best_path} "
-                    f"(val_loss={avg_val_loss:.4f})[/]"
-                    )
-
+        # ── Graceful stop ───────────────────────────────────────────────
         if _interrupt_count >= 1:
             console.print("[bold yellow]Graceful stop after epoch.[/]")
             break
 
-    # ── Stop controller ─────────────────────────────────────────────────
-    epoch_ctrl.stop()
-
-    # ── Close CSV logger ────────────────────────────────────────────────
-    csv_log.close()
-    console.print(
-            f"[bold green]📊 CSV logs saved to: "
-            f"{os.path.join(run_dir if run_dir else '.', 'batch_log.csv')} "
-            f"and epoch_log.csv[/]"
-            )
-
-    # ── Save final model ────────────────────────────────────────────────
-    if save_path:
-        console.print(f"\n[bold cyan]Saving final model to {save_path} ...[/]")
-        model.save_pretrained(save_path)
-        tokenizer.save_pretrained(save_path)
-
-        meta = {
-                "train_losses": train_losses_hist,
-                "val_losses": val_losses_hist,
-                "best_val_loss": best_val_loss,
-                "total_samples": total_samples,
-                "actual_params": actual_params,
-                "total_epochs": epoch,
-                "elapsed": timer.elapsed_total(),
-                "args": vars(args),
-                }
-        with open(os.path.join(save_path, "training_meta.json"), "w") as f:
-            json.dump(meta, f, indent=2)
-
-        console.print(f"[green]✓ Saved: {save_path}/[/]")
-        console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
+    # ════════════════════════════════════════════════════════════════════
+    # FINALIZE
+    # ════════════════════════════════════════════════════════════════════
+    _finalize_training(epoch_ctrl, csv_log, plotter, run_dir_path)
+    _save_final_model(model, tokenizer, save_path, train_losses_hist,
+                      val_losses_hist, best_val_loss, total_samples,
+                      actual_params, epoch, timer, args)
 
     return model, tokenizer
 
