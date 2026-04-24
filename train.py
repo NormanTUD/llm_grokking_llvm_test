@@ -2764,225 +2764,246 @@ class LivePlotter:
         """Clear accumulated predictions (call at start of each epoch)."""
         self._last_predictions = []
 
-    def _create_figure(self):
-        """Create (or recreate) the matplotlib figure and axes."""
+    # ── Figure layout helpers ───────────────────────────────────────────
 
+    def _build_figure_and_gridspec(self):
+        """Create the figure and return named axes based on topo mode."""
         if self.topo_enabled:
-            self.fig = self.plt.figure(figsize=(26, 22))
-            gs = self.fig.add_gridspec(4, 3, hspace=0.50, wspace=0.35)
-
-            ax_epoch   = self.fig.add_subplot(gs[0, 0])
-            ax_batch   = self.fig.add_subplot(gs[0, 1])
-            ax_lr      = self.fig.add_subplot(gs[0, 2])
-            ax_val     = self.fig.add_subplot(gs[1, 0])
-            ax_barcode = self.fig.add_subplot(gs[1, 1])
-            ax_bd      = self.fig.add_subplot(gs[1, 2])
-            ax_kelp    = self.fig.add_subplot(gs[2, 0:2])
-            ax_diffs   = self.fig.add_subplot(gs[2, 2])
-            ax_preds   = self.fig.add_subplot(gs[3, 0:2])
-            ax_info    = self.fig.add_subplot(gs[3, 2])
-
-            self.ax_barcode = ax_barcode
-            self.ax_bd = ax_bd
-
-            ax_diffs.set_title("Prediction Error Score",
-                               fontsize=10, fontweight="bold")
-            ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Error Score (0=perfect, 0.9=large diff, 1=unparseable)")
-            ax_diffs.set_ylim(-0.05, 1.05)
-
-            ax_diffs.grid(True, alpha=0.3)
-
-            ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
-
-            self.ax_diffs = ax_diffs
-            self._scatter_diffs = None
-
+            fig = self.plt.figure(figsize=(26, 22))
+            gs = fig.add_gridspec(4, 3, hspace=0.50, wspace=0.35)
+            axes = {
+                "epoch":   fig.add_subplot(gs[0, 0]),
+                "batch":   fig.add_subplot(gs[0, 1]),
+                "lr":      fig.add_subplot(gs[0, 2]),
+                "val":     fig.add_subplot(gs[1, 0]),
+                "barcode": fig.add_subplot(gs[1, 1]),
+                "bd":      fig.add_subplot(gs[1, 2]),
+                "kelp":    fig.add_subplot(gs[2, 0:2]),
+                "diffs":   fig.add_subplot(gs[2, 2]),
+                "preds":   fig.add_subplot(gs[3, 0:2]),
+                "info":    fig.add_subplot(gs[3, 2]),
+            }
         else:
-            self.fig = self.plt.figure(figsize=(24, 18))
-            gs = self.fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
+            fig = self.plt.figure(figsize=(24, 18))
+            gs = fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
+            axes = {
+                "epoch":   fig.add_subplot(gs[0, 0]),
+                "batch":   fig.add_subplot(gs[0, 1]),
+                "lr":      fig.add_subplot(gs[0, 2]),
+                "val":     fig.add_subplot(gs[1, 0]),
+                "diffs":   fig.add_subplot(gs[1, 1]),
+                "kelp":    fig.add_subplot(gs[1, 2]),
+                "preds":   fig.add_subplot(gs[2, 0:2]),
+                "info":    fig.add_subplot(gs[2, 2]),
+                "barcode": None,
+                "bd":      None,
+            }
+        return fig, axes
 
-            ax_epoch = self.fig.add_subplot(gs[0, 0])
-            ax_batch = self.fig.add_subplot(gs[0, 1])
-            ax_lr    = self.fig.add_subplot(gs[0, 2])
-            ax_val   = self.fig.add_subplot(gs[1, 0])
-            ax_diffs = self.fig.add_subplot(gs[1, 1])
-            ax_kelp  = self.fig.add_subplot(gs[1, 2])
-            ax_preds = self.fig.add_subplot(gs[2, 0:2])
-            ax_info  = self.fig.add_subplot(gs[2, 2])
+    def _setup_diffs_axis(self, ax):
+        """Configure the prediction error score axis (no legend)."""
+        ax.set_title("Prediction Error Score", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Prediction Update #")
+        ax.set_ylabel("Error Score (0=perfect, 0.9=large diff, 1=unparseable)")
+        ax.set_ylim(-0.05, 1.05)
+        ax.grid(True, alpha=0.3)
+        self.ax_diffs = ax
+        self._scatter_diffs = None
 
-            ax_diffs.set_title("Prediction Error Score",
-                               fontsize=10, fontweight="bold")
-            ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Error (0=perfect, 0.9=large, 1=NaN)")
-            ax_diffs.set_ylim(-0.05, 1.05)
+    def _setup_kelp_axis(self, ax):
+        """Configure the kelp forest axis with placeholder text."""
+        ax.set_title("Kelp Forest — Embedding Space Dynamics",
+                      fontsize=10, fontweight="bold")
+        ax.set_facecolor("#020a1a")
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.text(0.5, 0.5, "Waiting for hidden states...",
+                ha="center", va="center", fontsize=11, alpha=0.4,
+                color="#6a9ab8", transform=ax.transAxes)
+        self.ax_kelp = ax
 
-            ax_diffs.grid(True, alpha=0.3)
+    def _setup_epoch_axis(self, ax):
+        """Configure the epoch loss axis and create its line artists."""
+        ax.set_title("Epoch Loss", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss")
+        ax.grid(True, alpha=0.3)
+        self.line_train_epoch, = ax.plot(
+            [], [], label="Train", color="steelblue", linewidth=2,
+        )
+        self.line_val_epoch, = ax.plot(
+            [], [], label="Val", color="tomato", linewidth=2,
+        )
+        ax.legend(loc="upper right", fontsize=8)
 
-            ax_diffs.legend(loc="lower left", fontsize=7, framealpha=0.7)
+    def _setup_batch_axis(self, ax):
+        """Configure the batch EMA loss axis and create its line artist."""
+        ax.set_title("Batch Loss (Train EMA)", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Batch")
+        ax.set_ylabel("Loss")
+        ax.grid(True, alpha=0.3)
+        self.line_batch_ema, = ax.plot(
+            [], [], label="Train EMA", color="steelblue", linewidth=2,
+        )
+        ax.legend(loc="upper right", fontsize=8)
 
-            self.ax_diffs = ax_diffs
-            self._scatter_diffs = None
+    def _setup_lr_axis(self, ax):
+        """Configure the learning rate axis and create its line artist."""
+        ax.set_title("Learning Rate", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("LR")
+        ax.grid(True, alpha=0.3)
+        ax.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
+        self.line_lr, = ax.plot(
+            [], [], label="LR", color="seagreen", linewidth=2,
+        )
+        ax.legend(loc="upper right", fontsize=8)
 
-            self.ax_barcode = None
-            self.ax_bd = None
+    def _setup_val_axis(self, ax):
+        """Configure the validation batch loss axis and create its line artists."""
+        ax.set_title("Batch Loss (Val)", fontsize=10, fontweight="bold")
+        ax.set_xlabel("Global Val Batch")
+        ax.set_ylabel("Loss")
+        ax.grid(True, alpha=0.3)
+        self.line_val_raw, = ax.plot(
+            [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
+        )
+        self.line_val_epoch_avg, = ax.plot(
+            [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
+            marker="o", markersize=4,
+        )
+        ax.legend(loc="upper right", fontsize=8)
 
-        # ── Kelp forest axes ────────────────────────────────────────────────
-        self.ax_kelp = ax_kelp
-        ax_kelp.set_title("Kelp Forest — Embedding Space Dynamics",
-                          fontsize=10, fontweight="bold")
-        ax_kelp.set_facecolor("#020a1a")
-        ax_kelp.set_xlim(0, 1)
-        ax_kelp.set_ylim(0, 1)
-        ax_kelp.set_xticks([])
-        ax_kelp.set_yticks([])
-        ax_kelp.text(0.5, 0.5, "Waiting for hidden states...",
-                     ha="center", va="center", fontsize=11, alpha=0.4,
-                     color="#6a9ab8", transform=ax_kelp.transAxes)
+    def _setup_barcode_axis(self, ax):
+        """Configure the persistence landscape axis (topo mode only)."""
+        if ax is None:
+            return
+        ax.set_title("Persistence Landscapes (H₁, all layers)",
+                      fontsize=10, fontweight="bold")
+        ax.text(0.5, 0.5, "Waiting for data...",
+                ha="center", va="center",
+                transform=ax.transAxes, fontsize=11, alpha=0.4)
+        ax.grid(True, alpha=0.2)
 
-        # Store references to the text-only axes
-        self.ax_preds = ax_preds
-        self.ax_info = ax_info
+    def _setup_bd_axis(self, ax):
+        """Configure the Wasserstein heatmap axis with a permanent colorbar."""
+        if ax is None:
+            return
+        ax.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
+                      fontsize=10, fontweight="bold")
+        self._wass_im = ax.imshow(
+            np.zeros((1, 1)),
+            cmap="inferno", interpolation="nearest",
+            origin="lower", aspect="equal", vmin=0.0, vmax=1.0,
+        )
+        self._wass_cbar = self.fig.colorbar(
+            self._wass_im, ax=ax, fraction=0.046, pad=0.04,
+        )
+        self._wass_cbar.ax.tick_params(labelsize=6)
+        self._wass_cbar.set_label("Relative W₁", fontsize=7)
+        self._wass_ax_pos = ax.get_position()
 
-        # _plot_axes: only axes that have actual data lines
-        self._plot_axes = [ax_epoch, ax_batch, ax_lr, ax_val]
-        if hasattr(self, 'ax_diffs') and self.ax_diffs is not None:
-            self._plot_axes.append(self.ax_diffs)
+    def _setup_preds_axis(self, ax):
+        """Configure the predictions text panel."""
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.set_title("Last Batch Predictions (Expected → Got)",
+                      fontsize=10, fontweight="bold")
+
+    def _setup_info_axis(self, ax):
+        """Configure the model info text panel."""
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.set_title("Model / System Info", fontsize=10, fontweight="bold")
+
+    def _collect_plot_axes(self, named_axes):
+        """Build the list of axes that have data lines (for relim/autoscale)."""
+        data_axes = [
+            named_axes["epoch"],
+            named_axes["batch"],
+            named_axes["lr"],
+            named_axes["val"],
+        ]
+        if self.ax_diffs is not None:
+            data_axes.append(self.ax_diffs)
         if self.ax_barcode is not None:
-            self._plot_axes.append(self.ax_barcode)
+            data_axes.append(self.ax_barcode)
         if self.ax_bd is not None:
-            self._plot_axes.append(self.ax_bd)
+            data_axes.append(self.ax_bd)
+        return data_axes
 
-        self.axes = np.array(self._plot_axes)
-
-        # ── Window title ────────────────────────────────────────────────────
+    def _apply_figure_chrome(self):
+        """Set suptitle, window title, tight_layout, close event, and force draw."""
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
         try:
             self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
         except Exception:
             pass
 
-        # ── Top-left: Epoch losses ──────────────────────────────────────────
-        ax_epoch.set_title("Epoch Loss", fontsize=10, fontweight="bold")
-        ax_epoch.set_xlabel("Epoch")
-        ax_epoch.set_ylabel("Loss")
-        ax_epoch.grid(True, alpha=0.3)
-        self.line_train_epoch, = ax_epoch.plot(
-                [], [], label="Train", color="steelblue", linewidth=2,
-                )
-        self.line_val_epoch, = ax_epoch.plot(
-                [], [], label="Val", color="tomato", linewidth=2,
-                )
-        ax_epoch.legend(loc="upper right", fontsize=8)
-
-        # ── Top-center: Batch loss EMA ──────────────────────────────────────
-        ax_batch.set_title("Batch Loss (Train EMA)", fontsize=10, fontweight="bold")
-        ax_batch.set_xlabel("Batch")
-        ax_batch.set_ylabel("Loss")
-        ax_batch.grid(True, alpha=0.3)
-        self.line_batch_ema, = ax_batch.plot(
-                [], [], label="Train EMA", color="steelblue", linewidth=2,
-                )
-        ax_batch.legend(loc="upper right", fontsize=8)
-
-        # ── Top-right: Learning Rate ────────────────────────────────────────
-        ax_lr.set_title("Learning Rate", fontsize=10, fontweight="bold")
-        ax_lr.set_xlabel("Epoch")
-        ax_lr.set_ylabel("LR")
-        ax_lr.grid(True, alpha=0.3)
-        ax_lr.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
-        self.line_lr, = ax_lr.plot(
-                [], [], label="LR", color="seagreen", linewidth=2,
-                )
-        ax_lr.legend(loc="upper right", fontsize=8)
-
-        # ── Mid-left: Val batch loss ────────────────────────────────────────
-        ax_val.set_title("Batch Loss (Val)", fontsize=10, fontweight="bold")
-        ax_val.set_xlabel("Global Val Batch")
-        ax_val.set_ylabel("Loss")
-        ax_val.grid(True, alpha=0.3)
-        self.line_val_raw, = ax_val.plot(
-                [], [], label="Val Batch", color="tomato", linewidth=1.0, alpha=0.5,
-                )
-        self.line_val_epoch_avg, = ax_val.plot(
-                [], [], label="Val Epoch Avg", color="darkred", linewidth=2.0,
-                marker="o", markersize=4,
-                )
-        ax_val.legend(loc="upper right", fontsize=8)
-
-        # ── TDA panels (only when topo_enabled) ─────────────────────────────
-        if self.ax_barcode is not None:
-            self.ax_barcode.set_title("Persistence Landscapes (H₁, all layers)",
-                                      fontsize=10, fontweight="bold")
-            self.ax_barcode.text(
-                    0.5, 0.5, "Waiting for data...",
-                    ha="center", va="center",
-                    transform=self.ax_barcode.transAxes,
-                    fontsize=11, alpha=0.4,
-                    )
-            self.ax_barcode.grid(True, alpha=0.2)
-
-        if self.ax_bd is not None:
-            self.ax_bd.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
-                                 fontsize=10, fontweight="bold")
-            # Create a dummy 1x1 image and a PERMANENT colorbar
-            self._wass_im = self.ax_bd.imshow(
-                    np.zeros((1, 1)),
-                    cmap="inferno",
-                    interpolation="nearest",
-                    origin="lower",
-                    aspect="equal",
-                    vmin=0.0,
-                    vmax=1.0,
-                    )
-            self._wass_cbar = self.fig.colorbar(
-                    self._wass_im, ax=self.ax_bd, fraction=0.046, pad=0.04,
-                    )
-            self._wass_cbar.ax.tick_params(labelsize=6)
-            self._wass_cbar.set_label("Relative W₁", fontsize=7)
-            # Store the axes position so we can restore it if needed
-            self._wass_ax_pos = self.ax_bd.get_position()
-
-
-        # ── Predictions panel (text only) ───────────────────────────────────
-        ax_preds.set_xlim(0, 1)
-        ax_preds.set_ylim(0, 1)
-        ax_preds.axis("off")
-        ax_preds.set_title(
-                "Last Batch Predictions (Expected → Got)",
-                fontsize=10, fontweight="bold",
-                )
-        self._draw_predictions()
-
-        # ── Model Info panel (text only) ────────────────────────────────────
-        ax_info.set_xlim(0, 1)
-        ax_info.set_ylim(0, 1)
-        ax_info.axis("off")
-        ax_info.set_title("Model / System Info", fontsize=10, fontweight="bold")
-        self._draw_model_info()
-
-        # ── Layout ──────────────────────────────────────────────────────────
         self.fig.tight_layout()
 
-        # ── Restore existing data onto the new figure ───────────────────────
-        self._restore_data()
-
-        # ── Register close event ────────────────────────────────────────────
         if not self.suppress_window:
             self.fig.canvas.mpl_connect("close_event", self._on_close)
-
-        # ── Force window to appear ──────────────────────────────────────────
-        if not self.suppress_window:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
             self.plt.pause(0.001)
+
+    # ── The director ────────────────────────────────────────────────────
+
+    def _create_figure(self):
+        """Create (or recreate) the matplotlib figure and all axes.
+
+        This method is a pure director — it delegates every piece of
+        setup to a focused helper and orchestrates the data flow between
+        them.
+        """
+        # 1. Build the figure skeleton
+        self.fig, named_axes = self._build_figure_and_gridspec()
+
+        # 2. Store optional topo axes
+        self.ax_barcode = named_axes["barcode"]
+        self.ax_bd = named_axes["bd"]
+
+        # 3. Configure each axis (order doesn't matter — no dependencies)
+        self._setup_diffs_axis(named_axes["diffs"])
+        self._setup_kelp_axis(named_axes["kelp"])
+        self._setup_epoch_axis(named_axes["epoch"])
+        self._setup_batch_axis(named_axes["batch"])
+        self._setup_lr_axis(named_axes["lr"])
+        self._setup_val_axis(named_axes["val"])
+        self._setup_barcode_axis(self.ax_barcode)
+        self._setup_bd_axis(self.ax_bd)
+        self._setup_preds_axis(named_axes["preds"])
+        self._setup_info_axis(named_axes["info"])
+
+        # 4. Store text-only axes for later redraws
+        self.ax_preds = named_axes["preds"]
+        self.ax_info = named_axes["info"]
+
+        # 5. Build the list of data-bearing axes (for relim/autoscale)
+        self._plot_axes = self._collect_plot_axes(named_axes)
+        self.axes = np.array(self._plot_axes)
+
+        # 6. Populate text panels with current data
+        self._draw_predictions()
+        self._draw_model_info()
+
+        # 7. Apply window chrome, layout, and event bindings
+        self._apply_figure_chrome()
+
+        # 8. Restore any accumulated data onto the new figure
+        self._restore_data()
 
     def _restore_data(self):
         """Re-plot all accumulated data onto current line objects."""
         self._draw_predictions()
         self._draw_model_info()
 
-        # Restore diff plot (scatter only, last 1000)
+        # Restore diff plot (scatter only)
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
             n_updates = len(self._abs_diffs_history)
             max_scatter_window = 1_000_000
@@ -3000,22 +3021,14 @@ class LivePlotter:
                 scatter_alpha = 0.30 if n_scatter < 500 else (0.15 if n_scatter < 2000 else 0.08)
                 scatter_size = 14 if n_scatter < 500 else (10 if n_scatter < 2000 else 6)
                 self._scatter_diffs = self.ax_diffs.scatter(
-                        all_scatter_x, all_scatter_y,
-                        s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
-                        edgecolors="none",
-                        )
+                    all_scatter_x, all_scatter_y,
+                    s=scatter_size, alpha=scatter_alpha, color="steelblue", zorder=1,
+                    edgecolors="none",
+                )
 
             x_lo = max(scatter_start - 0.5, -0.5)
             self.ax_diffs.set_xlim(x_lo, max(n_updates - 0.5, 0.5))
             self.ax_diffs.set_ylim(-0.05, 1.05)
-
-            from matplotlib.lines import Line2D
-            window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
-            legend_elements = [
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
-                           markersize=6, alpha=0.5, linestyle='None', label=window_label),
-                    ]
-            self.ax_diffs.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
         # Restore average line
         if self._abs_diffs_history:
@@ -3029,7 +3042,6 @@ class LivePlotter:
                     avg_xs, avg_ys,
                     color="black", linewidth=1.8, alpha=0.85, zorder=3,
                 )
-
 
     def _on_close(self, event):
         """Called when the user closes the matplotlib window."""
@@ -3343,9 +3355,6 @@ class LivePlotter:
                    label='Mean score'),
         ]
         ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
-
-        self._refresh()
-
 
     @staticmethod
     def _downsample_line_indices(
