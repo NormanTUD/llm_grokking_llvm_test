@@ -25,6 +25,13 @@ COMMON_ARGS=(
   --lr 1e-3
 )
 
+python3 -c "
+from random_infix_gen import generate_random_function
+code, res = generate_random_function(num_params=2, params=[5,3], allowed_ops=['add','sub'], num_operations=2, seed=42)
+assert isinstance(res, int), 'Result should be int'
+print(f'✓ Infix gen: {code} = {res}')
+"
+
 cleanup() {
   rm -rf "$RUN_DIR" "${RUN_DIR}_best" llvm_gpt_model llvm_gpt_model_best \
          training_plot.png batch_log.csv epoch_log.csv
