@@ -5216,11 +5216,11 @@ if __name__ == "__main__":
     )
 
     if not torch.cuda.is_available():
+        console.print("\n[bold orange]No GPU detected.[/]")
 
     # ── Wait for another process to finish before claiming the GPU ──
     if args.wait_pid is not None:
         wait_for_pid(args.wait_pid)
-        console.print("\n[bold orange]No GPU detected.[/]")
 
     try:
         model, tokenizer = train(args)
