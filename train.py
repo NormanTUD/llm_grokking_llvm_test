@@ -5486,6 +5486,7 @@ def train(args: argparse.Namespace):
             epoch, total_epochs, model, optimizer, args,
             batch_gen_kwargs, loss_kwargs, tokenizer, device,
             plotter, run_logger, csv_log, timer, epoch_ctrl, total_samples,
+            scheduler=scheduler,
         )
 
         # ── Validate ────────────────────────────────────────────────────
