@@ -4835,6 +4835,19 @@ def _finalize_training(
 # 9c. REFACTORED TRAIN — the coordinator
 # ════════════════════════════════════════════════════════════════════════════
 
+def _compute_total_epochs(args, resumed_start_epoch: int) -> int:
+    """
+    When continuing a run, add the requested epochs ON TOP of the
+    already-completed ones so the model trains for the same number
+    of NEW epochs as a fresh run would.
+
+    Fresh run:    --epochs 30  →  trains epochs 1..30
+    Continue:     --epochs 30, checkpoint at epoch 30  →  trains epochs 31..60
+    """
+    if args.continue_run is not None and resumed_start_epoch > 0:
+        return resumed_start_epoch + args.epochs
+    return args.epochs
+
 def train(args: argparse.Namespace):
     # ── Parse & validate ────────────────────────────────────────────────
     allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
@@ -4857,6 +4870,9 @@ def train(args: argparse.Namespace):
     resumed = _extract_resumed_state(checkpoint)
     _restore_rng_state(checkpoint)
 
+    # ── Compute effective total epochs ──────────────────────────────────
+    effective_total_epochs = _compute_total_epochs(args, resumed["start_epoch"])
+
     # ── Plotter (open immediately) ──────────────────────────────────────
     plotter = _create_plotter(args, cfg, actual_params, tokenizer, device, resumed)
 
@@ -4875,7 +4891,8 @@ def train(args: argparse.Namespace):
     _restore_optimizer_and_scheduler(checkpoint, optimizer, scheduler, device)
 
     # ── Epoch controller & timer ────────────────────────────────────────
-    epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10, plotter=plotter)
+    #    Use effective_total_epochs so --continue adds NEW epochs on top
+    epoch_ctrl = EpochController(initial_epochs=effective_total_epochs, step=10, plotter=plotter)
     epoch_ctrl.start()
     timer = TimeEstimator()
 
@@ -4906,13 +4923,21 @@ def train(args: argparse.Namespace):
     save_path = f"{run_dir_path}/" if run_dir_path else "llvm_gpt_model/"
 
     # ── Banner ──────────────────────────────────────────────────────────
-    console.print(Panel(
-        f"[bold white]Training for {args.epochs} epochs  │  "
+    new_epochs = effective_total_epochs - resumed["start_epoch"]
+    banner_text = (
+        f"[bold white]Training for {new_epochs} epochs "
+        f"({resumed['start_epoch']+1}→{effective_total_epochs})  │  "
         f"{args.batches_per_epoch} batches/epoch  │  "
         f"batch_size={args.batch_size}  │  "
         f"Press +/- to adjust epochs, q to stop[/]"
-        + (f"\n[bold yellow]Resuming from epoch {resumed['start_epoch']}[/]"
-           if resumed["start_epoch"] > 0 else ""),
+    )
+    if resumed["start_epoch"] > 0:
+        banner_text += (
+            f"\n[bold yellow]Resuming from epoch {resumed['start_epoch']} — "
+            f"will run {new_epochs} new epochs (total target: {effective_total_epochs})[/]"
+        )
+    console.print(Panel(
+        banner_text,
         title="[bold green]🚀 Starting Training",
         border_style="green",
     ))
