@@ -25,36 +25,71 @@ class RunLogger:
     Only writes files when content has changed.
     """
 
-    def __init__(self, base_dir: str = "runs", run_id: Optional[int] = None):
-        self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, base_dir: str = "runs", run_id: Optional[int] = None, reuse_path: Optional[str] = None):
+        if reuse_path is not None:
+            # Reuse an existing run directory (for --continue)
+            self.base_dir = Path(base_dir)
+            self.run_dir = Path(reuse_path)
+            self.run_dir.mkdir(parents=True, exist_ok=True)
 
-        if run_id is not None:
-            self.run_id = run_id
+            # Try to extract run_id from the path
+            try:
+                self.run_id = int(self.run_dir.name)
+            except ValueError:
+                self.run_id = 0
+
+            # Subdirectories
+            self.samples_dir = self.run_dir / "samples"
+            self.samples_dir.mkdir(exist_ok=True)
+
+            # Cache of file hashes to avoid rewriting unchanged data
+            self._file_hashes: Dict[str, str] = {}
+
+            # Accumulated data — start empty, new epochs will append
+            self._epoch_losses: List[Dict[str, Any]] = []
+            self._batch_losses_train: List[Dict[str, Any]] = []
+            self._batch_losses_val: List[Dict[str, Any]] = []
+            self._lr_history: List[Dict[str, Any]] = []
+
+            # Write a resume timestamp
+            self._write_if_changed(
+                self.run_dir / "resumed_at.txt",
+                time.strftime("%Y-%m-%d %H:%M:%S %Z")
+            )
         else:
-            self.run_id = self._next_run_id()
+            self.base_dir = Path(base_dir)
+            self.base_dir.mkdir(parents=True, exist_ok=True)
 
-        self.run_dir = self.base_dir / str(self.run_id)
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+            if run_id is not None:
+                self.run_id = run_id
+            else:
+                self.run_id = self._next_run_id()
 
-        # Subdirectories
-        self.samples_dir = self.run_dir / "samples"
-        self.samples_dir.mkdir(exist_ok=True)
+            self.run_dir = self.base_dir / str(self.run_id)
+            self.run_dir.mkdir(parents=True, exist_ok=True)
 
-        # Cache of file hashes to avoid rewriting unchanged data
-        self._file_hashes: Dict[str, str] = {}
+            # Subdirectories
+            self.samples_dir = self.run_dir / "samples"
+            self.samples_dir.mkdir(exist_ok=True)
 
-        # Accumulated data
-        self._epoch_losses: List[Dict[str, Any]] = []
-        self._batch_losses_train: List[Dict[str, Any]] = []
-        self._batch_losses_val: List[Dict[str, Any]] = []
-        self._lr_history: List[Dict[str, Any]] = []
+            # Cache of file hashes to avoid rewriting unchanged data
+            self._file_hashes: Dict[str, str] = {}
 
-        # Write a timestamp file
-        self._write_if_changed(
-            self.run_dir / "started_at.txt",
-            time.strftime("%Y-%m-%d %H:%M:%S %Z")
-        )
+            # Accumulated data
+            self._epoch_losses: List[Dict[str, Any]] = []
+            self._batch_losses_train: List[Dict[str, Any]] = []
+            self._batch_losses_val: List[Dict[str, Any]] = []
+            self._lr_history: List[Dict[str, Any]] = []
+
+            # Write a timestamp file
+            self._write_if_changed(
+                self.run_dir / "started_at.txt",
+                time.strftime("%Y-%m-%d %H:%M:%S %Z")
+            )
+
+    @property
+    def path(self) -> str:
+        return str(self.run_dir)
 
     def get_base_dir(self) -> str:
         """Returns the base directory and the run ID (nr) as a tuple."""

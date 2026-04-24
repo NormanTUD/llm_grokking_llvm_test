@@ -288,7 +288,9 @@ def parse_args() -> argparse.Namespace:
                    help="Log ALL generated samples per epoch (overrides --log-samples)")
     g.add_argument("--no-run-log", action="store_true", default=False,
                    help="Disable run logging entirely")
-
+    g.add_argument("--continue", type=str, default=None, dest="continue_run",
+                   help="Path to a run directory to continue from (e.g. runs/0). "
+                   "Loads the last checkpoint and resumes with identical settings.")
     g.add_argument("--wait-pid", type=int, default=None,
                    help="Wait for this PID to exit before starting training "
                    "(useful for queueing CUDA jobs)")
@@ -2138,6 +2140,66 @@ class LivePlotter:
                     )
             self._window_watch_thread.start()
 
+    def get_state(self) -> dict:
+        """Serialize all plotter data for checkpoint saving."""
+        return {
+            "train_epoch_losses": list(self.train_epoch_losses),
+            "val_epoch_losses": list(self.val_epoch_losses),
+            "batch_ema": list(self.batch_ema),
+            "lr_history": list(self.lr_history),
+            "val_batch_raw": list(self.val_batch_raw),
+            "_val_epoch_avg_xs": list(self._val_epoch_avg_xs),
+            "_val_epoch_avg_ys": list(self._val_epoch_avg_ys),
+            "_abs_diffs_history": [list(d) for d in self._abs_diffs_history],
+            "_global_batch": self._global_batch,
+            "_ema_train": self._ema_train,
+            "_kelp_step": self._kelp_step,
+            "_kelp_time_offset": self._kelp_time_offset,
+            "_topo_step": self._topo_step,
+        }
+
+    def restore_state(self, state: dict):
+        """Restore plotter data from a checkpoint, then redraw everything."""
+        if not state or not self.enabled:
+            return
+
+        self.train_epoch_losses = state.get("train_epoch_losses", [])
+        self.val_epoch_losses = state.get("val_epoch_losses", [])
+        self.batch_ema = state.get("batch_ema", [])
+        self.lr_history = state.get("lr_history", [])
+        self.val_batch_raw = state.get("val_batch_raw", [])
+        self._val_epoch_avg_xs = state.get("_val_epoch_avg_xs", [])
+        self._val_epoch_avg_ys = state.get("_val_epoch_avg_ys", [])
+        self._abs_diffs_history = state.get("_abs_diffs_history", [])
+        self._global_batch = state.get("_global_batch", 0)
+        self._ema_train = state.get("_ema_train", None)
+        self._kelp_step = state.get("_kelp_step", 0)
+        self._kelp_time_offset = state.get("_kelp_time_offset", 0.0)
+        self._topo_step = state.get("_topo_step", 0)
+
+        # Redraw all lines from restored data
+        if self.train_epoch_losses:
+            epochs = list(range(1, len(self.train_epoch_losses) + 1))
+            self.line_train_epoch.set_data(epochs, self.train_epoch_losses)
+            self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
+            self.line_lr.set_data(epochs, self.lr_history)
+
+        if self.batch_ema:
+            xs = list(range(len(self.batch_ema)))
+            self.line_batch_ema.set_data(xs, self.batch_ema)
+
+        if self.val_batch_raw:
+            vxs = list(range(len(self.val_batch_raw)))
+            self.line_val_raw.set_data(vxs, self.val_batch_raw)
+            self.line_val_epoch_avg.set_data(self._val_epoch_avg_xs,
+                                             self._val_epoch_avg_ys)
+
+        # Restore the diff scatter plot
+        self._restore_data()
+
+        self._refresh()
+        console.print("  [green]✓ Plot state restored — graphs continue from where they left off[/]")
+
     def _draw_kelp_forest(self):
         """
         Render the kelp forest visualization onto self.ax_kelp.
@@ -3731,10 +3793,31 @@ def _save_checkpoint(
         train_loss: float,
         val_loss: float,
         best_val_loss: float,
+        # NEW: full state for seamless continuation
+        train_losses_hist: List[float] = None,
+        val_losses_hist: List[float] = None,
+        total_samples: int = 0,
+        rng_state: dict = None,
+        plotter_state: dict = None,
+        replay_buffer_state: dict = None,
+        args_dict: dict = None,
+        ema_train: float = None,
+        global_batch: int = 0,
         ) -> str:
     """Save a .pt checkpoint to path/filename. Returns the full path."""
     os.makedirs(path, exist_ok=True)
     full_path = os.path.join(path, filename)
+
+    # Capture RNG states if not provided
+    if rng_state is None:
+        rng_state = {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "torch": torch.random.get_rng_state(),
+        }
+        if torch.cuda.is_available():
+            rng_state["torch_cuda"] = torch.cuda.get_rng_state_all()
+
     torch.save({
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -3743,9 +3826,35 @@ def _save_checkpoint(
         "train_loss": train_loss,
         "val_loss": val_loss,
         "best_val_loss": best_val_loss,
+        # NEW fields
+        "train_losses_hist": train_losses_hist or [],
+        "val_losses_hist": val_losses_hist or [],
+        "total_samples": total_samples,
+        "rng_state": rng_state,
+        "plotter_state": plotter_state or {},
+        "replay_buffer_state": replay_buffer_state,
+        "args_dict": args_dict or {},
+        "ema_train": ema_train,
+        "global_batch": global_batch,
         }, full_path)
     return full_path
 
+def _find_latest_checkpoint(run_path: str) -> Optional[str]:
+    """Find the most recent model_epoch_*.pt checkpoint in a run directory."""
+    import glob
+    pattern = os.path.join(run_path, "model_epoch_*.pt")
+    checkpoints = glob.glob(pattern)
+    if not checkpoints:
+        return None
+    # Sort by epoch number
+    def _epoch_num(p):
+        base = os.path.basename(p)
+        try:
+            return int(base.replace("model_epoch_", "").replace(".pt", ""))
+        except ValueError:
+            return -1
+    checkpoints.sort(key=_epoch_num)
+    return checkpoints[-1]
 
 def _prune_checkpoints(save_path: str, max_keep: int = 10):
     """Remove old model_epoch_*.pt files, keeping only the most recent max_keep."""
@@ -3779,47 +3888,79 @@ def train(args: argparse.Namespace):
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
+    np.random.seed(args.seed)
 
-    # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
-    plotter = LivePlotter(
-            enabled=not args.dont_plot,
-            update_every=args.plot_every,
-            topo_enabled=args.topo,
-            topo_every=args.topo_every,
-            topo_max_points=args.topo_max_points,
-            topo_pca_dim=30,
-            suppress_window=args.no_plot_window,
-            plot_file=args.plot_file,
-            )
+    # ── Continue-mode state (populated below if --continue is used) ──────
+    start_epoch = 0
+    resumed_train_losses = []
+    resumed_val_losses = []
+    resumed_best_val_loss = float("inf")
+    resumed_total_samples = 0
+    _resumed_checkpoint = None
+    _resumed_plotter_state = None
+    _resumed_replay_state = None
+    _resumed_ema_train = None
+    _resumed_global_batch = 0
 
     # ── Tokenizer ───────────────────────────────────────────────────────
-    tokenizer = build_tokenizer_from_samples(
-            n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
-            max_params=args.max_params, max_ops=args.max_ops,
-            param_range=(args.param_min, args.param_max),
-            bpe_vocab_size=args.bpe_vocab_size,
-            )
+    # When continuing, load the ORIGINAL tokenizer so vocab is identical.
+    if args.continue_run is not None:
+        tok_dir = args.continue_run
+        tok_file = os.path.join(tok_dir, "tokenizer.json")
+        if os.path.exists(tok_file):
+            tokenizer = BPETokenizer.from_pretrained(tok_dir)
+            console.print(f"  [green]✓ Tokenizer restored from {tok_dir}[/]")
+        else:
+            console.print(f"[bold red]❌ No tokenizer.json in {tok_dir}. Cannot continue.[/]")
+            sys.exit(1)
+    else:
+        tokenizer = build_tokenizer_from_samples(
+                n_programs=args.tokenizer_initial_nr, allowed_ops=allowed_ops,
+                max_params=args.max_params, max_ops=args.max_ops,
+                param_range=(args.param_min, args.param_max),
+                bpe_vocab_size=args.bpe_vocab_size,
+                )
 
     # ── Model config ────────────────────────────────────────────────────
-    if args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
+    if args.continue_run is not None:
+        config_path = os.path.join(args.continue_run, "config.json")
+        if os.path.exists(config_path):
+            model_config = LLVMGPTConfig.from_pretrained(args.continue_run)
+            cfg = {
+                "d_model": model_config.d_model,
+                "n_heads": model_config.n_heads,
+                "n_layers": model_config.n_layers,
+            }
+            console.print(f"  [green]✓ Model config restored from {args.continue_run}[/]")
+        else:
+            console.print(f"[bold red]❌ No config.json in {args.continue_run}. Cannot continue.[/]")
+            sys.exit(1)
+    elif args.d_model > 0 and args.n_layers > 0 and args.n_heads > 0:
         cfg = {
                 "d_model": args.d_model,
                 "n_heads": args.n_heads,
                 "n_layers": args.n_layers,
                 }
+        model_config = LLVMGPTConfig(
+                vocab_size=tokenizer.vocab_size,
+                d_model=cfg["d_model"],
+                n_heads=cfg["n_heads"],
+                n_layers=cfg["n_layers"],
+                max_seq_len=args.max_seq_len,
+                dropout=args.dropout,
+                )
     else:
         console.print(f"[bold cyan]Searching for architecture "
                       f"(target ~{args.target_params:,} params)...[/]")
         cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len)
-
-    model_config = LLVMGPTConfig(
-            vocab_size=tokenizer.vocab_size,
-            d_model=cfg["d_model"],
-            n_heads=cfg["n_heads"],
-            n_layers=cfg["n_layers"],
-            max_seq_len=args.max_seq_len,
-            dropout=args.dropout,
-            )
+        model_config = LLVMGPTConfig(
+                vocab_size=tokenizer.vocab_size,
+                d_model=cfg["d_model"],
+                n_heads=cfg["n_heads"],
+                n_layers=cfg["n_layers"],
+                max_seq_len=args.max_seq_len,
+                dropout=args.dropout,
+                )
 
     # ── Create model ────────────────────────────────────────────────────
     model = TinyGPT(model_config).to(device)
@@ -3845,6 +3986,67 @@ def train(args: argparse.Namespace):
 
     actual_params = model.count_parameters()
 
+    # ── Load checkpoint for --continue ──────────────────────────────────
+    if args.continue_run is not None:
+        run_path = args.continue_run
+        if not os.path.isdir(run_path):
+            console.print(f"[bold red]❌ Run directory not found: {run_path}[/]")
+            sys.exit(1)
+
+        ckpt_file = _find_latest_checkpoint(run_path)
+        if ckpt_file is None:
+            console.print(f"[bold red]❌ No model_epoch_*.pt checkpoints found in: {run_path}[/]")
+            sys.exit(1)
+
+        console.print(f"[bold yellow]🔄 Continuing from: {ckpt_file}[/]")
+        checkpoint = torch.load(ckpt_file, map_location=device, weights_only=False)
+
+        model.load_state_dict(checkpoint["model_state_dict"])
+        console.print("  [green]✓ Model weights loaded[/]")
+
+        start_epoch = checkpoint.get("epoch", 0)
+        resumed_train_losses = checkpoint.get("train_losses_hist", [])
+        resumed_val_losses = checkpoint.get("val_losses_hist", [])
+        resumed_best_val_loss = checkpoint.get("best_val_loss", float("inf"))
+        resumed_total_samples = checkpoint.get("total_samples", 0)
+        _resumed_plotter_state = checkpoint.get("plotter_state", None)
+        _resumed_replay_state = checkpoint.get("replay_buffer_state", None)
+        _resumed_ema_train = checkpoint.get("ema_train", None)
+        _resumed_global_batch = checkpoint.get("global_batch", 0)
+        _resumed_checkpoint = checkpoint
+
+        rng_state = checkpoint.get("rng_state", None)
+        if rng_state:
+            random.setstate(rng_state["python"])
+            np.random.set_state(rng_state["numpy"])
+            torch.random.set_rng_state(rng_state["torch"])
+            if torch.cuda.is_available() and "torch_cuda" in rng_state:
+                torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
+            console.print("  [green]✓ RNG states restored[/]")
+
+    elif args.resume is not None:
+        if not os.path.isfile(args.resume):
+            console.print(f"[bold red]❌ Checkpoint not found: {args.resume}[/]")
+            sys.exit(1)
+
+        console.print(f"[bold yellow]🔄 Resuming from checkpoint: {args.resume}[/]")
+        checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        console.print("  [green]✓ Model weights loaded[/]")
+        _resumed_checkpoint = checkpoint
+
+    # ── Plotter — open IMMEDIATELY ──────────────────────────────────────
+    plotter = LivePlotter(
+            enabled=not args.dont_plot,
+            update_every=args.plot_every,
+            topo_enabled=args.topo,
+            topo_every=args.topo_every,
+            topo_max_points=args.topo_max_points,
+            topo_pca_dim=30,
+            suppress_window=args.no_plot_window,
+            plot_file=args.plot_file,
+            )
+
     plotter.set_model_info({
         "params": actual_params,
         "d_model": cfg["d_model"],
@@ -3859,54 +4061,48 @@ def train(args: argparse.Namespace):
         "device": device,
         })
 
-    # ── Resume from checkpoint ──────────────────────────────────────────
-    start_epoch = 0
-    resumed_train_losses = []
-    resumed_val_losses = []
-    resumed_best_val_loss = float("inf")
-    resumed_total_samples = 0
-
-    if args.resume is not None:
-        if not os.path.isfile(args.resume):
-            console.print(f"[bold red]❌ Checkpoint not found: {args.resume}[/]")
-            sys.exit(1)
-
-        console.print(f"[bold yellow]🔄 Resuming from checkpoint: {args.resume}[/]")
-        checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        console.print("  [green]✓ Model weights loaded[/]")
-        _resumed_checkpoint = checkpoint
-    else:
-        _resumed_checkpoint = None
+    # ── Restore plotter state (graphs continue seamlessly) ──────────────
+    if _resumed_plotter_state is not None:
+        plotter.restore_state(_resumed_plotter_state)
+        if _resumed_ema_train is not None:
+            plotter._ema_train = _resumed_ema_train
+        if _resumed_global_batch > 0:
+            plotter._global_batch = _resumed_global_batch
 
     # ── Run logger ──────────────────────────────────────────────────────
     run_logger = None
     global run_dir
     if not args.no_run_log:
-        run_logger = RunLogger(base_dir=args.run_dir)
-        run_dir = run_logger.get_base_dir()
-
-        console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
-        run_logger.log_config(args)
-        run_logger.log_model_summary(
-                model_name="TinyGPT",
-                param_count=actual_params,
-                config_dict={
-                    "d_model": cfg["d_model"],
-                    "n_heads": cfg["n_heads"],
-                    "n_layers": cfg["n_layers"],
-                    "max_seq_len": args.max_seq_len,
-                    "dropout": args.dropout,
-                    },
-                vocab_size=tokenizer.vocab_size,
-                )
+        if args.continue_run is not None:
+            # Reuse the existing run directory — don't create a new one
+            run_dir = args.continue_run
+            run_logger = RunLogger(base_dir=args.run_dir, reuse_path=run_dir)
+            console.print(f"[bold cyan]📁 Continuing run log in: {run_dir}[/]")
+        else:
+            run_logger = RunLogger(base_dir=args.run_dir)
+            run_dir = run_logger.get_base_dir()
+            console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
+            run_logger.log_config(args)
+            run_logger.log_model_summary(
+                    model_name="TinyGPT",
+                    param_count=actual_params,
+                    config_dict={
+                        "d_model": cfg["d_model"],
+                        "n_heads": cfg["n_heads"],
+                        "n_layers": cfg["n_layers"],
+                        "max_seq_len": args.max_seq_len,
+                        "dropout": args.dropout,
+                        },
+                    vocab_size=tokenizer.vocab_size,
+                    )
+    else:
+        run_dir = None
 
     # ── CSV Logger ──────────────────────────────────────────────────────
     global csv_log
     csv_log = CSVTrainingLogger(
             output_dir=run_dir if run_dir else "."
             )
-
     csv_log.set_output_dir(run_dir)
 
     # ── Config table ────────────────────────────────────────────────────
@@ -3943,6 +4139,11 @@ def train(args: argparse.Namespace):
     config_table.add_row("", "q", "Finish after current epoch")
     config_table.add_row("Controls", "r", "Reopen closed plot window")
 
+    if args.continue_run is not None:
+        config_table.add_row("Resume", "continuing from", args.continue_run)
+        config_table.add_row("", "start_epoch", str(start_epoch))
+        config_table.add_row("", "resumed samples", f"{resumed_total_samples:,}")
+
     console.print(config_table)
 
     # ── Optimizer ───────────────────────────────────────────────────────
@@ -3957,6 +4158,27 @@ def train(args: argparse.Namespace):
     else:
         scheduler = SCHEDULERS[args.scheduler](optimizer, args.epochs)
     is_plateau = args.scheduler == "plateau"
+
+    # ── Restore optimizer & scheduler state from checkpoint ─────────────
+    if _resumed_checkpoint is not None:
+        if "optimizer_state_dict" in _resumed_checkpoint:
+            try:
+                optimizer.load_state_dict(_resumed_checkpoint["optimizer_state_dict"])
+                # Move optimizer state tensors to correct device (needed for Adam/AdamW)
+                for state in optimizer.state.values():
+                    for k, v in state.items():
+                        if isinstance(v, torch.Tensor):
+                            state[k] = v.to(device)
+                console.print("  [green]✓ Optimizer state restored[/]")
+            except Exception as e:
+                console.print(f"  [yellow]⚠ Could not restore optimizer state: {e}[/]")
+
+        if "scheduler_state_dict" in _resumed_checkpoint:
+            try:
+                scheduler.load_state_dict(_resumed_checkpoint["scheduler_state_dict"])
+                console.print("  [green]✓ Scheduler state restored[/]")
+            except Exception as e:
+                console.print(f"  [yellow]⚠ Could not restore scheduler state: {e}[/]")
 
     # ── Epoch controller (keyboard) ─────────────────────────────────────
     epoch_ctrl = EpochController(initial_epochs=args.epochs, step=10, plotter=plotter)
@@ -3980,6 +4202,10 @@ def train(args: argparse.Namespace):
             f"max_size={args.replay_max_size:,}[/]"
         )
 
+    # ── Restore replay buffer state ─────────────────────────────────────
+    if replay_buffer is not None and _resumed_replay_state is not None:
+        replay_buffer.restore_state(_resumed_replay_state)
+
     # Update batch_gen_kwargs to include the buffer
     batch_gen_kwargs = dict(
         tokenizer=tokenizer,
@@ -3990,7 +4216,7 @@ def train(args: argparse.Namespace):
         param_range=(args.param_min, args.param_max),
         max_seq_len=args.max_seq_len,
         device=device,
-        replay_buffer=replay_buffer,  # <-- NEW
+        replay_buffer=replay_buffer,
     )
 
     # ── Shared loss kwargs ──────────────────────────────────────────────
@@ -4008,7 +4234,8 @@ def train(args: argparse.Namespace):
                 f"[bold white]Training for {args.epochs} epochs  │  "
                 f"{args.batches_per_epoch} batches/epoch  │  "
                 f"batch_size={args.batch_size}  │  "
-                f"Press +/- to adjust epochs, q to stop[/]",
+                f"Press +/- to adjust epochs, q to stop[/]"
+                + (f"\n[bold yellow]Resuming from epoch {start_epoch}[/]" if start_epoch > 0 else ""),
                 title="[bold green]🚀 Starting Training",
                 border_style="green",
                 )
@@ -4018,12 +4245,11 @@ def train(args: argparse.Namespace):
     train_losses_hist: List[float] = list(resumed_train_losses)
     val_losses_hist: List[float] = list(resumed_val_losses)
     total_samples = resumed_total_samples
-    save_path = f"{run_dir}/"
+    save_path = f"{run_dir}/" if run_dir else "llvm_gpt_model/"
 
     epoch = start_epoch
     while True:
         epoch += 1
-
         total_epochs = epoch_ctrl.epochs
         if epoch > total_epochs:
             break
@@ -4078,7 +4304,6 @@ def train(args: argparse.Namespace):
                 batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
                 total_samples += len(batch)
 
-                # ── Combined loss ───────────────────────────────────────
                 loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
                         model, inp, tgt, val_pos, val_tgt, ans_parseable,
                         **loss_kwargs,
@@ -4103,10 +4328,8 @@ def train(args: argparse.Namespace):
 
                 current_lr = optimizer.param_groups[0]["lr"]
 
-                # ── Get predictions for this batch ──────────────────────
                 preds = get_batch_predictions(model, tokenizer, batch, device)
 
-                # ── CSV: log train batch ────────────────────────────────
                 csv_log.log_train_batch(
                         epoch=epoch,
                         batch_idx=batch_idx,
@@ -4121,7 +4344,6 @@ def train(args: argparse.Namespace):
                         n_samples_in_batch=len(batch),
                         )
 
-                # ── Plotter updates ─────────────────────────────────────
                 plotter.update_batch(bl)
                 plotter.update_topo(model, inp)
                 plotter.update_kelp_forest(model, inp)
@@ -4130,7 +4352,6 @@ def train(args: argparse.Namespace):
                     plotter.accumulate_predictions(preds)
                     plotter.update_prediction_diffs(preds)
 
-                # ── Run logger ──────────────────────────────────────────
                 if run_logger:
                     run_logger.log_batch_loss_train(epoch, batch_idx, bl, ema_loss)
 
@@ -4181,10 +4402,8 @@ def train(args: argparse.Namespace):
                     val_loss += vl
                     val_batches += 1
 
-                    # ── Get predictions for val batch ───────────────────
                     preds = get_batch_predictions(model, tokenizer, batch, device)
 
-                    # ── CSV: log val batch ──────────────────────────────
                     csv_log.log_val_batch(
                             epoch=epoch,
                             batch_idx=val_batch_idx,
@@ -4197,13 +4416,12 @@ def train(args: argparse.Namespace):
                             lr=optimizer.param_groups[0]["lr"],
                             )
 
-                    # ── Plotter + run logger ────────────────────────────
                     plotter.update_val_batch(vl)
 
                     if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
                         preds = get_batch_predictions(model, tokenizer, batch, device)
                         if preds:
-                            plotter.update_predictions(preds)  # replaces, doesn't accumulate
+                            plotter.update_predictions(preds)
                             plotter.update_prediction_diffs(preds)
 
                     if run_logger:
@@ -4233,7 +4451,6 @@ def train(args: argparse.Namespace):
         if is_best:
             best_val_loss = avg_val_loss
 
-        # ── CSV: end epoch ──────────────────────────────────────────────
         csv_log.end_epoch(
                 epoch=epoch,
                 lr=current_lr,
@@ -4308,7 +4525,16 @@ def train(args: argparse.Namespace):
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 best_val_loss=best_val_loss,
+                train_losses_hist=train_losses_hist,
+                val_losses_hist=val_losses_hist,
+                total_samples=total_samples,
+                plotter_state=plotter.get_state() if plotter.enabled else None,
+                replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
+                args_dict=vars(args),
+                ema_train=plotter._ema_train if plotter.enabled else None,
+                global_batch=plotter._global_batch if plotter.enabled else 0,
                 )
+
         console.print(f"  [dim]💾 Saved checkpoint: {ckpt_path}[/]")
 
         # ── Clean up old checkpoints: keep only the last 10 ────────────
@@ -4326,8 +4552,16 @@ def train(args: argparse.Namespace):
                     train_loss=avg_train_loss,
                     val_loss=avg_val_loss,
                     best_val_loss=best_val_loss,
+                    train_losses_hist=train_losses_hist,
+                    val_losses_hist=val_losses_hist,
+                    total_samples=total_samples,
+                    plotter_state=plotter.get_state() if plotter.enabled else None,
+                    replay_buffer_state=replay_buffer.get_state() if replay_buffer else None,
+                    args_dict=vars(args),
+                    ema_train=plotter._ema_train if plotter.enabled else None,
+                    global_batch=plotter._global_batch if plotter.enabled else 0,
                     )
-            # Also save in HuggingFace format for easy loading
+
             best_hf_path = f"{save_path}_best"
             model.save_pretrained(best_hf_path)
             tokenizer.save_pretrained(best_hf_path)
@@ -4372,6 +4606,8 @@ def train(args: argparse.Namespace):
 
         console.print(f"[green]✓ Saved: {save_path}/[/]")
         console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
+
+    return model, tokenizer
 
 # ════════════════════════════════════════════════════════════════════════════
 # 11.  ENTRY POINT
@@ -4605,6 +4841,27 @@ class ReplayBuffer:
             chosen = random.sample(self._buffer, n_sprinkle)
             self._total_sprinkled += n_sprinkle
             return chosen
+
+    def get_state(self) -> dict:
+        """Serialize buffer for checkpoint saving."""
+        with self._lock:
+            return {
+                "buffer": list(self._buffer),
+                "total_saved": self._total_saved,
+                "total_sprinkled": self._total_sprinkled,
+            }
+
+    def restore_state(self, state: dict):
+        """Restore buffer from checkpoint."""
+        if not state:
+            return
+        with self._lock:
+            self._buffer = state.get("buffer", [])
+            self._total_saved = state.get("total_saved", 0)
+            self._total_sprinkled = state.get("total_sprinkled", 0)
+        console.print(
+            f"  [green]✓ Replay buffer restored: {len(self._buffer)} samples[/]"
+        )
 
     @property
     def size(self) -> int:
