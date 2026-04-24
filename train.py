@@ -22,7 +22,6 @@ import os
 import sys
 from datetime import datetime, timedelta, UTC
 
-
 def compute_exclude_newer_date(days_back=8):
     return (datetime.now(UTC) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -5216,14 +5215,18 @@ if __name__ == "__main__":
         )
     )
 
+    if not torch.cuda.is_available():
+
     # ── Wait for another process to finish before claiming the GPU ──
     if args.wait_pid is not None:
         wait_for_pid(args.wait_pid)
+        console.print("\n[bold orange]No GPU detected.[/]")
 
     try:
         model, tokenizer = train(args)
     except KeyboardInterrupt:
         console.print("\n[bold red]Training interrupted by user.[/]")
+
     except Exception as e:
         console.print(f"\n[bold red]Error: {e}[/]")
         console.print_exception()
