@@ -3604,11 +3604,11 @@ class LivePlotter:
 
 
     def set_model_info(self, info: dict):
-        """Set model info to display."""
         self._model_info = info
+        if not self.enabled:
+            return
         self._draw_model_info()
         self._refresh()
-
 
     def _draw_persistence_landscapes(self, landscapes_per_layer, sample_range, n_landscapes, resolution):
         """Draw overlaid persistence landscapes (one curve per layer) on ax_barcode."""
