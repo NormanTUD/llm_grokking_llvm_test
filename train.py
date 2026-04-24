@@ -2986,7 +2986,7 @@ class LivePlotter:
         # Restore diff plot (scatter only, last 1000)
         if hasattr(self, 'ax_diffs') and self.ax_diffs is not None and self._abs_diffs_history:
             n_updates = len(self._abs_diffs_history)
-            max_scatter_window = 1000
+            max_scatter_window = 1_000_000
 
             scatter_start = max(0, n_updates - max_scatter_window)
             all_scatter_x = []
@@ -3267,7 +3267,7 @@ class LivePlotter:
         ax = self.ax_diffs
         n_updates = len(self._abs_diffs_history)
 
-        max_scatter_window = 1000
+        max_scatter_window = 1_000_000
 
         if self._scatter_diffs is not None:
             try:
