@@ -48,7 +48,7 @@ fi
 echo "✓ Run 1 passed"
 
 # Find the run subdirectory (e.g. test_run_ci/0)
-LAST_RUN=$(ls -1d "${RUN_DIR}"/[0-9]* 2>/dev/null | grep -v '_best$' | sort -n | tail -1)
+LAST_RUN=$(find "${RUN_DIR}" -maxdepth 1 -type d -regex '.*/[0-9]+$' | sort -n | tail -1)
 if [ -z "$LAST_RUN" ]; then
   echo "✗ Could not find run directory under ${RUN_DIR}/"
   exit 1
