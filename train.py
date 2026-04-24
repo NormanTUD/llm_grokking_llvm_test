@@ -4940,6 +4940,7 @@ def _run_train_epoch(
         timer: TimeEstimator,
         epoch_ctrl: EpochController,
         total_samples: int,
+        scheduler=None,            # ← ADD THIS
 ) -> Tuple[float, float, int]:
     """
     Run one training epoch.
