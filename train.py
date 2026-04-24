@@ -3793,7 +3793,6 @@ def _save_checkpoint(
         train_loss: float,
         val_loss: float,
         best_val_loss: float,
-        # NEW: full state for seamless continuation
         train_losses_hist: List[float] = None,
         val_losses_hist: List[float] = None,
         total_samples: int = 0,
@@ -3804,9 +3803,11 @@ def _save_checkpoint(
         ema_train: float = None,
         global_batch: int = 0,
         ) -> str:
-    """Save a .pt checkpoint to path/filename. Returns the full path."""
+    """Save a .pt checkpoint to path/filename using atomic write.
+    Returns the full path."""
     os.makedirs(path, exist_ok=True)
     full_path = os.path.join(path, filename)
+    tmp_path = full_path + ".tmp"
 
     # Capture RNG states if not provided
     if rng_state is None:
@@ -3818,6 +3819,7 @@ def _save_checkpoint(
         if torch.cuda.is_available():
             rng_state["torch_cuda"] = torch.cuda.get_rng_state_all()
 
+    # Write to a temporary file first
     torch.save({
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -3826,7 +3828,6 @@ def _save_checkpoint(
         "train_loss": train_loss,
         "val_loss": val_loss,
         "best_val_loss": best_val_loss,
-        # NEW fields
         "train_losses_hist": train_losses_hist or [],
         "val_losses_hist": val_losses_hist or [],
         "total_samples": total_samples,
@@ -3836,25 +3837,54 @@ def _save_checkpoint(
         "args_dict": args_dict or {},
         "ema_train": ema_train,
         "global_batch": global_batch,
-        }, full_path)
+        }, tmp_path)
+
+    # Atomic rename: either the old file remains or the new one replaces it
+    # This prevents corruption from Ctrl+C during write
+    os.replace(tmp_path, full_path)
+
     return full_path
 
 def _find_latest_checkpoint(run_path: str) -> Optional[str]:
-    """Find the most recent model_epoch_*.pt checkpoint in a run directory."""
+    """Find the most recent VALID model_epoch_*.pt checkpoint in a run directory.
+    Skips corrupted checkpoints (e.g. from interrupted saves)."""
     import glob
     pattern = os.path.join(run_path, "model_epoch_*.pt")
     checkpoints = glob.glob(pattern)
     if not checkpoints:
         return None
-    # Sort by epoch number
+
     def _epoch_num(p):
         base = os.path.basename(p)
         try:
             return int(base.replace("model_epoch_", "").replace(".pt", ""))
         except ValueError:
             return -1
-    checkpoints.sort(key=_epoch_num)
-    return checkpoints[-1]
+
+    # Sort by epoch number, highest first
+    checkpoints.sort(key=_epoch_num, reverse=True)
+
+    # Try each checkpoint from newest to oldest, skip corrupt ones
+    for ckpt in checkpoints:
+        try:
+            # Quick validation: try to open the zip and list contents
+            torch.load(ckpt, map_location="cpu", weights_only=False)
+            return ckpt
+        except Exception as e:
+            epoch_n = _epoch_num(ckpt)
+            console.print(
+                f"  [yellow]⚠ Checkpoint model_epoch_{epoch_n}.pt is corrupt "
+                f"(likely interrupted save), skipping...[/]"
+            )
+            # Optionally remove the corrupt file
+            try:
+                os.remove(ckpt)
+                console.print(f"  [dim]🗑️  Removed corrupt checkpoint: {os.path.basename(ckpt)}[/]")
+            except OSError:
+                pass
+            continue
+
+    return None
 
 def _prune_checkpoints(save_path: str, max_keep: int = 10):
     """Remove old model_epoch_*.pt files, keeping only the most recent max_keep."""
