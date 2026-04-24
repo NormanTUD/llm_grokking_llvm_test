@@ -18,7 +18,6 @@ COMMON_ARGS=(
   --dont-plot
   --no-plot
   --no-plot-window
-  --no-run-log
   --seed 42
   --replay-save-rate 0
   --scheduler none
