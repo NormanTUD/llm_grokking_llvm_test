@@ -4274,10 +4274,10 @@ def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
 def _setup_csv_logger(run_dir_path: Optional[str]) -> CSVTrainingLogger:
     """Create and configure the CSV training logger."""
     global csv_log
-    csv_log = CSVTrainingLogger(output_dir=run_dir_path if run_dir_path else ".")
-    csv_log.set_output_dir(run_dir_path)
+    effective_dir = run_dir_path if run_dir_path else "."
+    csv_log = CSVTrainingLogger(output_dir=effective_dir)
+    csv_log.set_output_dir(effective_dir)
     return csv_log
-
 
 def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
                         actual_params: int, device: str, allowed_ops: List[str],

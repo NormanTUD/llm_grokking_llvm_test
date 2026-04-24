@@ -193,6 +193,8 @@ class CSVTrainingLogger:
     # ════════════════════════════════════════════════════════════════════
 
     def set_output_dir(self, output_dir):
+        if output_dir is None:
+            output_dir = "."
         os.makedirs(output_dir, exist_ok=True)
         self._output_dir = output_dir
 
