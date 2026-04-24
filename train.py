@@ -4258,14 +4258,18 @@ def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
             vocab_size=tokenizer.vocab_size,
         )
 
-    # Save tokenizer + config early for --continue support
-    if run_dir is not None and args.continue_run is None:
+    # ── ALWAYS save tokenizer + config to run_dir ───────────────────────
+    # This ensures they're present for future --continue, even if the
+    # original files were lost or this is a re-continued run.
+    if run_dir is not None:
         tokenizer.save_pretrained(run_dir)
         model.config.save_pretrained(run_dir)
-        console.print(f"  [green]✓ Tokenizer + config saved to {run_dir}/ (for --continue)[/]")
+        if args.continue_run is None:
+            console.print(f"  [green]✓ Tokenizer + config saved to {run_dir}/ (for --continue)[/]")
+        else:
+            console.print(f"  [green]✓ Tokenizer + config re-saved to {run_dir}/[/]")
 
     return run_logger, run_dir
-
 
 def _setup_csv_logger(run_dir_path: Optional[str]) -> CSVTrainingLogger:
     """Create and configure the CSV training logger."""
@@ -4920,7 +4924,7 @@ def train(args: argparse.Namespace):
     train_losses_hist = list(resumed["train_losses"])
     val_losses_hist = list(resumed["val_losses"])
     total_samples = resumed["total_samples"]
-    save_path = f"{run_dir_path}/" if run_dir_path else "llvm_gpt_model/"
+    save_path = os.path.normpath(run_dir_path) if run_dir_path else "llvm_gpt_model"
 
     # ── Banner ──────────────────────────────────────────────────────────
     new_epochs = effective_total_epochs - resumed["start_epoch"]
