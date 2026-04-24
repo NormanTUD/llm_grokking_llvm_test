@@ -2815,7 +2815,7 @@ class LivePlotter:
             ax_diffs.set_title("Prediction Error Score",
                                fontsize=10, fontweight="bold")
             ax_diffs.set_xlabel("Prediction Update #")
-            ax_diffs.set_ylabel("Error Score (0=perfect, 0.9=large diff, 1=unparseable)")
+            ax_diffs.set_ylabel("Error (0=perfect, 0.9=large, 1=NaN)")
             ax_diffs.set_ylim(-0.05, 1.05)
 
             ax_diffs.grid(True, alpha=0.3)
