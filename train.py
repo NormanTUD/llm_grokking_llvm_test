@@ -4098,6 +4098,12 @@ def train(args: argparse.Namespace):
     else:
         run_dir = None
 
+    # ── Save tokenizer + config early (so --continue can find them) ─────
+    if run_dir is not None and args.continue_run is None:
+        tokenizer.save_pretrained(run_dir)
+        model_config.save_pretrained(run_dir)
+        console.print(f"  [green]✓ Tokenizer + config saved to {run_dir}/ (for --continue)[/]")
+
     # ── CSV Logger ──────────────────────────────────────────────────────
     global csv_log
     csv_log = CSVTrainingLogger(
