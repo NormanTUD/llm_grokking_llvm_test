@@ -2008,6 +2008,7 @@ class LivePlotter:
                  model_info: dict = None, kelp_every: int = args.kelp_every):
         self.enabled = enabled
         self._model_info = model_info or {}
+        self._avg_line_diffs = None
         self._wass_cbar = None  # colorbar handle for Wasserstein heatmap
         self._last_predictions = []
         self.update_every = update_every
@@ -2771,8 +2772,6 @@ class LivePlotter:
 
     def _restore_data(self):
         """Re-plot all accumulated data onto current line objects."""
-        # ... existing restore code ...
-
         self._draw_predictions()
         self._draw_model_info()
 
@@ -2810,6 +2809,20 @@ class LivePlotter:
                            markersize=6, alpha=0.5, linestyle='None', label=window_label),
                     ]
             self.ax_diffs.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
+
+        # Restore average line
+        if self._abs_diffs_history:
+            avg_xs = list(range(scatter_start, n_updates))
+            avg_ys = [
+                sum(self._abs_diffs_history[i]) / len(self._abs_diffs_history[i])
+                for i in range(scatter_start, n_updates)
+            ]
+            if avg_xs:
+                self._avg_line_diffs, = self.ax_diffs.plot(
+                    avg_xs, avg_ys,
+                    color="black", linewidth=1.8, alpha=0.85, zorder=3,
+                )
+
 
     def _on_close(self, event):
         """Called when the user closes the matplotlib window."""
@@ -3055,6 +3068,14 @@ class LivePlotter:
                 pass
             self._scatter_diffs = None
 
+        # Remove old average line if it exists
+        if hasattr(self, '_avg_line_diffs') and self._avg_line_diffs is not None:
+            try:
+                self._avg_line_diffs.remove()
+            except (ValueError, AttributeError):
+                pass
+            self._avg_line_diffs = None
+
         scatter_start = max(0, n_updates - max_scatter_window)
         all_scatter_x = []
         all_scatter_y = []
@@ -3086,10 +3107,35 @@ class LivePlotter:
                     edgecolors="none",
                     )
 
+        # ── Compute and plot the average line ───────────────────────────
+        avg_xs = list(range(scatter_start, n_updates))
+        avg_ys = [
+            sum(self._abs_diffs_history[i]) / len(self._abs_diffs_history[i])
+            for i in range(scatter_start, n_updates)
+        ]
+
+        if avg_xs:
+            self._avg_line_diffs, = ax.plot(
+                avg_xs, avg_ys,
+                color="black", linewidth=1.8, alpha=0.85, zorder=3,
+                label="Mean score",
+            )
+
         x_lo = max(scatter_start - 0.5, -0.5)
         x_hi = max(n_updates - 0.5, 0.5)
         ax.set_xlim(x_lo, x_hi)
         ax.set_ylim(-0.05, 1.05)
+
+        # ── Updated legend with both scatter and average line ───────────
+        from matplotlib.lines import Line2D
+        window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
+        legend_elements = [
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
+                   markersize=6, alpha=0.5, linestyle='None', label=window_label),
+            Line2D([0], [0], color='black', linewidth=1.8, alpha=0.85,
+                   label='Mean score'),
+        ]
+        ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
         self._refresh()
 
