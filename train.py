@@ -160,12 +160,511 @@ OPTIMIZERS = {
     "adagrad": torch.optim.Adagrad,
 }
 
+import torch
+import torch.nn as nn
+import copy
+import math
+import numpy as np
+from collections import deque
+from typing import Optional, Tuple, List
+
+
+class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
+    """
+    A learning rate scheduler that:
+
+    1. Detects when the optimizer has settled into a local minimum
+       (loss plateau detection via moving average convergence)
+    2. Saves the current "home base" (model state + optimizer state)
+    3. Launches exploration probes: large LR → small LR cycles
+       in different effective directions (via perturbation + momentum reset)
+    4. If a probe finds a consistently better basin, migrates there
+    5. If not, rolls back to home base and tries another direction
+
+    The "directions" in high-dimensional space are implicitly controlled by:
+      - Resetting optimizer momentum/state (changes effective gradient direction)
+      - Adding small random perturbations to parameters before probing
+      - Varying the exploration magnitude across probes
+
+    Conceptual model:
+      - Current state = point in R^N (N = number of parameters)
+      - Local minimum = region where loss is flat/oscillating
+      - Exploration = temporarily increase LR to escape, then anneal
+      - Evaluation = track whether the new trajectory consistently improves
+      - Rollback = restore saved state if exploration failed
+    """
+
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        model: nn.Module,
+        # ── Plateau detection ───────────────────────────────────
+        patience: int = 20,              # batches of flat loss before declaring plateau
+        plateau_threshold: float = 1e-4, # relative improvement threshold
+        loss_window: int = 50,           # window for moving average
+
+        # ── Exploration parameters ──────────────────────────────
+        max_probes: int = 6,             # max exploration directions before giving up
+        probe_warmup_batches: int = 10,  # batches at high LR per probe
+        probe_anneal_batches: int = 30,  # batches to anneal back down per probe
+        probe_eval_batches: int = 20,    # batches to evaluate if new basin is better
+
+        exploration_lr_multiplier: float = 10.0,  # how much to boost LR for exploration
+        min_exploration_multiplier: float = 2.0,   # minimum boost (decays over probes)
+        perturbation_scale: float = 0.01,          # scale of random parameter perturbation
+
+        # ── Acceptance criteria ─────────────────────────────────
+        improvement_threshold: float = 0.02,  # require 2% improvement to accept new basin
+        consistency_required: int = 5,         # consecutive improving eval batches needed
+
+        # ── Base LR schedule ────────────────────────────────────
+        base_lr: Optional[float] = None,
+        min_lr: float = 1e-6,
+
+        # ── Logging ─────────────────────────────────────────────
+        verbose: bool = True,
+
+        last_epoch: int = -1,
+    ):
+        self.model = model
+        self.patience = patience
+        self.plateau_threshold = plateau_threshold
+        self.loss_window = loss_window
+
+        self.max_probes = max_probes
+        self.probe_warmup_batches = probe_warmup_batches
+        self.probe_anneal_batches = probe_anneal_batches
+        self.probe_eval_batches = probe_eval_batches
+
+        self.exploration_lr_multiplier = exploration_lr_multiplier
+        self.min_exploration_multiplier = min_exploration_multiplier
+        self.perturbation_scale = perturbation_scale
+
+        self.improvement_threshold = improvement_threshold
+        self.consistency_required = consistency_required
+
+        self.base_lr = base_lr or optimizer.param_groups[0]['lr']
+        self.min_lr = min_lr
+        self.verbose = verbose
+
+        # ── Internal state ──────────────────────────────────────
+        self._loss_history = deque(maxlen=loss_window * 2)
+        self._state = "normal"  # normal | exploring_warmup | exploring_anneal | evaluating
+        self._home_base = None  # saved (model_state, optimizer_state, loss)
+        self._current_probe = 0
+        self._probe_step = 0
+        self._eval_losses = []
+        self._plateau_counter = 0
+        self._best_known_loss = float('inf')
+        self._exploration_history = []  # track which probes succeeded/failed
+        self._current_lr = self.base_lr
+        self._total_steps = 0
+        self._probes_since_last_improvement = 0
+
+        # Direction tracking: we use different random seeds for each probe
+        # to implicitly explore different directions in parameter space
+        self._probe_rng_seeds = []
+
+        super().__init__(optimizer, last_epoch)
+
+    def _save_home_base(self, current_loss: float):
+        """Save the current state as our 'home base' to return to."""
+        self._home_base = {
+            'model_state': copy.deepcopy(self.model.state_dict()),
+            'optimizer_state': copy.deepcopy(self.optimizer.state_dict()),
+            'loss': current_loss,
+            'lr': self._current_lr,
+            'step': self._total_steps,
+        }
+        if self.verbose:
+            print(f"[MinimaExplorer] 📍 Home base saved at loss={current_loss:.6f}")
+
+    def _restore_home_base(self):
+        """Roll back to the saved home base."""
+        if self._home_base is None:
+            return
+        self.model.load_state_dict(self._home_base['model_state'])
+        self.optimizer.load_state_dict(self._home_base['optimizer_state'])
+        self._current_lr = self._home_base['lr']
+        self._apply_lr(self._current_lr)
+        if self.verbose:
+            print(f"[MinimaExplorer] 🔙 Rolled back to home base "
+                  f"(loss={self._home_base['loss']:.6f})")
+
+    def _apply_lr(self, lr: float):
+        """Set the learning rate on all parameter groups."""
+        for pg in self.optimizer.param_groups:
+            pg['lr'] = lr
+
+    def _detect_plateau(self) -> bool:
+        """
+        Detect if we're in a local minimum by checking if the loss
+        has stopped improving meaningfully.
+
+        Uses two windows: a recent window and an older window.
+        If the recent window's mean is not significantly better than
+        the older window's mean, we're on a plateau.
+        """
+        if len(self._loss_history) < self.loss_window * 2:
+            return False
+
+        recent = list(self._loss_history)[-self.loss_window:]
+        older = list(self._loss_history)[-self.loss_window*2:-self.loss_window]
+
+        recent_mean = sum(recent) / len(recent)
+        older_mean = sum(older) / len(older)
+
+        # Also check variance — very low variance means we're stuck
+        recent_var = sum((x - recent_mean)**2 for x in recent) / len(recent)
+
+        # Relative improvement
+        if older_mean > 0:
+            relative_improvement = (older_mean - recent_mean) / older_mean
+        else:
+            relative_improvement = 0.0
+
+        is_plateau = (
+            relative_improvement < self.plateau_threshold
+            and recent_var < (recent_mean * 0.01) ** 2  # variance < 1% of mean squared
+        )
+
+        return is_plateau
+
+    def _perturb_parameters(self, probe_index: int):
+        """
+        Add a small random perturbation to model parameters.
+
+        Each probe uses a different random seed, so it effectively
+        explores a different direction in parameter space. This is
+        the key mechanism for "looking around in all directions."
+
+        The perturbation is scaled relative to each parameter's magnitude,
+        so it respects the natural scale of different layers.
+        """
+        seed = hash(f"probe_{probe_index}_{self._total_steps}") % (2**32)
+        rng = torch.Generator()
+        rng.manual_seed(seed)
+        self._probe_rng_seeds.append(seed)
+
+        with torch.no_grad():
+            for param in self.model.parameters():
+                if param.requires_grad:
+                    # Scale perturbation relative to parameter magnitude
+                    param_scale = param.data.abs().mean().item() + 1e-8
+                    noise = torch.randn_like(param.data, generator=rng)
+                    param.data += noise * self.perturbation_scale * param_scale
+
+    def _reset_optimizer_momentum(self):
+        """
+        Reset the optimizer's momentum/adaptive state.
+
+        This is crucial: by clearing the accumulated gradients and
+        momentum, the optimizer will follow a fresh gradient direction
+        from the perturbed position, effectively exploring a new
+        trajectory through the loss landscape.
+        """
+        for group in self.optimizer.param_groups:
+            for p in group['params']:
+                state = self.optimizer.state.get(p, {})
+                # Reset Adam/AdamW state
+                if 'exp_avg' in state:
+                    state['exp_avg'].zero_()
+                if 'exp_avg_sq' in state:
+                    state['exp_avg_sq'].zero_()
+                # Reset SGD momentum
+                if 'momentum_buffer' in state:
+                    state['momentum_buffer'].zero_()
+
+    def _get_exploration_lr(self) -> float:
+        """
+        Compute the exploration learning rate for the current probe.
+
+        Earlier probes use larger multipliers (explore far).
+        Later probes use smaller multipliers (explore nearby).
+        This creates a coarse-to-fine search pattern.
+        """
+        # Decay the multiplier across probes
+        decay = self._current_probe / max(self.max_probes - 1, 1)
+        multiplier = (
+            self.exploration_lr_multiplier * (1 - decay)
+            + self.min_exploration_multiplier * decay
+        )
+        return self._current_lr * multiplier
+
+    def _get_annealing_lr(self, step_in_anneal: int) -> float:
+        """
+        Cosine annealing from exploration LR back down to base LR.
+        This is the "large → small" part of each probe cycle.
+        """
+        exploration_lr = self._get_exploration_lr()
+        progress = step_in_anneal / max(self.probe_anneal_batches, 1)
+        # Cosine decay from exploration_lr to current_lr
+        return self._current_lr + 0.5 * (exploration_lr - self._current_lr) * (
+            1 + math.cos(math.pi * progress)
+        )
+
+    def report_loss(self, loss: float):
+        """
+        Call this after each training batch with the current loss.
+        This is the main interface — it drives the state machine.
+        """
+        self._loss_history.append(loss)
+        self._total_steps += 1
+
+        if loss < self._best_known_loss:
+            self._best_known_loss = loss
+
+        # ── State machine ───────────────────────────────────────
+        if self._state == "normal":
+            self._handle_normal(loss)
+        elif self._state == "exploring_warmup":
+            self._handle_exploring_warmup(loss)
+        elif self._state == "exploring_anneal":
+            self._handle_exploring_anneal(loss)
+        elif self._state == "evaluating":
+            self._handle_evaluating(loss)
+
+    def _handle_normal(self, loss: float):
+        """Normal training — watch for plateaus."""
+        if self._detect_plateau():
+            self._plateau_counter += 1
+            if self._plateau_counter >= self.patience:
+                self._begin_exploration(loss)
+                self._plateau_counter = 0
+        else:
+            self._plateau_counter = max(0, self._plateau_counter - 1)
+
+    def _begin_exploration(self, current_loss: float):
+        """Transition from normal training to exploration mode."""
+        if self.verbose:
+            print(f"\n[MinimaExplorer] 🔍 Plateau detected at loss={current_loss:.6f}. "
+                  f"Beginning exploration (up to {self.max_probes} probes)...")
+
+        self._save_home_base(current_loss)
+        self._current_probe = 0
+        self._probes_since_last_improvement = 0
+        self._start_probe()
+
+    def _start_probe(self):
+        """Start a new exploration probe."""
+        if self._current_probe >= self.max_probes:
+            # Exhausted all probes — return home and resume normal training
+            self._restore_home_base()
+            self._state = "normal"
+            self._probes_since_last_improvement += 1
+
+            if self.verbose:
+                print(f"[MinimaExplorer] 🏠 All {self.max_probes} probes exhausted. "
+                      f"Returning to home base and continuing normal training.")
+
+            # Optionally reduce base LR slightly after failed exploration
+            # (the minimum is getting harder to escape — try finer steps)
+            if self._probes_since_last_improvement >= 2:
+                self._current_lr = max(self.min_lr, self._current_lr * 0.8)
+                self._apply_lr(self._current_lr)
+                if self.verbose:
+                    print(f"[MinimaExplorer] 📉 Reduced base LR to {self._current_lr:.2e} "
+                          f"after {self._probes_since_last_improvement} failed exploration rounds")
+            return
+
+        if self.verbose:
+            print(f"[MinimaExplorer] 🚀 Probe {self._current_probe + 1}/{self.max_probes} — "
+                  f"LR boost: {self._get_exploration_lr():.2e}")
+
+        # Restore home base before each probe (clean starting point)
+        if self._current_probe > 0:
+            self._restore_home_base()
+
+        # Perturb parameters to explore a different direction
+        self._perturb_parameters(self._current_probe)
+
+        # Reset optimizer momentum for fresh gradient following
+        self._reset_optimizer_momentum()
+
+        # Set high learning rate for warmup phase
+        exploration_lr = self._get_exploration_lr()
+        self._apply_lr(exploration_lr)
+
+        self._state = "exploring_warmup"
+        self._probe_step = 0
+
+    def _handle_exploring_warmup(self, loss: float):
+        """High LR phase — escape the current basin."""
+        self._probe_step += 1
+
+        if self._probe_step >= self.probe_warmup_batches:
+            # Transition to annealing phase
+            self._state = "exploring_anneal"
+            self._probe_step = 0
+            if self.verbose:
+                print(f"[MinimaExplorer] 📐 Probe {self._current_probe + 1}: "
+                      f"warmup done, annealing... (loss={loss:.6f})")
+
+    def _handle_exploring_anneal(self, loss: float):
+        """Cosine annealing phase — settle into a new basin."""
+        self._probe_step += 1
+
+        # Apply cosine annealing
+        lr = self._get_annealing_lr(self._probe_step)
+        self._apply_lr(lr)
+
+        if self._probe_step >= self.probe_anneal_batches:
+            # Transition to evaluation phase
+            self._state = "evaluating"
+            self._probe_step = 0
+            self._eval_losses = []
+            self._apply_lr(self._current_lr)  # back to base LR for fair eval
+            if self.verbose:
+                print(f"[MinimaExplorer] 📊 Probe {self._current_probe + 1}: "
+                      f"annealing done, evaluating... (loss={loss:.6f})")
+
+    def _handle_evaluating(self, loss: float):
+        """Evaluate whether the new basin is better than home base."""
+        self._eval_losses.append(loss)
+        self._probe_step += 1
+
+        if self._probe_step >= self.probe_eval_batches:
+            self._judge_probe()
+
+    def _judge_probe(self):
+        """
+        Decide whether to accept the new basin or try another probe.
+
+        Acceptance criteria:
+        1. Mean eval loss must be significantly better than home base
+        2. The loss trajectory during eval must be consistently improving
+           (not just a lucky dip)
+        """
+        if not self._eval_losses or self._home_base is None:
+            self._reject_probe("no eval data")
+            return
+
+        home_loss = self._home_base['loss']
+        eval_mean = sum(self._eval_losses) / len(self._eval_losses)
+        eval_min = min(self._eval_losses)
+
+        # Check 1: Is the mean significantly better?
+        if home_loss > 0:
+            relative_improvement = (home_loss - eval_mean) / home_loss
+        else:
+            relative_improvement = 0.0
+
+        # Check 2: Is the trajectory consistently improving?
+        # Count how many consecutive losses at the end are below home_loss
+        consecutive_better = 0
+        for loss in reversed(self._eval_losses):
+            if loss < home_loss:
+                consecutive_better += 1
+            else:
+                break
+
+        # Check 3: Is the trend downward? (linear regression slope)
+        if len(self._eval_losses) >= 3:
+            xs = list(range(len(self._eval_losses)))
+            x_mean = sum(xs) / len(xs)
+            y_mean = eval_mean
+            numerator = sum((x - x_mean) * (y - y_mean)
+                          for x, y in zip(xs, self._eval_losses))
+            denominator = sum((x - x_mean) ** 2 for x in xs)
+            slope = numerator / (denominator + 1e-8)
+            is_trending_down = slope < 0
+        else:
+            is_trending_down = False
+
+        # ── Decision ────────────────────────────────────────────
+        accept = (
+            relative_improvement > self.improvement_threshold
+            and consecutive_better >= self.consistency_required
+            and is_trending_down
+        )
+
+        if accept:
+            self._accept_probe(eval_mean, relative_improvement)
+        else:
+            reason = (
+                f"improvement={relative_improvement:.4f} "
+                f"(need>{self.improvement_threshold}), "
+                f"consecutive_better={consecutive_better} "
+                f"(need>={self.consistency_required}), "
+                f"trending_down={is_trending_down}"
+            )
+            self._reject_probe(reason)
+
+    def _accept_probe(self, new_loss: float, improvement: float):
+        """Accept the new basin — update home base and resume normal training."""
+        if self.verbose:
+            print(f"[MinimaExplorer] ✅ Probe {self._current_probe + 1} ACCEPTED! "
+                  f"New loss={new_loss:.6f} "
+                  f"(improvement={improvement:.2%} over home base)")
+
+        self._exploration_history.append({
+            'probe': self._current_probe,
+            'accepted': True,
+            'old_loss': self._home_base['loss'],
+            'new_loss': new_loss,
+            'improvement': improvement,
+            'step': self._total_steps,
+        })
+
+        # The current model state IS the new home base
+        self._home_base = None
+        self._state = "normal"
+        self._probes_since_last_improvement = 0
+        self._best_known_loss = min(self._best_known_loss, new_loss)
+
+    def _reject_probe(self, reason: str):
+        """Reject the current probe and try the next direction."""
+        if self.verbose:
+            print(f"[MinimaExplorer] ❌ Probe {self._current_probe + 1} rejected: {reason}")
+
+        self._exploration_history.append({
+            'probe': self._current_probe,
+            'accepted': False,
+            'reason': reason,
+            'step': self._total_steps,
+        })
+
+        self._current_probe += 1
+        self._start_probe()  # This handles the "all probes exhausted" case
+
+    def get_lr(self) -> List[float]:
+        """Required by _LRScheduler — returns current LR for each param group."""
+        return [self._current_lr] * len(self.optimizer.param_groups)
+
+    def get_state(self) -> dict:
+        """Serialize scheduler state for checkpointing."""
+        return {
+            'state': self._state,
+            'current_lr': self._current_lr,
+            'best_known_loss': self._best_known_loss,
+            'current_probe': self._current_probe,
+            'probe_step': self._probe_step,
+            'plateau_counter': self._plateau_counter,
+            'total_steps': self._total_steps,
+            'exploration_history': self._exploration_history,
+            'probes_since_last_improvement': self._probes_since_last_improvement,
+            # Note: home_base contains model/optimizer state dicts which are large
+            # For checkpointing, you might want to save these separately
+        }
+
+    @property
+    def is_exploring(self) -> bool:
+        return self._state != "normal"
+
+    @property
+    def exploration_summary(self) -> str:
+        n_accepted = sum(1 for h in self._exploration_history if h.get('accepted'))
+        n_total = len(self._exploration_history)
+        return (f"Explorations: {n_total} probes, {n_accepted} accepted, "
+                f"best_loss={self._best_known_loss:.6f}")
+
 SCHEDULERS = {
     "cosine": lambda opt, ep: torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=ep),
     "step": lambda opt, ep: torch.optim.lr_scheduler.StepLR(opt, step_size=max(1, ep // 3), gamma=0.5),
     "plateau": lambda opt, ep: torch.optim.lr_scheduler.ReduceLROnPlateau(opt, patience=5, factor=0.5),
     "none": lambda opt, ep: torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lambda e: 1.0),
     "warmup_cosine": None,
+    "minima_explorer": None
 }
 
 import argparse
@@ -4341,17 +4840,29 @@ def _build_optimizer(args, model: TinyGPT) -> torch.optim.Optimizer:
     return opt_cls(model.parameters(), **opt_kwargs)
 
 
-def _build_scheduler(args, optimizer):
+def _build_scheduler(args, optimizer, model=None):
     """Create the LR scheduler from args. Returns (scheduler, is_plateau)."""
     if args.scheduler == "warmup_cosine":
         scheduler = build_warmup_cosine(
             optimizer, args.epochs, warmup_epochs=min(5, args.epochs // 5)
         )
+    elif args.scheduler == "minima_explorer":
+        if model is None:
+            raise ValueError("minima_explorer scheduler requires model reference")
+        scheduler = AdaptiveLocalMinimaExplorer(
+            optimizer=optimizer,
+            model=model,
+            patience=20,
+            max_probes=6,
+            exploration_lr_multiplier=10.0,
+            perturbation_scale=0.01,
+            verbose=True,
+        )
+        return scheduler, False
     else:
         scheduler = SCHEDULERS[args.scheduler](optimizer, args.epochs)
     is_plateau = args.scheduler == "plateau"
     return scheduler, is_plateau
-
 
 def _restore_optimizer_and_scheduler(checkpoint: Optional[dict], optimizer, scheduler,
                                      device: str):
@@ -4494,6 +5005,9 @@ def _run_train_epoch(
             )
             optimizer.step()
 
+            if isinstance(scheduler, AdaptiveLocalMinimaExplorer):
+                scheduler.report_loss(loss.item())
+
             bl = loss.item()
             epoch_loss += bl
             epoch_value_loss += vloss_val
@@ -4625,11 +5139,12 @@ def _run_val_epoch(
 
 def _step_scheduler(scheduler, is_plateau: bool, avg_val_loss: float):
     """Advance the LR scheduler by one step."""
+    if isinstance(scheduler, AdaptiveLocalMinimaExplorer):
+        return  # MinimaExplorer manages its own LR via report_loss()
     if is_plateau:
         scheduler.step(avg_val_loss)
     else:
         scheduler.step()
-
 
 def _print_epoch_summary(
         epoch: int,
@@ -4899,7 +5414,7 @@ def train(args: argparse.Namespace):
 
     # ── Optimizer & scheduler ───────────────────────────────────────────
     optimizer = _build_optimizer(args, model)
-    scheduler, is_plateau = _build_scheduler(args, optimizer)
+    scheduler, is_plateau = _build_scheduler(args, optimizer, model=model)
     _restore_optimizer_and_scheduler(checkpoint, optimizer, scheduler, device)
 
     # ── Epoch controller & timer ────────────────────────────────────────
