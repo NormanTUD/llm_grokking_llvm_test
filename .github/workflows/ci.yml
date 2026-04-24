@@ -1,4 +1,4 @@
-name: Check train.py
+name: Smoke Test
 
 on:
   push:
@@ -7,18 +7,22 @@ on:
     branches: ["**"]
 
 jobs:
-  syntax-check:
+  smoke-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Run test
+      - name: Run smoke test
         run: |
           ./test.sh
