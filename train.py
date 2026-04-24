@@ -317,6 +317,93 @@ def parse_args() -> argparse.Namespace:
 
     return p.parse_args()
 
+class ReplayBuffer:
+    """
+    Stores a fraction of generated programs and mixes them back into
+    future batches.
+
+    Args:
+        save_rate:    probability of saving any given generated sample (e.g. 0.10)
+        sprinkle_rate: fraction of each batch to fill from the buffer (e.g. 0.10)
+        max_size:     maximum number of samples to retain in the buffer
+    """
+
+    def __init__(self, save_rate: float = 0.10, sprinkle_rate: float = 0.10,
+                 max_size: int = 5000):
+        self.save_rate = save_rate
+        self.sprinkle_rate = sprinkle_rate
+        self.max_size = max_size
+        self._buffer: List[Tuple[List[int], int]] = []  # (token_ids, prompt_len)
+        self._lock = threading.Lock()
+        self._total_saved = 0
+        self._total_sprinkled = 0
+
+    def maybe_save(self, samples: List[Tuple[List[int], int]]):
+        """
+        Probabilistically save samples into the buffer.
+        Each sample is independently saved with probability `save_rate`.
+        """
+        with self._lock:
+            for sample in samples:
+                if random.random() < self.save_rate:
+                    self._buffer.append(sample)
+                    self._total_saved += 1
+                    # Evict oldest if over capacity
+                    if len(self._buffer) > self.max_size:
+                        self._buffer.pop(0)
+
+    def sprinkle(self, batch_size: int) -> List[Tuple[List[int], int]]:
+        """
+        Return a list of replayed samples to mix into the current batch.
+        The number of samples is `floor(batch_size * sprinkle_rate)`,
+        capped by buffer availability.
+        """
+        n_sprinkle = int(batch_size * self.sprinkle_rate)
+        if n_sprinkle == 0 or not self._buffer:
+            return []
+
+        with self._lock:
+            n_sprinkle = min(n_sprinkle, len(self._buffer))
+            chosen = random.sample(self._buffer, n_sprinkle)
+            self._total_sprinkled += n_sprinkle
+            return chosen
+
+    def get_state(self) -> dict:
+        """Serialize buffer for checkpoint saving."""
+        with self._lock:
+            return {
+                "buffer": list(self._buffer),
+                "total_saved": self._total_saved,
+                "total_sprinkled": self._total_sprinkled,
+            }
+
+    def restore_state(self, state: dict):
+        """Restore buffer from checkpoint."""
+        if not state:
+            return
+        with self._lock:
+            self._buffer = state.get("buffer", [])
+            self._total_saved = state.get("total_saved", 0)
+            self._total_sprinkled = state.get("total_sprinkled", 0)
+        console.print(
+            f"  [green]✓ Replay buffer restored: {len(self._buffer)} samples[/]"
+        )
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._buffer)
+
+    @property
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "buffer_size": len(self._buffer),
+                "total_saved": self._total_saved,
+                "total_sprinkled": self._total_sprinkled,
+            }
+
+
 
 args = parse_args()
 
@@ -5089,92 +5176,6 @@ def compute_persistence_landscapes(hidden_states, n_landscapes=5, resolution=100
 # ════════════════════════════════════════════════════════════════════════════
 # REPLAY BUFFER — save & sprinkle back generated programs
 # ════════════════════════════════════════════════════════════════════════════
-
-class ReplayBuffer:
-    """
-    Stores a fraction of generated programs and mixes them back into
-    future batches.
-
-    Args:
-        save_rate:    probability of saving any given generated sample (e.g. 0.10)
-        sprinkle_rate: fraction of each batch to fill from the buffer (e.g. 0.10)
-        max_size:     maximum number of samples to retain in the buffer
-    """
-
-    def __init__(self, save_rate: float = 0.10, sprinkle_rate: float = 0.10,
-                 max_size: int = 5000):
-        self.save_rate = save_rate
-        self.sprinkle_rate = sprinkle_rate
-        self.max_size = max_size
-        self._buffer: List[Tuple[List[int], int]] = []  # (token_ids, prompt_len)
-        self._lock = threading.Lock()
-        self._total_saved = 0
-        self._total_sprinkled = 0
-
-    def maybe_save(self, samples: List[Tuple[List[int], int]]):
-        """
-        Probabilistically save samples into the buffer.
-        Each sample is independently saved with probability `save_rate`.
-        """
-        with self._lock:
-            for sample in samples:
-                if random.random() < self.save_rate:
-                    self._buffer.append(sample)
-                    self._total_saved += 1
-                    # Evict oldest if over capacity
-                    if len(self._buffer) > self.max_size:
-                        self._buffer.pop(0)
-
-    def sprinkle(self, batch_size: int) -> List[Tuple[List[int], int]]:
-        """
-        Return a list of replayed samples to mix into the current batch.
-        The number of samples is `floor(batch_size * sprinkle_rate)`,
-        capped by buffer availability.
-        """
-        n_sprinkle = int(batch_size * self.sprinkle_rate)
-        if n_sprinkle == 0 or not self._buffer:
-            return []
-
-        with self._lock:
-            n_sprinkle = min(n_sprinkle, len(self._buffer))
-            chosen = random.sample(self._buffer, n_sprinkle)
-            self._total_sprinkled += n_sprinkle
-            return chosen
-
-    def get_state(self) -> dict:
-        """Serialize buffer for checkpoint saving."""
-        with self._lock:
-            return {
-                "buffer": list(self._buffer),
-                "total_saved": self._total_saved,
-                "total_sprinkled": self._total_sprinkled,
-            }
-
-    def restore_state(self, state: dict):
-        """Restore buffer from checkpoint."""
-        if not state:
-            return
-        with self._lock:
-            self._buffer = state.get("buffer", [])
-            self._total_saved = state.get("total_saved", 0)
-            self._total_sprinkled = state.get("total_sprinkled", 0)
-        console.print(
-            f"  [green]✓ Replay buffer restored: {len(self._buffer)} samples[/]"
-        )
-
-    @property
-    def size(self) -> int:
-        with self._lock:
-            return len(self._buffer)
-
-    @property
-    def stats(self) -> dict:
-        with self._lock:
-            return {
-                "buffer_size": len(self._buffer),
-                "total_saved": self._total_saved,
-                "total_sprinkled": self._total_sprinkled,
-            }
 
 if __name__ == "__main__":
     console.print(
