@@ -1085,7 +1085,7 @@ def generate_single_sample(
         allowed_ops: Optional[List[str]] = None,
         param_range: Tuple[int, int] = (-50, 50),
         max_seq_len: int = 2048,
-        ) -> Optional[List[int]]:
+        ) -> Optional[Tuple[List[int], int]]:
     if allowed_ops is None:
         allowed_ops = ["add", "sub"]
 
@@ -1108,16 +1108,60 @@ def generate_single_sample(
     # ir_code already ends with "= ", so just append the result
     text = f"{ir_code}{result_str}"
 
+    # ── FIX: Compute prompt_len from the JOINT encoding ─────────────
+    # Encode the full text as one unit, then find where the answer
+    # starts by encoding the prompt alone and searching for the
+    # divergence point. This avoids BPE boundary mismatches.
+    full_ids = tokenizer.encode(text)
+    prompt_only_ids = tokenizer.encode(ir_code)
+
+    # Find the longest common prefix between prompt_only_ids and full_ids.
+    # The answer starts right after this prefix in full_ids.
+    common_len = 0
+    for a, b in zip(prompt_only_ids, full_ids):
+        if a == b:
+            common_len += 1
+        else:
+            break
+    else:
+        # All of prompt_only_ids matched — answer starts right after
+        common_len = len(prompt_only_ids)
+
+    # prompt_len includes the <bos> token
+    prompt_len = 1 + common_len  # +1 for <bos>
+
+    # ── Validate: the answer portion must be non-empty ──────────────
+    # full sequence = [bos] + full_ids + [eos]
+    # answer = full_ids[common_len:]
+    answer_ids = full_ids[common_len:]
+    if not answer_ids:
+        # BPE merged the entire answer into the last prompt token.
+        # Fall back: decode and re-search for the result string.
+        # Find the result_str in the decoded full text token by token.
+        accumulated = ""
+        prompt_len_fallback = 1  # start after <bos>
+        for i, tid in enumerate(full_ids):
+            accumulated = tokenizer.decode(full_ids[:i + 1])
+            # Check if we've reached the end of the prompt portion
+            if accumulated.rstrip().endswith("= ") or accumulated.rstrip().endswith("="):
+                # Check if the remaining tokens encode the answer
+                remaining = tokenizer.decode(full_ids[i + 1:]).strip()
+                if remaining == result_str or remaining.startswith(result_str):
+                    prompt_len_fallback = 1 + (i + 1)
+                    break
+        prompt_len = prompt_len_fallback
+
+        # Final safety: ensure answer portion is non-empty
+        total_len = 1 + len(full_ids) + 1  # bos + tokens + eos
+        if prompt_len >= total_len - 1:
+            # Cannot recover — skip this sample
+            return None
+
     ids = (
             [tokenizer.bos_token_id]
-            + tokenizer.encode(text)
+            + full_ids
             + [tokenizer.eos_token_id]
             )
-
-    # Prompt = everything up to and including the final "= "
-    # ir_code already contains the trailing "= "
-    prompt_part = ir_code
-    prompt_len = 1 + len(tokenizer.encode(prompt_part))  # +1 for <bos>
 
     return ids, prompt_len
 
@@ -2470,32 +2514,55 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
     for token_ids, prompt_len in batch[:8]:
         eos_id = tokenizer.eos_token_id
 
-        # Answer = tokens between prompt_len and <eos>
+        # ── Find answer boundaries ──────────────────────────────────
         answer_end = len(token_ids)
         for i in range(prompt_len, len(token_ids)):
             if token_ids[i] == eos_id:
                 answer_end = i
                 break
 
+        # ── Extract expected answer ─────────────────────────────────
         expected_ids = token_ids[prompt_len:answer_end]
-        expected_answer = tokenizer.decode(expected_ids).strip()
 
-        # ── FIX: Clean BPE artifacts from expected_answer ───────────
+        if expected_ids:
+            expected_answer = tokenizer.decode(expected_ids).strip()
+        else:
+            expected_answer = ""
+
+        # Clean BPE artifacts
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             expected_answer = expected_answer.replace(special, "")
         expected_answer = ''.join(
             c for c in expected_answer if c.isascii() and c.isprintable()
         ).strip()
 
-        # Guard against empty result (e.g. prompt_len overshoot)
+        # ── FIX: If still empty, recover from the full token sequence ──
+        # This handles the case where prompt_len still overshoots due to
+        # an edge-case BPE merge. We decode the entire sequence and
+        # extract the answer by finding the last "= " in the text.
         if not expected_answer:
-            expected_answer = "(empty)"
+            # Decode everything between <bos> and <eos>
+            all_content_ids = token_ids[1:answer_end]  # skip <bos>
+            full_text = tokenizer.decode(all_content_ids).strip()
+            for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+                full_text = full_text.replace(special, "")
+            full_text = ''.join(
+                c for c in full_text if c.isascii() and c.isprintable()
+            ).strip()
+
+            # The format is: "f(x, y) = expr, f(1, 2) = ANSWER"
+            # Find the last "= " and take everything after it
+            last_eq_pos = full_text.rfind("= ")
+            if last_eq_pos != -1:
+                expected_answer = full_text[last_eq_pos + 2:].strip()
+
+            # If STILL empty, this sample is truly degenerate — skip it
+            if not expected_answer:
+                continue  # Don't add to predictions at all
         # ── END FIX ─────────────────────────────────────────────────
 
-        # Prompt = everything up to prompt_len
+        # ── Greedy decode ───────────────────────────────────────────
         prompt_ids = token_ids[:prompt_len]
-
-        # Greedy decode
         generated = list(prompt_ids)
         for _ in range(max_gen_len):
             inp = torch.tensor(
@@ -2515,14 +2582,12 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
 
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             generated_answer = generated_answer.replace(special, "")
-        # ── FIX: Also filter non-ASCII/non-printable from generated ─
         generated_answer = ''.join(
             c for c in generated_answer if c.isascii() and c.isprintable()
         ).strip()
 
         if not generated_answer:
             generated_answer = "(empty)"
-        # ── END FIX ─────────────────────────────────────────────────
 
         try:
             is_correct = int(generated_answer.strip()) == int(expected_answer.strip())
