@@ -1107,9 +1107,9 @@ def generate_single_sample(
     except Exception:
         return None
 
-    params_str = ",".join(str(p) for p in params)
     result_str = str(result)
-    text = f"{ir_code}<sep>{params_str}<sep>{result_str}"
+    # ir_code already ends with "= ", so just append the result
+    text = f"{ir_code}{result_str}"
 
     ids = (
             [tokenizer.bos_token_id]
@@ -1117,7 +1117,9 @@ def generate_single_sample(
             + [tokenizer.eos_token_id]
             )
 
-    prompt_part = f"{ir_code}<sep>{params_str}<sep>"
+    # Prompt = everything up to and including the final "= "
+    # ir_code already contains the trailing "= "
+    prompt_part = ir_code
     prompt_len = 1 + len(tokenizer.encode(prompt_part))  # +1 for <bos>
 
     return ids, prompt_len
