@@ -22,6 +22,8 @@ import os
 import sys
 from datetime import datetime, timedelta, UTC
 
+current_epoch = 0
+
 def compute_exclude_newer_date(days_back=8):
     return (datetime.now(UTC) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -4535,7 +4537,7 @@ def _load_or_build_tokenizer(args, allowed_ops: List[str]) -> BPETokenizer:
             allowed_ops=allowed_ops,
             max_params=args.max_params,
             max_ops=args.max_ops,
-            param_range=(args.param_min, args.param_max),
+            param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
             bpe_vocab_size=args.bpe_vocab_size,
         )
 
@@ -5224,7 +5226,7 @@ def _log_epoch_to_run_logger(
         max_params=args.max_params,
         max_ops=args.max_ops,
         allowed_ops=allowed_ops,
-        param_range=(args.param_min, args.param_max),
+        param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
     )
     run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
     run_logger.flush_losses()
@@ -5432,7 +5434,7 @@ def train(args: argparse.Namespace):
         tokenizer=tokenizer, batch_size=args.batch_size,
         max_params=args.max_params, max_ops=args.max_ops,
         allowed_ops=allowed_ops,
-        param_range=(args.param_min, args.param_max),
+        param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
         max_seq_len=args.max_seq_len, device=device,
         replay_buffer=replay_buffer,
     )
@@ -5475,6 +5477,8 @@ def train(args: argparse.Namespace):
     # ════════════════════════════════════════════════════════════════════
     epoch = resumed["start_epoch"]
     while True:
+        global current_epoch
+        current_epoch = epoch
         epoch += 1
         total_epochs = epoch_ctrl.epochs
         if epoch > total_epochs:
