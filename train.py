@@ -4708,11 +4708,19 @@ def _restore_rng_state(checkpoint: Optional[dict]):
     if rng_state:
         random.setstate(rng_state["python"])
         np.random.set_state(rng_state["numpy"])
-        torch.random.set_rng_state(rng_state["torch"])
+        # Fix: ensure the torch RNG state is a ByteTensor
+        torch_rng = rng_state["torch"]
+        if not isinstance(torch_rng, torch.ByteTensor):
+            torch_rng = torch_rng.to(dtype=torch.uint8)
+        torch.random.set_rng_state(torch_rng)
         if torch.cuda.is_available() and "torch_cuda" in rng_state:
-            torch.cuda.set_rng_state_all(rng_state["torch_cuda"])
+            cuda_states = rng_state["torch_cuda"]
+            cuda_states = [
+                s.to(dtype=torch.uint8) if not isinstance(s, torch.ByteTensor) else s
+                for s in cuda_states
+            ]
+            torch.cuda.set_rng_state_all(cuda_states)
         console.print("  [green]✓ RNG states restored[/]")
-
 
 def _create_plotter(args, cfg: dict, actual_params: int, tokenizer: BPETokenizer,
                     device: str, resumed_state: dict) -> LivePlotter:
