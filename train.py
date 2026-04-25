@@ -5522,6 +5522,12 @@ def train(args: argparse.Namespace):
     while True:
         current_epoch = epoch
         epoch += 1
+
+        batch_gen_kwargs["param_range"] = (
+            args.param_min - current_epoch,
+            args.param_max + current_epoch,
+        )
+
         total_epochs = epoch_ctrl.epochs
         if epoch > total_epochs:
             break
