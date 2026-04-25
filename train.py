@@ -699,7 +699,7 @@ def parse_args() -> argparse.Namespace:
                    help="Validation batches per epoch")
     g.add_argument("--max-params", type=int, default=3,
                    help="Max function parameters")
-    g.add_argument("--max-ops", type=int, default=3,
+    g.add_argument("--max-ops", type=int, default=2,
                    help="Max operations in random DAG")
     g.add_argument("--allowed-ops", type=str, default="add,sub",
                    help="Comma-separated LLVM ops")
