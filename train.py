@@ -1146,30 +1146,14 @@ def generate_batch(
 
 
 def collate_batch(batch, pad_id=0, tokenizer=None):
-    """
-    Collate a batch of (token_ids, prompt_len) pairs into padded tensors.
-
-    Returns:
-        input_ids:       (B, T)  — input tokens (shifted right)
-        target_ids:      (B, T)  — target tokens (shifted left, prompt masked to pad_id)
-        value_positions: (B,)    — index of the last <sep> in input_ids (for value head)
-                                   Set to 0 ONLY when no <sep> tokens exist at all.
-                                   Kept nonzero for unparseable answers so the structure
-                                   penalty can still operate on the answer region.
-        value_targets:   (B,)    — float tensor of expected integer results
-                                   Set to NaN for unparseable answers.
-        answer_parseable:(B,)    — bool tensor: True if the answer was a valid integer.
-    """
     max_len = max(len(s) for s, _ in batch)
     input_ids, target_ids = [], []
     value_positions = []
     value_targets = []
     answer_parseable = []
 
-    sep_id = None
     eos_id = None
     if tokenizer is not None:
-        sep_id = tokenizer._tok.token_to_id("<sep>")
         eos_id = tokenizer.eos_token_id
 
     for s, prompt_len in batch:
@@ -1179,36 +1163,27 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
 
         # Mask out everything before the answer
         for i in range(min(prompt_len - 1, len(tgt))):
-            tgt[i] = pad_id  # ignored by cross_entropy with ignore_index=0
+            tgt[i] = pad_id
 
         input_ids.append(inp)
         target_ids.append(tgt)
 
-        # ── Find value_position: last <sep> in inp ──────────────────────
-        vp = 0
+        # Value position = end of prompt (where the answer starts)
+        vp = max(0, prompt_len - 1)
         vt = float("nan")
         parseable = False
 
-        if sep_id is not None:
-            sep_positions = [i for i, tid in enumerate(inp) if tid == sep_id]
-            if len(sep_positions) >= 2:
-                vp = sep_positions[-1]  # last <sep> in input
+        if prompt_len > 0:
+            answer_start = prompt_len
+            answer_end = len(s) - 1  # exclude <eos>
+            answer_ids = s[answer_start:answer_end]
 
-                # Extract the answer tokens between last <sep> and <eos>/pad
-                answer_start = sep_positions[-1] + 1
-                answer_end = len(s) - 1  # exclude <eos> from original s
-                answer_ids = s[answer_start:answer_end]
-
-                try:
-                    answer_str = tokenizer.decode(answer_ids).strip()
-                    vt = float(int(answer_str))
-                    parseable = True
-                except (ValueError, TypeError):
-                    # Answer is not a valid integer.
-                    # KEEP vp nonzero — the answer region still exists,
-                    # we just don't know the numeric target.
-                    # vt stays NaN, parseable stays False.
-                    pass
+            try:
+                answer_str = tokenizer.decode(answer_ids).strip()
+                vt = float(int(answer_str))
+                parseable = True
+            except (ValueError, TypeError):
+                pass
 
         value_positions.append(vp)
         value_targets.append(vt)
