@@ -3539,8 +3539,15 @@ class LivePlotter:
                 for i in range(scatter_start, n_updates)
             ]
             if avg_xs:
+                smoothed_ys = []
+                ema = avg_ys[0]
+                alpha = max(0.01, min(0.2, 50.0 / max(len(avg_ys), 1)))
+                for y in avg_ys:
+                    ema = alpha * y + (1 - alpha) * ema
+                    smoothed_ys.append(ema)
+
                 self._avg_line_diffs, = self.ax_diffs.plot(
-                    avg_xs, avg_ys,
+                    avg_xs, smoothed_ys,
                     color="black", linewidth=1.8, alpha=0.85, zorder=3,
                 )
 
@@ -3835,10 +3842,19 @@ class LivePlotter:
         ]
 
         if avg_xs:
+            # Apply exponential moving average to smooth out the line
+            smoothed_ys = []
+            ema = avg_ys[0]
+            # Adaptive alpha: smoother when there are more points
+            alpha = max(0.01, min(0.2, 50.0 / max(len(avg_ys), 1)))
+            for y in avg_ys:
+                ema = alpha * y + (1 - alpha) * ema
+                smoothed_ys.append(ema)
+
             self._avg_line_diffs, = ax.plot(
-                avg_xs, avg_ys,
+                avg_xs, smoothed_ys,
                 color="black", linewidth=1.8, alpha=0.85, zorder=3,
-                label="Mean score",
+                label="Mean score (EMA)",
             )
 
         x_lo = max(scatter_start - 0.5, -0.5)
@@ -3853,7 +3869,7 @@ class LivePlotter:
             Line2D([0], [0], marker='o', color='w', markerfacecolor='steelblue',
                    markersize=6, alpha=0.5, linestyle='None', label=window_label),
             Line2D([0], [0], color='black', linewidth=1.8, alpha=0.85,
-                   label='Mean score'),
+                   label='Mean score (EMA)'),
         ]
         ax.legend(handles=legend_elements, loc="lower left", fontsize=7, framealpha=0.7)
 
