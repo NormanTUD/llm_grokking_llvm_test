@@ -5379,6 +5379,8 @@ def _compute_total_epochs(args, resumed_start_epoch: int) -> int:
     return args.epochs
 
 def train(args: argparse.Namespace):
+    global current_epoch
+
     # ── Parse & validate ────────────────────────────────────────────────
     allowed_ops = [op.strip() for op in args.allowed_ops.split(",")]
     _validate_allowed_ops(allowed_ops)
@@ -5477,7 +5479,6 @@ def train(args: argparse.Namespace):
     # ════════════════════════════════════════════════════════════════════
     epoch = resumed["start_epoch"]
     while True:
-        global current_epoch
         current_epoch = epoch
         epoch += 1
         total_epochs = epoch_ctrl.epochs
