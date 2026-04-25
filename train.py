@@ -4701,26 +4701,43 @@ def _extract_resumed_state(checkpoint: Optional[dict]) -> dict:
 
 
 def _restore_rng_state(checkpoint: Optional[dict]):
-    """Restore Python/NumPy/Torch RNG states from a checkpoint."""
+    """Restore Python/NumPy/Torch RNG states from a checkpoint.
+    If restoration fails, log a warning and continue with fresh RNG state."""
     if checkpoint is None:
         return
     rng_state = checkpoint.get("rng_state", None)
-    if rng_state:
+    if not rng_state:
+        return
+
+    try:
         random.setstate(rng_state["python"])
         np.random.set_state(rng_state["numpy"])
-        # Fix: ensure the torch RNG state is a ByteTensor
+
+        # Fix: ensure the torch RNG state is a CPU ByteTensor
         torch_rng = rng_state["torch"]
         if not isinstance(torch_rng, torch.ByteTensor):
-            torch_rng = torch_rng.to(dtype=torch.uint8)
+            torch_rng = torch_rng.to(device="cpu", dtype=torch.uint8)
+        elif torch_rng.device.type != "cpu":
+            torch_rng = torch_rng.cpu()
         torch.random.set_rng_state(torch_rng)
+
         if torch.cuda.is_available() and "torch_cuda" in rng_state:
             cuda_states = rng_state["torch_cuda"]
             cuda_states = [
-                s.to(dtype=torch.uint8) if not isinstance(s, torch.ByteTensor) else s
+                s.to(device="cpu", dtype=torch.uint8)
+                if not isinstance(s, torch.ByteTensor) or s.device.type != "cpu"
+                else s
                 for s in cuda_states
             ]
             torch.cuda.set_rng_state_all(cuda_states)
+
         console.print("  [green]✓ RNG states restored[/]")
+
+    except Exception as e:
+        console.print(
+            f"  [yellow]⚠ Could not restore RNG state: {e}[/]\n"
+            f"  [yellow]  Continuing with default RNG state (training will proceed normally)[/]"
+        )
 
 def _create_plotter(args, cfg: dict, actual_params: int, tokenizer: BPETokenizer,
                     device: str, resumed_state: dict) -> LivePlotter:
