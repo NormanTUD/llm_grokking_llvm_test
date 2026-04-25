@@ -1,7 +1,7 @@
 # random_infix_gen.py — Simplest possible representation
 
 import random
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 SUPPORTED_OPS = {
     "add":  (lambda a, b: a + b,  "+",  1),
@@ -29,6 +29,28 @@ def _clamp_i64(val):
     if val >= (1 << 63):
         val -= MOD
     return val
+
+def _collect_used_params(expr: str, all_param_names: List[str]) -> Set[str]:
+    """Find which parameter names actually appear in the expression."""
+    used = set()
+    for pname in all_param_names:
+        # Check if pname appears as a standalone token (not part of a longer name)
+        # Simple approach: scan for exact matches
+        i = 0
+        while i < len(expr):
+            pos = expr.find(pname, i)
+            if pos == -1:
+                break
+            # Check boundaries: the char before and after should not be alphanumeric
+            before_ok = (pos == 0) or not expr[pos - 1].isalnum()
+            after_pos = pos + len(pname)
+            after_ok = (after_pos >= len(expr)) or not expr[after_pos].isalnum()
+            if before_ok and after_ok:
+                used.add(pname)
+                break
+            i = pos + 1
+    return used
+
 
 def generate_random_function(
     num_params: int,
@@ -81,14 +103,31 @@ def generate_random_function(
 
         # Parenthesization: only when child has lower precedence
         l_str = f"({le})" if lp < op_prec else le
-        r_str = f"({re})" if rp <= op_prec else re  # <= for right-assoc safety
+        r_str = f"({re})" if rp <= op_prec else re
 
         expr = f"{l_str}{op_sym}{r_str}"
         value_pool.append((expr, result_val, op_prec))
 
     final_expr, final_val, _ = value_pool[-1]
-    param_list = ",".join(pnames)
-    code = f"{func_name}({param_list})={final_expr}"
+
+    # --- KEY CHANGE: Only include actually used parameters ---
+    used_params = _collect_used_params(final_expr, pnames)
+    
+    # Filter to only used params, preserving original order
+    used_pnames = [p for p in pnames if p in used_params]
+    used_values = [params[i] for i, p in enumerate(pnames) if p in used_params]
+
+    # If somehow no params are used (shouldn't happen with >= 1 op), 
+    # fall back to all params
+    if not used_pnames:
+        used_pnames = pnames
+        used_values = params
+
+    param_list = ", ".join(used_pnames)
+    value_list = ", ".join(str(v) for v in used_values)
+
+    # New format: f(x, y) = y - x, f(1, 2) = -1
+    code = f"{func_name}({param_list}) = {final_expr}, {func_name}({value_list}) = "
 
     return code, int(final_val)
 
@@ -100,4 +139,4 @@ if __name__ == "__main__":
             allowed_ops=["add", "sub", "mul", "sdiv"],
             num_operations=4, seed=s,
         )
-        print(f"  {code}  =  {res}")
+        print(f"  {code}{res}")
