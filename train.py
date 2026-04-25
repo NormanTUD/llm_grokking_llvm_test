@@ -1020,15 +1020,13 @@ console = Console()
 class BPETokenizer:
     """BPE tokenizer with the same interface as BPETokenizer."""
 
-    SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<sep>": 3}
+    SPECIAL = {"<pad>": 0, "<bos>": 1, "<eos>": 2}
 
     def __init__(self, hf_tokenizer: HFTokenizer = None):
         self._tok = hf_tokenizer
-        # Cache special token IDs after training
         self._pad_id = None
         self._bos_id = None
         self._eos_id = None
-        self._sep_id = None
         if hf_tokenizer is not None:
             self._cache_special_ids()
 
@@ -1036,7 +1034,6 @@ class BPETokenizer:
         self._pad_id = self._tok.token_to_id("<pad>")
         self._bos_id = self._tok.token_to_id("<bos>")
         self._eos_id = self._tok.token_to_id("<eos>")
-        self._sep_id = self._tok.token_to_id("<sep>")
 
     @property
     def vocab_size(self) -> int:
@@ -1202,7 +1199,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                  param_range=(-50, 50),
                                  bpe_vocab_size=512) -> BPETokenizer:
     """
-    Generate n_programs random LLVM IR functions to build a tokenizer.
+    Generate n_programs random functions to build a tokenizer.
     """
     if allowed_ops is None:
         allowed_ops = ["add", "sub"]
@@ -1212,7 +1209,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
 
     with Progress(
             SpinnerColumn(),
-            TextColumn("[bold green]Generating LLVM IR corpus for tokenizer..."),
+            TextColumn("[bold green]Generating corpus for tokenizer..."),
             BarColumn(bar_width=40),
             MofNCompleteColumn(),
             TextColumn("• [cyan]{task.fields[status]}[/]"),
@@ -1236,6 +1233,8 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                         allowed_ops=allowed_ops, num_operations=num_o,
                         func_name="f",
                         )
+                # ir_code already contains "f(x, y) = expr, f(1, 2) = "
+                # so the full text is "f(x, y) = expr, f(1, 2) = -1"
                 text = f"{ir_code}{result}"
                 corpus.append(text)
                 success += 1
@@ -1262,7 +1261,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     hf_tokenizer.decoder = decoders.ByteLevel()
 
-    special_tokens = ["<pad>", "<bos>", "<eos>", "<sep>"]
+    special_tokens = ["<pad>", "<bos>", "<eos>"]
 
     trainer_obj = trainers.BpeTrainer(
             vocab_size=bpe_vocab_size,
