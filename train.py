@@ -2480,6 +2480,18 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
         expected_ids = token_ids[prompt_len:answer_end]
         expected_answer = tokenizer.decode(expected_ids).strip()
 
+        # ── FIX: Clean BPE artifacts from expected_answer ───────────
+        for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+            expected_answer = expected_answer.replace(special, "")
+        expected_answer = ''.join(
+            c for c in expected_answer if c.isascii() and c.isprintable()
+        ).strip()
+
+        # Guard against empty result (e.g. prompt_len overshoot)
+        if not expected_answer:
+            expected_answer = "(empty)"
+        # ── END FIX ─────────────────────────────────────────────────
+
         # Prompt = everything up to prompt_len
         prompt_ids = token_ids[:prompt_len]
 
@@ -2503,7 +2515,14 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
 
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             generated_answer = generated_answer.replace(special, "")
-        generated_answer = generated_answer.strip()
+        # ── FIX: Also filter non-ASCII/non-printable from generated ─
+        generated_answer = ''.join(
+            c for c in generated_answer if c.isascii() and c.isprintable()
+        ).strip()
+
+        if not generated_answer:
+            generated_answer = "(empty)"
+        # ── END FIX ─────────────────────────────────────────────────
 
         try:
             is_correct = int(generated_answer.strip()) == int(expected_answer.strip())
@@ -3716,14 +3735,22 @@ class LivePlotter:
         scores = []
 
         for expected, predicted, _ in predictions:
+            # ── FIX: Clean expected the same way as predicted ───────────
+            exp_cleaned = ''.join(
+                c for c in expected if c.isascii() and c.isprintable()
+            ).strip()
+
             try:
-                exp_val = int(expected.strip())
+                exp_val = int(exp_cleaned)
             except (ValueError, TypeError, AttributeError):
+                # Skip predictions where expected is unparseable
+                # (this was the source of the "empty expected" bug)
                 continue
+            # ── END FIX ─────────────────────────────────────────────────
 
             pred_cleaned = ''.join(
-                    c for c in predicted if c.isascii() and c.isprintable()
-                    ).strip()
+                c for c in predicted if c.isascii() and c.isprintable()
+            ).strip()
 
             try:
                 pred_val = int(pred_cleaned)
@@ -3780,17 +3807,16 @@ class LivePlotter:
             scatter_alpha, scatter_size = 0.30, 14
 
         if all_scatter_x:
-            # Color by score: green (0) → yellow (0.5) → red (0.9) → dark red (1.0)
             import matplotlib.colors as mcolors
-            cmap = plt.cm.RdYlGn_r  # reversed: green=low, red=high
+            cmap = plt.cm.RdYlGn_r
             norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
             colors = [cmap(norm(y)) for y in all_scatter_y]
 
             self._scatter_diffs = ax.scatter(
-                    all_scatter_x, all_scatter_y,
-                    s=scatter_size, alpha=scatter_alpha, c=colors, zorder=1,
-                    edgecolors="none",
-                    )
+                all_scatter_x, all_scatter_y,
+                s=scatter_size, alpha=scatter_alpha, c=colors, zorder=1,
+                edgecolors="none",
+            )
 
         # ── Compute and plot the average line ───────────────────────────
         avg_xs = list(range(scatter_start, n_updates))
@@ -3800,10 +3826,8 @@ class LivePlotter:
         ]
 
         if avg_xs:
-            # Apply exponential moving average to smooth out the line
             smoothed_ys = []
             ema = avg_ys[0]
-            # Adaptive alpha: smoother when there are more points
             alpha = max(0.01, min(0.2, 50.0 / max(len(avg_ys), 1)))
             for y in avg_ys:
                 ema = alpha * y + (1 - alpha) * ema
@@ -3820,7 +3844,6 @@ class LivePlotter:
         ax.set_xlim(x_lo, x_hi)
         ax.set_ylim(-0.05, 1.05)
 
-        # ── Updated legend with both scatter and average line ───────────
         from matplotlib.lines import Line2D
         window_label = f"Individual (last {min(max_scatter_window, n_updates)})"
         legend_elements = [
@@ -3885,9 +3908,9 @@ class LivePlotter:
         ax.clear()
         ax.axis("off")
         ax.set_title(
-                "Predictions (Training + Validation samples)",
-                fontsize=10, fontweight="bold",
-                )
+            "Predictions (Training + Validation samples)",
+            fontsize=10, fontweight="bold",
+        )
 
         if not self._last_predictions:
             ax.text(0.5, 0.5, "Waiting for predictions...",
@@ -3900,22 +3923,33 @@ class LivePlotter:
 
         for i, (expected, predicted, is_correct) in enumerate(
                 self._last_predictions[-n_show:]
-                ):
+        ):
+            # ── FIX: Sanitize both strings before any parsing ───────────
+            # Strip non-ASCII/non-printable (BPE byte-level artifacts)
+            expected_clean = ''.join(
+                c for c in expected if c.isascii() and c.isprintable()
+            ).strip()
+            predicted_clean = ''.join(
+                c for c in predicted if c.isascii() and c.isprintable()
+            ).strip()
+
+            # Guard against empty strings
+            if not expected_clean or expected_clean == "(empty)":
+                expected_clean = "(empty)"
+            if not predicted_clean or predicted_clean == "(empty)":
+                predicted_clean = "(empty)"
+            # ── END FIX ─────────────────────────────────────────────────
+
             # Try to parse both as integers
             exp_parseable = True
             pred_parseable = True
             try:
-                exp_val = int(expected.strip())
+                exp_val = int(expected_clean)
             except (ValueError, TypeError):
                 exp_parseable = False
 
-            # Clean BPE artifacts before parsing
-            pred_cleaned = ''.join(
-                    c for c in predicted if c.isascii() and c.isprintable()
-                    ).strip()
-
             try:
-                pred_val = int(pred_cleaned)
+                pred_val = int(predicted_clean)
             except (ValueError, TypeError):
                 pred_parseable = False
 
@@ -3923,7 +3957,7 @@ class LivePlotter:
             if exp_parseable and pred_parseable:
                 score = _prediction_error_score(exp_val, pred_val)
                 diff = abs(exp_val - pred_val)
-                
+
                 if score == 0.0:
                     color, marker = "green", "✓"
                 elif score < 0.2:
@@ -3932,7 +3966,7 @@ class LivePlotter:
                     color, marker = "darkorange", "~"
                 else:
                     color, marker = "red", "✗"
-                
+
                 text = (
                     f"{marker}  expected: {exp_val:>6d}  │  "
                     f"got: {pred_val:>6d}  │  diff: {diff}  │  score: {score:.2f}"
@@ -3941,44 +3975,54 @@ class LivePlotter:
             elif exp_parseable and not pred_parseable:
                 color = "red"
                 marker = "✗"
-                pred_display = pred_cleaned[:20] if pred_cleaned else predicted.strip()[:20]
-                if len(pred_display) > 20:
+                pred_display = predicted_clean[:20]
+                if len(predicted_clean) > 20:
                     pred_display = pred_display[:20] + "…"
                 text = (
-                        f"{marker}  expected: {exp_val:>6d}  │  "
-                        f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
-                        )
+                    f"{marker}  expected: {exp_val:>6d}  │  "
+                    f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
+                )
+
+            elif not exp_parseable and pred_parseable:
+                # ── FIX: Handle case where expected is unparseable but
+                #    predicted is valid (e.g. expected="(empty)") ────────
+                color = "red"
+                marker = "✗"
+                exp_display = expected_clean[:12]
+                text = (
+                    f"{marker}  expected: {exp_display:>12s}  │  "
+                    f"got: {pred_val:>6d}  │  ⚠ EXPECTED INVALID"
+                )
 
             else:
                 color = "red"
                 marker = "✗"
+                # ── FIX: Use cleaned strings, never raw (may be empty) ──
+                exp_display = expected_clean[:12] if expected_clean else "(empty)"
+                pred_display = predicted_clean[:12] if predicted_clean else "(empty)"
                 text = (
-                        f"{marker}  expected: {expected[:12]:>12s}  │  "
-                        f"got: {predicted[:12]:>12s}  │  ⚠ BOTH INVALID"
-                        )
+                    f"{marker}  expected: {exp_display:>12s}  │  "
+                    f"got: {pred_display:>12s}  │  ⚠ BOTH INVALID"
+                )
 
             ax.text(0.02, y_positions[i], text,
                     fontsize=8, fontfamily="monospace",
                     color=color, transform=ax.transAxes,
                     verticalalignment="center")
 
-        # Summary stats — use numeric comparison
-        n_correct = sum(
-                1 for exp, pred, _ in self._last_predictions
-                if _is_int_str(exp) and _is_int_str(
-                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-                    )
-                and int(exp.strip()) == int(
-                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-                    )
-                )
+        # Summary stats — use numeric comparison with cleaned strings
+        n_correct = 0
+        n_garbage = 0
+        for exp, pred, _ in self._last_predictions:
+            exp_c = ''.join(c for c in exp if c.isascii() and c.isprintable()).strip()
+            pred_c = ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
+            if _is_int_str(exp_c) and _is_int_str(pred_c):
+                if int(exp_c) == int(pred_c):
+                    n_correct += 1
+            if not _is_int_str(pred_c):
+                n_garbage += 1
+
         n_total = len(self._last_predictions)
-        n_garbage = sum(
-                1 for _, pred, _ in self._last_predictions
-                if not _is_int_str(
-                    ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
-                    )
-                )
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
 
         summary = f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)"
