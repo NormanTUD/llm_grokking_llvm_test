@@ -1236,7 +1236,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                         allowed_ops=allowed_ops, num_operations=num_o,
                         func_name="f",
                         )
-                text = f"{ir_code}<sep>{','.join(str(p) for p in params)}<sep>{result}"
+                text = f"{ir_code}{result}"
                 corpus.append(text)
                 success += 1
             except Exception:
@@ -2465,61 +2465,43 @@ except ImportError:
 
 @torch.no_grad()
 def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
-    """
-    Given a batch of (token_ids, prompt_len) pairs, generate predictions
-    and compare to expected outputs.
-    Returns: List of (expected_str, predicted_str, is_correct)
-    """
     model.eval()
     predictions = []
 
-    sep_id = tokenizer._tok.token_to_id("<sep>")
-
     for token_ids, prompt_len in batch[:8]:
-        # Find the answer portion by locating <sep> tokens in the ID sequence
-        # Format: <bos> [ir_code] <sep> [params] <sep> [result] <eos>
-        # We need to find the second <sep> and extract the answer after it
-
-        sep_positions = [i for i, tid in enumerate(token_ids) if tid == sep_id]
-        if len(sep_positions) < 2:
-            continue
-
-        # The answer starts after the second <sep>
-        answer_start = sep_positions[1] + 1
-        # Find <eos> or end of sequence
         eos_id = tokenizer.eos_token_id
+
+        # Answer = tokens between prompt_len and <eos>
         answer_end = len(token_ids)
-        for i in range(answer_start, len(token_ids)):
+        for i in range(prompt_len, len(token_ids)):
             if token_ids[i] == eos_id:
                 answer_end = i
                 break
 
-        expected_ids = token_ids[answer_start:answer_end]
+        expected_ids = token_ids[prompt_len:answer_end]
         expected_answer = tokenizer.decode(expected_ids).strip()
 
-        # Use prompt_len to get the prompt (everything up to and including second <sep>)
+        # Prompt = everything up to prompt_len
         prompt_ids = token_ids[:prompt_len]
 
         # Greedy decode
         generated = list(prompt_ids)
         for _ in range(max_gen_len):
             inp = torch.tensor(
-                    [generated[-model.max_seq_len:]],
-                    dtype=torch.long, device=device,
-                    )
+                [generated[-model.max_seq_len:]],
+                dtype=torch.long, device=device,
+            )
             output = model(input_ids=inp)
             logits = output.logits[0, -1, :]
             next_token = logits.argmax().item()
 
-            if next_token == tokenizer.eos_token_id:
+            if next_token == eos_id:
                 break
             generated.append(next_token)
 
-        # Decode only the generated portion (after prompt)
         generated_ids = generated[prompt_len:]
         generated_answer = tokenizer.decode(generated_ids).strip()
 
-        # Clean up any special token remnants
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             generated_answer = generated_answer.replace(special, "")
         generated_answer = generated_answer.strip()
