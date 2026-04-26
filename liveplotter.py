@@ -274,13 +274,15 @@ class LivePlotter:
     def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
         """
         Extract Jacobi fields from the residual stream and render them.
-        Called every batch; only redraws every kelp_every batches.
+        Called every batch; only recomputes every kelp_every batches.
         """
         if not self.enabled:
             return
 
         self._kelp_step += 1
-        if self._kelp_step != 1 and self._kelp_step % self.kelp_every != 0:
+
+        should_draw = (self._kelp_step == 1) or (self._kelp_step % self.kelp_every == 0)
+        if not should_draw:
             return
 
         was_training = model.training
@@ -299,17 +301,8 @@ class LivePlotter:
                 'step': self._kelp_step,
             }
 
-            self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, self._kelp_step
-            )
-
-            # Force a FULL canvas redraw — inset axes require this
-            try:
-                self.fig.canvas.draw()
-                if not self.suppress_window:
-                    self.fig.canvas.flush_events()
-            except Exception:
-                pass
+            # Draw immediately
+            self._redraw_jacobi()
 
         except Exception as e:
             import traceback
@@ -319,32 +312,33 @@ class LivePlotter:
             if was_training:
                 model.train()
 
+    def _redraw_jacobi(self):
+        """Redraw the Jacobi fields from cached data. Safe to call from _refresh."""
+        if self._jacobi_data is None or self.ax_kelp is None:
+            return
+        try:
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
+            )
+        except Exception:
+            pass
+
     def _draw_jacobi_fields(self, ax, jacobi_data, step):
         """
         Render N subplots (one per layer), each showing the Jacobi field as:
           - Background color: divergence field (red=expanding, blue=contracting)
-            computed as the radial component of displacement at each grid point
           - Overlaid arrows: the displacement vector field F(x) = (J-I)x
-            showing direction and magnitude of space deformation
-          - Text: div, curl, shear, anisotropy, top singular values
-
-        The Jacobian J^(ℓ) = I + ∇f^(ℓ) is projected onto its top-2
-        singular vectors to get a 2×2 matrix J_2d. The displacement
-        field F_2d = J_2d - I is then evaluated on a grid.
         """
         if ax is None or jacobi_data is None:
             return
 
+        # Skip redundant redraws — only recreate when step changes
+        if hasattr(self, '_jacobi_drawn_step') and self._jacobi_drawn_step == step:
+            return
+        self._jacobi_drawn_step = step
+
         fields = jacobi_data['fields']
         n_layers = len(fields)
-
-        if n_layers == 0:
-            ax.clear()
-            ax.set_facecolor("#0a0a1a")
-            ax.text(0.5, 0.5, "Waiting for hidden states...",
-                    ha="center", va="center", fontsize=11, alpha=0.4,
-                    color="#6a9ab8", transform=ax.transAxes)
-            return
 
         # ── Remove old inset axes ──────────────────────────────────────
         for old_ax in self._jacobi_subaxes:
@@ -354,7 +348,7 @@ class LivePlotter:
                 pass
         self._jacobi_subaxes = []
 
-        # ── Clear the parent axis (container only) ─────────────────────
+        # ── Clear the parent axis ──────────────────────────────────────
         ax.clear()
         ax.set_facecolor("#0a0a1a")
         ax.set_xticks([])
@@ -364,30 +358,36 @@ class LivePlotter:
         for spine in ax.spines.values():
             spine.set_visible(False)
 
+        if n_layers == 0:
+            ax.text(0.5, 0.5, "Waiting for hidden states...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            return
+
         # ── Grid layout ────────────────────────────────────────────────
         n_cols = min(n_layers, 6)
         n_rows = math.ceil(n_layers / n_cols)
 
         pad_x = 0.02
-        pad_y = 0.10
+        pad_y = 0.12
+        pad_bottom = 0.03
         cell_w = (1.0 - 2 * pad_x) / n_cols
-        cell_h = (1.0 - pad_y - 0.03) / n_rows
+        cell_h = (1.0 - pad_y - pad_bottom) / n_rows
         inset_margin = 0.006
 
         parent_bbox = ax.get_position()
         px0, py0 = parent_bbox.x0, parent_bbox.y0
         pw, ph = parent_bbox.width, parent_bbox.height
 
-        # ── Grid resolutions ───────────────────────────────────────────
-        color_n = 40   # resolution of the background color field
-        arrow_n = 12   # resolution of the arrow grid (sparser for clarity)
+        color_n = 40
+        arrow_n = 12
 
         for ell, f in enumerate(fields):
             col = ell % n_cols
             row = n_rows - 1 - (ell // n_cols)
 
             fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
-            fy = py0 + ph * (0.03 + row * cell_h + inset_margin)
+            fy = py0 + ph * (pad_bottom + row * cell_h + inset_margin)
             fw = pw * (cell_w - 2 * inset_margin)
             fh = ph * (cell_h - 2 * inset_margin)
 
@@ -395,39 +395,31 @@ class LivePlotter:
             sub_ax.set_facecolor("#0d1117")
             self._jacobi_subaxes.append(sub_ax)
 
-            # ── Get the Jacobian and its SVD ───────────────────────────
-            J = f['jacobian']  # (D, D) numpy
+            J = f['jacobian']
             D_dim = J.shape[0]
 
             try:
                 U, S, Vh = np.linalg.svd(J)
             except Exception:
                 S = np.ones(D_dim)
-                U = np.eye(D_dim)
                 Vh = np.eye(D_dim)
 
-            # ── Project J into the top-2 principal plane ───────────────
-            V2 = Vh[:2, :]          # (2, D)
-            J_2d = V2 @ J @ V2.T   # (2, 2) projected Jacobian
-            F_2d = J_2d - np.eye(2) # displacement field
+            V2 = Vh[:2, :]
+            J_2d = V2 @ J @ V2.T
+            F_2d = J_2d - np.eye(2)
 
-            # ── Background: dense divergence color field ───────────────
-            # At each grid point (x,y), compute displacement d = F_2d @ [x,y]
-            # then compute radial component: d · r_hat
-            # Positive = expanding outward, negative = contracting inward
+            # ── Dense divergence color field ───────────────────────────
             c_coords = np.linspace(-1.0, 1.0, color_n)
             cgx, cgy = np.meshgrid(c_coords, c_coords)
 
             cdx = F_2d[0, 0] * cgx + F_2d[0, 1] * cgy
             cdy = F_2d[1, 0] * cgx + F_2d[1, 1] * cgy
 
-            # Radial component of displacement (positive = outward = expanding)
             r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
             radial = (cdx * cgx + cdy * cgy) / r_mag
 
-            # Normalize for color mapping
             r_absmax = max(np.abs(radial).max(), 1e-10)
-            div_color = radial / r_absmax  # in [-1, 1]
+            div_color = radial / r_absmax
 
             sub_ax.imshow(
                 div_color,
@@ -440,7 +432,7 @@ class LivePlotter:
                 alpha=0.6,
             )
 
-            # ── Overlay: sparse vector field arrows ────────────────────
+            # ── Sparse vector field arrows ─────────────────────────────
             a_coords = np.linspace(-0.9, 0.9, arrow_n)
             agx, agy = np.meshgrid(a_coords, a_coords)
 
@@ -450,7 +442,6 @@ class LivePlotter:
             mag = np.sqrt(adx**2 + ady**2)
             mag_max = mag.max() if mag.max() > 1e-10 else 1.0
 
-            # Arrow color: same radial divergence metric
             a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
             a_rc_max = max(np.abs(a_radial).max(), 1e-10)
             arrow_colors = (a_radial / a_rc_max).ravel()
@@ -468,11 +459,9 @@ class LivePlotter:
                 zorder=2,
             )
 
-            # ── Crosshairs ─────────────────────────────────────────────
             sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
             sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
 
-            # ── Annotations ────────────────────────────────────────────
             layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
             div_val = f['divergence']
             curl_val = f['curl']
@@ -481,11 +470,9 @@ class LivePlotter:
 
             sub_ax.set_title(
                 f"{layer_label}",
-                fontsize=6, fontweight="bold", color="#8ab8d8",
-                pad=1,
+                fontsize=6, fontweight="bold", color="#8ab8d8", pad=1,
             )
 
-            # Bottom-left: geometric invariants
             sub_ax.text(
                 0.03, 0.03,
                 f"div={div_val:.1f} curl={curl_val:.2f}\n"
@@ -497,7 +484,6 @@ class LivePlotter:
                           edgecolor="none", alpha=0.7),
             )
 
-            # Top-right: top 3 singular values
             top_svs = S[:3]
             sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
             sub_ax.text(
@@ -508,7 +494,6 @@ class LivePlotter:
                 fontfamily="monospace",
             )
 
-            # Top-left: 2×2 projected Jacobian values
             sub_ax.text(
                 0.03, 0.97,
                 f"J₂=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
@@ -528,12 +513,11 @@ class LivePlotter:
                 spine.set_color('#2a3a4a')
                 spine.set_linewidth(0.5)
 
-        # ── Parent axis title ──────────────────────────────────────────
         ax.set_title(
             f"Jacobi Fields — Per-Layer Space Deformation  "
             f"(step {step})\n"
-            f"[Background color = divergence (red=expanding, blue=contracting) · "
-            f"Arrows = displacement direction & magnitude]",
+            f"[Background = divergence (red=expanding, blue=contracting) · "
+            f"Arrows = displacement field]",
             fontsize=9, fontweight="bold", color="#c0d8e8",
         )
 
@@ -657,11 +641,11 @@ class LivePlotter:
         ax.legend(loc="upper right", fontsize=8)
 
     def _setup_preds_axis(self, ax):
-        """Configure the predictions text panel."""
+        """Configure the predictions table panel."""
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
         ax.axis("off")
-        ax.set_title("Last Batch Predictions (Expected → Got)",
+        ax.set_title("Predictions (Training + Validation samples)",
                       fontsize=10, fontweight="bold")
 
     def _setup_info_axis(self, ax):
@@ -863,11 +847,15 @@ class LivePlotter:
         try:
             for ax in self._plot_axes:
                 if ax is self.ax_diffs:
-                    # Skip relim/autoscale entirely for ax_diffs —
-                    # we manage its limits manually in update_prediction_diffs
                     continue
                 ax.relim()
                 ax.autoscale_view()
+
+            # ── Redraw Jacobi inset axes every refresh ─────────────────
+            # The inset axes created by fig.add_axes() survive across
+            # draw cycles, but their content can get stale. Redraw them
+            # from cached data so the step counter stays current.
+            self._redraw_jacobi()
 
             if not self.suppress_window and self._is_window_alive():
                 self.fig.canvas.draw_idle()
@@ -1170,118 +1158,25 @@ class LivePlotter:
         return old_indices + recent_indices
 
     def _draw_predictions(self):
-        """Draw the last batch's expected vs predicted with differences."""
+        """Draw predictions as a compact table with summary stats above."""
         ax = self.ax_preds
         if ax is None:
             return
         ax.clear()
         ax.axis("off")
-        ax.set_title(
-            "Predictions (Training + Validation samples)",
-            fontsize=10, fontweight="bold",
-        )
 
         if not self._last_predictions:
+            ax.set_title("Predictions (Training + Validation samples)",
+                         fontsize=10, fontweight="bold")
             ax.text(0.5, 0.5, "Waiting for predictions...",
                     ha="center", va="center", fontsize=11, alpha=0.4,
                     transform=ax.transAxes)
             return
 
-        n_show = min(len(self._last_predictions), 10)
-        y_positions = np.linspace(0.95, 0.05, n_show)
-
-        for i, (expected, predicted, is_correct) in enumerate(
-                self._last_predictions[-n_show:]
-        ):
-            # ── FIX: Sanitize both strings before any parsing ───────────
-            # Strip non-ASCII/non-printable (BPE byte-level artifacts)
-            expected_clean = ''.join(
-                c for c in expected if c.isascii() and c.isprintable()
-            ).strip()
-            predicted_clean = ''.join(
-                c for c in predicted if c.isascii() and c.isprintable()
-            ).strip()
-
-            # Guard against empty strings
-            if not expected_clean or expected_clean == "(empty)":
-                expected_clean = "(empty)"
-            if not predicted_clean or predicted_clean == "(empty)":
-                predicted_clean = "(empty)"
-            # ── END FIX ─────────────────────────────────────────────────
-
-            # Try to parse both as integers
-            exp_parseable = True
-            pred_parseable = True
-            try:
-                exp_val = int(expected_clean)
-            except (ValueError, TypeError):
-                exp_parseable = False
-
-            try:
-                pred_val = int(predicted_clean)
-            except (ValueError, TypeError):
-                pred_parseable = False
-
-            # ── Determine color and marker from NUMERIC comparison ──────
-            if exp_parseable and pred_parseable:
-                score = _prediction_error_score(exp_val, pred_val)
-                diff = abs(exp_val - pred_val)
-
-                if score == 0.0:
-                    color, marker = "green", "✓"
-                elif score < 0.2:
-                    color, marker = "orange", "≈"
-                elif score < 0.5:
-                    color, marker = "darkorange", "~"
-                else:
-                    color, marker = "red", "✗"
-
-                text = (
-                    f"{marker}  expected: {exp_val:>6d}  │  "
-                    f"got: {pred_val:>6d}  │  diff: {diff}  │  score: {score:.2f}"
-                )
-
-            elif exp_parseable and not pred_parseable:
-                color = "red"
-                marker = "✗"
-                pred_display = predicted_clean[:20]
-                if len(predicted_clean) > 20:
-                    pred_display = pred_display[:20] + "…"
-                text = (
-                    f"{marker}  expected: {exp_val:>6d}  │  "
-                    f"got: {pred_display:<20s}  │  ⚠ UNPARSEABLE"
-                )
-
-            elif not exp_parseable and pred_parseable:
-                # ── FIX: Handle case where expected is unparseable but
-                #    predicted is valid (e.g. expected="(empty)") ────────
-                color = "red"
-                marker = "✗"
-                exp_display = expected_clean[:12]
-                text = (
-                    f"{marker}  expected: {exp_display:>12s}  │  "
-                    f"got: {pred_val:>6d}  │  ⚠ EXPECTED INVALID"
-                )
-
-            else:
-                color = "red"
-                marker = "✗"
-                # ── FIX: Use cleaned strings, never raw (may be empty) ──
-                exp_display = expected_clean[:12] if expected_clean else "(empty)"
-                pred_display = predicted_clean[:12] if predicted_clean else "(empty)"
-                text = (
-                    f"{marker}  expected: {exp_display:>12s}  │  "
-                    f"got: {pred_display:>12s}  │  ⚠ BOTH INVALID"
-                )
-
-            ax.text(0.02, y_positions[i], text,
-                    fontsize=8, fontfamily="monospace",
-                    color=color, transform=ax.transAxes,
-                    verticalalignment="center")
-
-        # Summary stats — use numeric comparison with cleaned strings
+        # ── Compute summary stats ──────────────────────────────────────
         n_correct = 0
         n_garbage = 0
+        n_total = len(self._last_predictions)
         for exp, pred, _ in self._last_predictions:
             exp_c = ''.join(c for c in exp if c.isascii() and c.isprintable()).strip()
             pred_c = ''.join(c for c in pred if c.isascii() and c.isprintable()).strip()
@@ -1291,16 +1186,104 @@ class LivePlotter:
             if not _is_int_str(pred_c):
                 n_garbage += 1
 
-        n_total = len(self._last_predictions)
         accuracy = n_correct / n_total * 100 if n_total > 0 else 0
 
+        # ── Title includes accuracy (no separate text to overlap) ──────
         summary = f"Accuracy: {n_correct}/{n_total} ({accuracy:.1f}%)"
         if n_garbage > 0:
-            summary += f"  │  ⚠ {n_garbage} unparseable"
+            summary += f"  ·  ⚠ {n_garbage} unparseable"
 
-        ax.text(0.98, 0.01, summary,
-                ha="right", va="bottom", fontsize=9, fontweight="bold",
-                transform=ax.transAxes, alpha=0.7)
+        title_color = "green" if accuracy >= 50 else ("darkorange" if accuracy >= 20 else "red")
+        ax.set_title(
+            f"Predictions — {summary}",
+            fontsize=9, fontweight="bold", color=title_color,
+        )
+
+        # ── Table header ───────────────────────────────────────────────
+        header_y = 0.95
+        col_x = [0.01, 0.05, 0.27, 0.49, 0.69, 0.85]
+        headers = ["", "Expected", "Got", "Diff", "Score", ""]
+
+        for cx, h in zip(col_x, headers):
+            ax.text(cx, header_y, h,
+                    fontsize=7, fontweight="bold", fontfamily="monospace",
+                    color="black", alpha=0.6, transform=ax.transAxes,
+                    verticalalignment="top")
+
+        # Separator line
+        ax.plot([0.01, 0.98], [0.91, 0.91],
+                color='gray', linewidth=0.5, alpha=0.4,
+                transform=ax.transAxes, clip_on=False)
+
+        # ── Table rows ─────────────────────────────────────────────────
+        n_show = min(len(self._last_predictions), 14)
+        row_height = min(0.06, 0.88 / max(n_show, 1))
+        y_start = 0.88
+
+        for i, (expected, predicted, is_correct) in enumerate(
+                self._last_predictions[-n_show:]
+        ):
+            y = y_start - i * row_height
+            if y < 0.01:
+                break
+
+            exp_clean = ''.join(
+                c for c in expected if c.isascii() and c.isprintable()
+            ).strip() or "(empty)"
+            pred_clean = ''.join(
+                c for c in predicted if c.isascii() and c.isprintable()
+            ).strip() or "(empty)"
+
+            exp_parseable = _is_int_str(exp_clean)
+            pred_parseable = _is_int_str(pred_clean)
+
+            if exp_parseable and pred_parseable:
+                exp_val = int(exp_clean)
+                pred_val = int(pred_clean)
+                score = _prediction_error_score(exp_val, pred_val)
+                diff = abs(exp_val - pred_val)
+
+                if score == 0.0:
+                    color, marker = "green", "✓"
+                elif score < 0.2:
+                    color, marker = "#228B22", "≈"
+                elif score < 0.5:
+                    color, marker = "darkorange", "~"
+                else:
+                    color, marker = "red", "✗"
+
+                exp_str = f"{exp_val}"
+                pred_str = f"{pred_val}"
+                diff_str = f"{diff}"
+                score_str = f"{score:.2f}"
+
+            elif exp_parseable and not pred_parseable:
+                color, marker = "red", "✗"
+                exp_str = f"{int(exp_clean)}"
+                pred_str = pred_clean[:12]
+                diff_str = "—"
+                score_str = "1.00"
+
+            elif not exp_parseable and pred_parseable:
+                color, marker = "red", "✗"
+                exp_str = exp_clean[:12]
+                pred_str = f"{int(pred_clean)}"
+                diff_str = "—"
+                score_str = "—"
+
+            else:
+                color, marker = "red", "✗"
+                exp_str = exp_clean[:12]
+                pred_str = pred_clean[:12]
+                diff_str = "—"
+                score_str = "1.00"
+
+            row_data = [marker, exp_str, pred_str, diff_str, score_str, ""]
+            for cx, val in zip(col_x, row_data):
+                ax.text(cx, y, val,
+                        fontsize=6.5, fontfamily="monospace",
+                        color=color, transform=ax.transAxes,
+                        verticalalignment="top")
 
     def _draw_model_info(self):
         """Draw basic model information + GPU/system stats."""
