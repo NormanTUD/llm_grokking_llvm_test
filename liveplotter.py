@@ -157,6 +157,7 @@ class LivePlotter:
         self._kelp_time_offset = 0.0
         self._jacobi_subaxes = []  # per-layer inset axes for Jacobi PCA
         self._jacobi_data = None
+        self._jacobi_drawn_step = -1  # ← ADD THIS: initialize the redraw guard
 
         # ── TDA config ──────────────────────────────────────────────────
         self.topo_enabled = topo_enabled and _HAS_RIPSER and _HAS_GUDHI and enabled
@@ -246,6 +247,7 @@ class LivePlotter:
         self._kelp_step = state.get("_kelp_step", 0)
         self._kelp_time_offset = state.get("_kelp_time_offset", 0.0)
         self._topo_step = state.get("_topo_step", 0)
+        self._jacobi_drawn_step = -1  # ← ADD THIS: force redraw after restore
 
         # Redraw all lines from restored data
         if self.train_epoch_losses:
@@ -703,6 +705,7 @@ class LivePlotter:
         self._setup_diffs_axis(named_axes["diffs"])
         self._jacobi_subaxes = []
         self._jacobi_data = None
+        self._jacobi_drawn_step = -1  # ← ADD THIS: reset the redraw guard
         self._setup_kelp_axis(named_axes["kelp"])
         self._setup_epoch_axis(named_axes["epoch"])
         self._setup_batch_axis(named_axes["batch"])
