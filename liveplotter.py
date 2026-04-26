@@ -277,10 +277,6 @@ class LivePlotter:
         """
         Extract Jacobi fields from the residual stream and render them.
         Called every batch; only recomputes every kelp_every batches.
-
-        FIXES:
-        - Now calls _refresh() after drawing to flush canvas
-        - Tracks whether a fresh draw happened to avoid redundant guard checks
         """
         if not self.enabled:
             return
@@ -300,6 +296,7 @@ class LivePlotter:
             )
 
             if not fields:
+                console.print(f"[yellow]⚠ Jacobi: no fields returned at kelp_step={self._kelp_step}[/]")
                 return
 
             self._jacobi_data = {
@@ -307,11 +304,18 @@ class LivePlotter:
                 'step': self._kelp_step,
             }
 
+            # Force the guard to allow redraw
             self._jacobi_drawn_step = -1
 
             self._redraw_jacobi()
 
+            # Force synchronous canvas repaint
             self._flush_canvas()
+
+            console.print(
+                f"[dim]  🌿 Jacobi fields updated: step={self._kelp_step}, "
+                f"layers={len(fields)}, drawn_step={self._jacobi_drawn_step}[/]"
+            )
 
         except Exception as e:
             import traceback
@@ -321,16 +325,11 @@ class LivePlotter:
             if was_training:
                 model.train()
 
+
     def _flush_canvas(self):
         """
         Force a synchronous canvas repaint.
-        
-        This is separated from _refresh() because _refresh() does relim/autoscale
-        on data axes (which can interfere with the Jacobi inset axes), while this
-        method ONLY flushes the canvas.
-        
-        Uses draw() + flush_events() instead of draw_idle() to ensure the update
-        is not coalesced away by matplotlib's event loop.
+        Uses draw() + flush_events() instead of draw_idle().
         """
         if not self.enabled:
             return
@@ -347,16 +346,15 @@ class LivePlotter:
         finally:
             _restore_c_stderr()
 
+
     def _redraw_jacobi(self):
         """
         Redraw the Jacobi fields from cached data.
-        
-        FIXES:
-        - Checks for None ax_kelp before proceeding
-        - Does NOT call _flush_canvas (caller decides whether to flush)
-        - The guard inside _draw_jacobi_fields prevents redundant work
         """
-        if self._jacobi_data is None or self.ax_kelp is None:
+        if self._jacobi_data is None:
+            return
+        if not hasattr(self, 'ax_kelp') or self.ax_kelp is None:
+            console.print("[yellow]⚠ Jacobi: ax_kelp is None, cannot draw[/]")
             return
         try:
             self._draw_jacobi_fields(
@@ -367,6 +365,7 @@ class LivePlotter:
             console.print(f"[yellow]⚠ Jacobi redraw error: {e}[/]")
             traceback.print_exc()
 
+
     def _draw_jacobi_fields(self, ax, jacobi_data, step):
         """
         Render N subplots (one per layer), each showing the Jacobi field.
@@ -375,7 +374,7 @@ class LivePlotter:
             return
 
         # Skip redundant redraws — only recreate when step changes
-        if hasattr(self, '_jacobi_drawn_step') and self._jacobi_drawn_step == step:
+        if self._jacobi_drawn_step == step:
             return
         self._jacobi_drawn_step = step
 
@@ -708,7 +707,6 @@ class LivePlotter:
         ax.set_title("Model / System Info", fontsize=10, fontweight="bold")
 
     def _collect_plot_axes(self, named_axes):
-        """Build the list of axes that have data lines (for relim/autoscale)."""
         data_axes = [
             named_axes["epoch"],
             named_axes["batch"],
@@ -892,15 +890,7 @@ class LivePlotter:
     def _refresh(self):
         """
         Refresh all data axes and flush the canvas.
-        
-        FIXES:
-        - No longer calls _redraw_jacobi() here. The Jacobi panel is updated
-          exclusively through update_jacobi_fields() → _redraw_jacobi() → _flush_canvas().
-          This prevents the guard from being hit on every batch update, and avoids
-          the confusing interaction where _refresh triggers a no-op Jacobi redraw
-          that makes it LOOK like an update happened (because draw_idle fires)
-          but actually shows stale content.
-        - Uses draw() instead of draw_idle() for more reliable rendering.
+        Does NOT touch Jacobi — that's handled by update_jacobi_fields alone.
         """
         if not self.enabled:
             return
@@ -916,13 +906,6 @@ class LivePlotter:
                 ax.relim()
                 ax.autoscale_view()
 
-            # NOTE: We intentionally do NOT call _redraw_jacobi() here.
-            # Jacobi updates are driven solely by update_jacobi_fields(),
-            # which calls _flush_canvas() after drawing. This prevents:
-            # 1. The guard from blocking legitimate redraws
-            # 2. Redundant work on every batch update
-            # 3. draw_idle() coalescing away the Jacobi update
-
             if not self.suppress_window and self._is_window_alive():
                 self.fig.canvas.draw()
                 self.fig.canvas.flush_events()
@@ -930,6 +913,7 @@ class LivePlotter:
                 self.fig.canvas.draw()
         finally:
             _restore_c_stderr()
+
 
     # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
