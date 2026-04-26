@@ -303,10 +303,10 @@ class LivePlotter:
                 'step': self._kelp_step,
             }
 
-            # ── FORCE full redraw ──────────────────────────────────────
+            # Force redraw by invalidating the guard
             self._jacobi_drawn_step = -1
 
-            # Remove old inset axes BEFORE drawing new ones
+            # Remove old inset axes FIRST
             old_axes = list(self._jacobi_subaxes)
             self._jacobi_subaxes = []
             for old_ax in old_axes:
@@ -318,22 +318,14 @@ class LivePlotter:
                     except Exception:
                         pass
 
-            # Draw fresh
+            # Draw the new fields
             self._draw_jacobi_fields(
                 self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
             )
 
-            # ── NUCLEAR FLUSH: plt.pause forces a real GUI update ──────
-            _suppress_c_stderr()
-            try:
-                if not self.suppress_window and self._is_window_alive():
-                    self.plt.pause(0.001)
-                else:
-                    self.fig.canvas.draw()
-            except Exception:
-                pass
-            finally:
-                _restore_c_stderr()
+            # DO NOT flush here — let _refresh() handle it.
+            # Mark figure as needing redraw so the next _refresh picks it up.
+            self.fig.stale = True
 
         except Exception as e:
             import traceback
@@ -342,6 +334,32 @@ class LivePlotter:
         finally:
             if was_training:
                 model.train()
+
+    def _refresh(self):
+        """
+        Refresh all data axes and flush the canvas.
+        Uses plt.pause() which properly pumps the GUI event loop.
+        """
+        if not self.enabled:
+            return
+
+        if not self.suppress_window:
+            self._check_reopen()
+
+        _suppress_c_stderr()
+        try:
+            for ax in self._plot_axes:
+                if ax is self.ax_diffs:
+                    continue
+                ax.relim()
+                ax.autoscale_view()
+
+            if not self.suppress_window and self._is_window_alive():
+                self.plt.pause(0.001)
+            else:
+                self.fig.canvas.draw()
+        finally:
+            _restore_c_stderr()
 
     def _flush_canvas(self):
         """
@@ -902,32 +920,6 @@ class LivePlotter:
             self.fig.savefig(save_path, dpi=150, bbox_inches="tight")
         except Exception as e:
             pass  # Don't crash training for a file write error
-
-    # ── Refresh helper ──────────────────────────────────────────────────
-    def _refresh(self):
-        """
-        Refresh all data axes and flush the canvas.
-        """
-        if not self.enabled:
-            return
-
-        if not self.suppress_window:
-            self._check_reopen()
-
-        _suppress_c_stderr()
-        try:
-            for ax in self._plot_axes:
-                if ax is self.ax_diffs:
-                    continue
-                ax.relim()
-                ax.autoscale_view()
-
-            if not self.suppress_window and self._is_window_alive():
-                self.plt.pause(0.001)
-            else:
-                self.fig.canvas.draw()
-        finally:
-            _restore_c_stderr()
 
     # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
