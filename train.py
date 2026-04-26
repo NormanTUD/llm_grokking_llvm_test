@@ -5326,6 +5326,19 @@ def _log_epoch_to_run_logger(
     )
 
     n_to_log = None if args.log_all_samples else args.log_samples
+
+    # ── FIX: Sample from the CORE of the trained distribution ───────────
+    # The training param_range expands as (param_min - epoch, param_max + epoch),
+    # but sampling uniformly from that full range at high epochs produces
+    # mostly out-of-distribution inputs where the model immediately emits EOS.
+    # Instead, sample from the inner ~50% of the current range so the logged
+    # samples reflect what the model has actually learned well.
+    half_expansion = current_epoch // 2
+    sample_param_range = (
+        args.param_min - half_expansion,
+        args.param_max + half_expansion,
+    )
+
     example_samples = generate_example_samples(
         model=model,
         tokenizer=tokenizer,
@@ -5334,11 +5347,10 @@ def _log_epoch_to_run_logger(
         max_params=args.max_params,
         max_ops=args.max_ops,
         allowed_ops=allowed_ops,
-        param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
+        param_range=sample_param_range,
     )
     run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
     run_logger.flush_losses()
-
 
 def _do_checkpointing(
         epoch: int,
