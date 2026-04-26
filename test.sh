@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ── Auto-install dependencies in venv if not already in one ─────────
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+  VENV_DIR=".venv_ci"
+  if [ ! -d "$VENV_DIR" ]; then
+    echo "▶ Creating virtual environment at $VENV_DIR..."
+    python3 -m venv "$VENV_DIR"
+  fi
+  echo "▶ Activating virtual environment..."
+  # shellcheck disable=SC1091
+  source "$VENV_DIR/bin/activate"
+fi
+
+if ! python3 -c "import pytest" 2>/dev/null; then
+  echo "▶ Installing test dependencies..."
+  pip install --quiet --upgrade pip
+  pip install --quiet pytest torch
+  if [ -f requirements.txt ]; then
+    pip install --quiet -r requirements.txt
+  fi
+fi
+
 RUN_DIR="test_run_ci"
 COMMON_ARGS=(
   --epochs 1
@@ -86,9 +107,25 @@ if [ "$rc3" -ne 0 ]; then
 fi
 echo "✓ Run 3 passed"
 
+# ── Run pytest suite ────────────────────────────────────────────────
+echo ""
+echo "═══════════════════════════════════════════"
+echo "  CI Unit Tests: pytest"
+echo "═══════════════════════════════════════════"
+echo ""
+python3 -m pytest test_sample_logging.py -v
+rc_pytest=$?
+if [ "$rc_pytest" -ne 0 ]; then
+  echo "✗ pytest FAILED (exit $rc_pytest)"
+  exit 1
+fi
+echo "✓ pytest passed"
+
 # ── Summary ─────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════"
-echo "  All 3 runs passed (exit codes: $rc1, $rc2, $rc3)"
+echo "  All checks passed"
+echo "    Train runs:  $rc1, $rc2, $rc3"
+echo "    Pytest:      $rc_pytest"
 echo "═══════════════════════════════════════════"
 exit 0
