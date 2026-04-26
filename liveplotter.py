@@ -304,16 +304,38 @@ class LivePlotter:
                 'step': self._kelp_step,
             }
 
-            # Force the guard to allow redraw
+            # ── FORCE full redraw: bypass ALL guards ───────────────────
             self._jacobi_drawn_step = -1
 
-            self._redraw_jacobi()
+            # Remove old inset axes
+            old_axes = list(self._jacobi_subaxes)
+            self._jacobi_subaxes = []
+            for old_ax in old_axes:
+                try:
+                    old_ax.remove()
+                except Exception:
+                    try:
+                        self.fig.delaxes(old_ax)
+                    except Exception:
+                        pass
+
+            # Draw fresh
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
+            )
 
             # Force synchronous canvas repaint
-            self._flush_canvas()
+            _suppress_c_stderr()
+            try:
+                self.fig.canvas.draw()
+                self.fig.canvas.flush_events()
+            except Exception:
+                pass
+            finally:
+                _restore_c_stderr()
 
             console.print(
-                f"[dim]  🌿 Jacobi fields updated: step={self._kelp_step}, "
+                f"[dim]  🌿 Jacobi updated: kelp_step={self._kelp_step}, "
                 f"layers={len(fields)}, drawn_step={self._jacobi_drawn_step}[/]"
             )
 
@@ -324,7 +346,6 @@ class LivePlotter:
         finally:
             if was_training:
                 model.train()
-
 
     def _flush_canvas(self):
         """
