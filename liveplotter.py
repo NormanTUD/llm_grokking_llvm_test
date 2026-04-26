@@ -296,7 +296,6 @@ class LivePlotter:
             )
 
             if not fields:
-                console.print(f"[yellow]⚠ Jacobi: no fields returned at kelp_step={self._kelp_step}[/]")
                 return
 
             self._jacobi_data = {
@@ -304,10 +303,10 @@ class LivePlotter:
                 'step': self._kelp_step,
             }
 
-            # ── FORCE full redraw: bypass ALL guards ───────────────────
+            # ── FORCE full redraw ──────────────────────────────────────
             self._jacobi_drawn_step = -1
 
-            # Remove old inset axes
+            # Remove old inset axes BEFORE drawing new ones
             old_axes = list(self._jacobi_subaxes)
             self._jacobi_subaxes = []
             for old_ax in old_axes:
@@ -324,20 +323,17 @@ class LivePlotter:
                 self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
             )
 
-            # Force synchronous canvas repaint
+            # ── NUCLEAR FLUSH: plt.pause forces a real GUI update ──────
             _suppress_c_stderr()
             try:
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
+                if not self.suppress_window and self._is_window_alive():
+                    self.plt.pause(0.001)
+                else:
+                    self.fig.canvas.draw()
             except Exception:
                 pass
             finally:
                 _restore_c_stderr()
-
-            console.print(
-                f"[dim]  🌿 Jacobi updated: kelp_step={self._kelp_step}, "
-                f"layers={len(fields)}, drawn_step={self._jacobi_drawn_step}[/]"
-            )
 
         except Exception as e:
             import traceback
@@ -911,7 +907,6 @@ class LivePlotter:
     def _refresh(self):
         """
         Refresh all data axes and flush the canvas.
-        Does NOT touch Jacobi — that's handled by update_jacobi_fields alone.
         """
         if not self.enabled:
             return
@@ -928,13 +923,11 @@ class LivePlotter:
                 ax.autoscale_view()
 
             if not self.suppress_window and self._is_window_alive():
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
+                self.plt.pause(0.001)
             else:
                 self.fig.canvas.draw()
         finally:
             _restore_c_stderr()
-
 
     # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
