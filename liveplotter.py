@@ -24,6 +24,111 @@ compute_cross_layer_wasserstein = None
 _HAS_RIPSER = False
 _HAS_GUDHI = False
 
+
+@torch.no_grad()
+def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
+    """
+    Compute the full Jacobi field decomposition for each layer.
+
+    Instead of tracking where points go, this computes HOW SPACE DEFORMS
+    at each layer — the local divergence, curl, shear, and principal
+    stretches of the residual map Phi^(ell)(h) = h + f^(ell)(h).
+
+    Returns a list of dicts, one per layer transition (ell -> ell+1).
+    """
+    model.eval()
+    output = model(input_ids=input_ids, output_hidden_states=True)
+    hidden_states = output.hidden_states
+
+    if hidden_states is None or len(hidden_states) < 2:
+        return []
+
+    fields = []
+
+    for ell in range(len(hidden_states) - 1):
+        h_in = hidden_states[ell][0].detach().float()
+        h_out = hidden_states[ell + 1][0].detach().float()
+
+        T, D = h_in.shape
+
+        if T > max_tokens:
+            idx = torch.linspace(0, T - 1, max_tokens).long()
+            h_in = h_in[idx]
+            h_out = h_out[idx]
+            T = max_tokens
+
+        delta = h_out - h_in
+
+        h_in_c = h_in - h_in.mean(0)
+        delta_c = delta - delta.mean(0)
+
+        try:
+            J_residual = torch.linalg.lstsq(h_in_c, delta_c).solution
+            J = torch.eye(D, device=device) + J_residual
+        except Exception:
+            J = torch.eye(D, device=device)
+            J_residual = torch.zeros(D, D, device=device)
+
+        divergence = torch.trace(J).item()
+
+        J_sym = (J + J.T) / 2
+        J_antisym = (J - J.T) / 2
+
+        curl = torch.norm(J_antisym, p='fro').item()
+
+        trace_sym = torch.trace(J_sym)
+        shear_tensor = J_sym - (trace_sym / D) * torch.eye(D, device=device)
+        shear = torch.norm(shear_tensor, p='fro').item()
+
+        try:
+            U, S, Vh = torch.linalg.svd(J)
+            singular_values = S.cpu().numpy()
+            principal_directions = Vh.cpu().numpy()
+            log_det = torch.log(S.clamp(min=1e-10)).sum().item()
+            anisotropy = (S.max() / S.min().clamp(min=1e-10)).item()
+        except Exception:
+            singular_values = np.ones(D)
+            principal_directions = np.eye(D)
+            log_det = 0.0
+            anisotropy = 1.0
+
+        per_token_div = np.zeros(T)
+        per_token_curl = np.zeros(T)
+        per_token_shear = np.zeros(T)
+
+        for t in range(T):
+            h_norm = h_in[t].norm().item() + 1e-10
+            d_norm = delta[t].norm().item()
+
+            out_norm = h_out[t].norm().item()
+            per_token_div[t] = (out_norm / h_norm)
+
+            cos_angle = (F.cosine_similarity(
+                h_in[t].unsqueeze(0), delta[t].unsqueeze(0)
+            )).item()
+            per_token_curl[t] = np.sqrt(max(0, 1 - cos_angle**2))
+
+            radial_component = cos_angle * d_norm
+            tangential_component = np.sqrt(max(0, d_norm**2 - radial_component**2))
+            per_token_shear[t] = tangential_component / (h_norm + 1e-10)
+
+        fields.append({
+            'layer': ell,
+            'jacobian': J.cpu().numpy(),
+            'divergence': divergence,
+            'curl': curl,
+            'shear': shear,
+            'singular_values': singular_values,
+            'log_det': log_det,
+            'per_token_divergence': per_token_div,
+            'per_token_curl': per_token_curl,
+            'per_token_shear': per_token_shear,
+            'principal_directions': principal_directions,
+            'anisotropy': anisotropy,
+        })
+
+    return fields
+
 class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
                  topo_enabled: bool = False, topo_every: int = 50,
@@ -50,6 +155,8 @@ class LivePlotter:
         self._kelp_step = 0
         self._kelp_data = None
         self._kelp_time_offset = 0.0
+        self._jacobi_subaxes = []  # per-layer inset axes for Jacobi PCA
+        self._jacobi_data = None
 
         # ── TDA config ──────────────────────────────────────────────────
         self.topo_enabled = topo_enabled and _HAS_RIPSER and _HAS_GUDHI and enabled
@@ -163,402 +270,11 @@ class LivePlotter:
         self._refresh()
         console.print("  [green]✓ Plot state restored — graphs continue from where they left off[/]")
 
-    def _draw_kelp_forest(self):
-        """
-        Render the kelp forest visualization onto self.ax_kelp.
-
-        Fibre-bundle interpretation (per paper §2):
-          - X axis  = token index i ∈ M  (base manifold — the "sea floor")
-          - Y axis  = layer depth ℓ = 0 … L  (embedding → output)
-          - Each kelp strand = one fibre F_i = (V_i^(0), …, V_i^(L))
-          - Within each strand, there are exactly n_layers discrete segments
-          - Sway amplitude  ∝ mean activation norm   (proxy for ‖Φ^(ℓ)‖, divergence)
-          - Sway frequency  ∝ std of activation norms (proxy for shear anisotropy)
-          - Lean / twist    ∝ cosine drift            (proxy for Procrustes deviation / connection strength)
-          - Color intensity ∝ per-token norm at that layer
-          - ALL values are deterministic — derived solely from hidden_states
-
-        No randomness anywhere. Every visual element is a function of the
-        network's actual activation geometry.
-        """
-        ax = self.ax_kelp
-        if ax is None or self._kelp_data is None:
-            return
-
-        ax.clear()
-        ax.set_facecolor("#020a1a")
-        ax.set_title(
-                f"Kelp Forest — Fibre Bundle Dynamics  (step {self._kelp_data['step']})",
-                fontsize=10, fontweight="bold", color="#c0d8e8",
-                )
-
-        data = self._kelp_data
-        n_layers = data["n_layers"]       # number of hidden states (embedding + L blocks)
-        n_tokens = data["n_tokens"]
-        layer_stats = data["layer_stats"]
-        t_anim = self._kelp_time_offset
-
-        if n_tokens == 0 or n_layers < 1:
-            ax.text(0.5, 0.5, "Not enough data",
-                    ha="center", va="center", fontsize=11, alpha=0.4,
-                    color="#6a9ab8", transform=ax.transAxes)
-            return
-
-        # ── Normalize stats for visual mapping ──────────────────────────
-        all_mean_norms = [s["mean_norm"] for s in layer_stats]
-        max_mean_norm = max(all_mean_norms) if max(all_mean_norms) > 0 else 1.0
-
-        all_std_norms = [s["std_norm"] for s in layer_stats]
-        max_std_norm = max(all_std_norms) if max(all_std_norms) > 0 else 1.0
-
-        all_drifts = [s["cosine_drift"] for s in layer_stats]
-        max_drift = max(abs(d) for d in all_drifts) if any(d != 0 for d in all_drifts) else 1.0
-
-        # Global token norm for color normalization
-        all_token_norms = []
-        for s in layer_stats:
-            all_token_norms.extend(s["token_norms"].tolist())
-        global_max_tnorm = max(all_token_norms) if all_token_norms and max(all_token_norms) > 0 else 1.0
-
-        # ── Layout parameters ───────────────────────────────────────────
-        x_margin = 0.08
-        y_floor = 0.05
-        y_top = 0.92
-        total_height = y_top - y_floor
-
-        # ── Draw layer zone backgrounds ─────────────────────────────────
-        # Each layer gets a band whose brightness is derived from that
-        # layer's mean norm — NOT arbitrary colors.
-        for li in range(n_layers):
-            frac_lo = li / n_layers
-            frac_hi = (li + 1) / n_layers
-            y_lo = y_floor + frac_lo * total_height
-            y_hi = y_floor + frac_hi * total_height
-
-            # Brightness from mean norm of this layer (deterministic)
-            norm_frac = layer_stats[li]["mean_norm"] / max_mean_norm
-            # Map to a subtle blue-dark range
-            r = 0.02 + 0.04 * norm_frac
-            g = 0.06 + 0.06 * norm_frac
-            b = 0.10 + 0.10 * norm_frac
-            zone_alpha = 0.3 + 0.2 * norm_frac
-            ax.axhspan(y_lo, y_hi, facecolor=(r, g, b), alpha=zone_alpha, zorder=0)
-
-        # ── Draw sea floor (deterministic sine waves) ───────────────────
-        floor_xs = np.linspace(0, 1, 200)
-        floor_ys = y_floor + 0.008 * np.sin(floor_xs * 15 + t_anim * 0.3) + \
-                0.004 * np.sin(floor_xs * 37 + t_anim * 0.7)
-        ax.fill_between(floor_xs, 0, floor_ys, color="#1a0a30", alpha=0.8)
-        ax.plot(floor_xs, floor_ys, color="#4a2a6a", linewidth=1.0, alpha=0.6)
-
-        # ── Draw light rays (positions derived from layer stats) ────────
-        # Use the per-layer mean norms to position rays deterministically
-        from matplotlib.patches import Polygon as MplPolygon
-        n_rays = min(4, n_layers)
-        for ray_i in range(n_rays):
-            # Position derived from the layer's mean norm
-            stat_idx = int(ray_i * (n_layers - 1) / max(n_rays - 1, 1))
-            norm_val = layer_stats[stat_idx]["mean_norm"] / max_mean_norm
-            ray_x = 0.1 + ray_i * (0.8 / max(n_rays - 1, 1)) + 0.03 * np.sin(t_anim * 0.2 + norm_val * 6.28)
-            ray_width = 0.02 + 0.015 * norm_val
-            sway = 0.02 * np.sin(t_anim * 0.15 + ray_i * 1.618)
-            ray_verts = [
-                    (ray_x - ray_width, 1.0),
-                    (ray_x + ray_width, 1.0),
-                    (ray_x + ray_width * 2 + sway, 0.0),
-                    (ray_x - ray_width * 2 + sway, 0.0),
-                    ]
-            ray_patch = MplPolygon(ray_verts, closed=True,
-                                   facecolor="#4080b0", alpha=0.03)
-            ax.add_patch(ray_patch)
-
-        # ── Draw kelp strands (fibres) ──────────────────────────────────
-        # Each strand = one fibre F_i, with EXACTLY n_layers discrete
-        # segments. Each segment's geometry comes from that layer's stats.
-
-        max_display_tokens = min(n_tokens, 32)
-        if n_tokens > max_display_tokens:
-            token_indices = np.linspace(0, n_tokens - 1, max_display_tokens, dtype=int)
-        else:
-            token_indices = np.arange(n_tokens)
-
-        actual_spacing = (1.0 - 2 * x_margin) / max(len(token_indices) - 1, 1)
-
-        # Sub-segments per layer for smooth curves within each layer zone
-        sub_segments_per_layer = 8
-
-        from matplotlib.collections import LineCollection
-
-        for ti_display, ti in enumerate(token_indices):
-            base_x = x_margin + ti_display * actual_spacing
-
-            # Deterministic phase unique to this token, derived from its
-            # embedding-layer norm (the actual network value, not random)
-            tn_embed = layer_stats[0]["token_norms"]
-            tok_embed_norm = tn_embed[min(ti, len(tn_embed) - 1)] if len(tn_embed) > 0 else 0
-            phase = (tok_embed_norm / global_max_tnorm) * 6.2832  # map to [0, 2π]
-
-            # Build path: for each layer, create sub_segments_per_layer points
-            all_xs = []
-            all_ys = []
-            all_colors = []
-            all_layer_ids = []
-
-            for li in range(n_layers):
-                mean_n = layer_stats[li]["mean_norm"]
-                std_n = layer_stats[li]["std_norm"]
-                drift = layer_stats[li]["cosine_drift"]
-
-                # Per-token norm at this layer
-                tn = layer_stats[li]["token_norms"]
-                tok_norm = tn[min(ti, len(tn) - 1)] if len(tn) > 0 else 0
-
-                # Sway parameters — ALL from real network values
-                amplitude = (mean_n / max_mean_norm) * 0.04
-                freq = 1.0 + 2.0 * (std_n / max_std_norm)
-                lean = (drift / max_drift) * 0.03 if max_drift > 0 else 0
-
-                for si in range(sub_segments_per_layer):
-                    sub_frac = si / sub_segments_per_layer
-                    # Global vertical fraction
-                    global_frac = (li + sub_frac) / n_layers
-                    y_val = y_floor + global_frac * total_height
-
-                    # Height-dependent amplitude scaling (taller = more sway)
-                    height_scale = 0.3 + 0.7 * global_frac
-
-                    sway = (amplitude * height_scale *
-                            np.sin(t_anim * freq * 0.8 + phase + global_frac * 3.0)
-                            + amplitude * 0.4 * height_scale *
-                            np.sin(t_anim * freq * 1.3 + phase * 2 + global_frac * 5.0)
-                            + lean * global_frac *
-                            np.sin(t_anim * 0.5 + phase))
-
-                    all_xs.append(base_x + sway)
-                    all_ys.append(y_val)
-                    all_colors.append(tok_norm / global_max_tnorm)
-                    all_layer_ids.append(li)
-
-            # Add the final point at the top
-            li_last = n_layers - 1
-            tn_last = layer_stats[li_last]["token_norms"]
-            tok_norm_last = tn_last[min(ti, len(tn_last) - 1)] if len(tn_last) > 0 else 0
-            mean_n_last = layer_stats[li_last]["mean_norm"]
-            std_n_last = layer_stats[li_last]["std_norm"]
-            drift_last = layer_stats[li_last]["cosine_drift"]
-            amplitude_last = (mean_n_last / max_mean_norm) * 0.04
-            freq_last = 1.0 + 2.0 * (std_n_last / max_std_norm)
-            lean_last = (drift_last / max_drift) * 0.03 if max_drift > 0 else 0
-
-            sway_top = (amplitude_last * np.sin(t_anim * freq_last * 0.8 + phase + 3.0)
-                        + amplitude_last * 0.4 * np.sin(t_anim * freq_last * 1.3 + phase * 2 + 5.0)
-                        + lean_last * np.sin(t_anim * 0.5 + phase))
-            all_xs.append(base_x + sway_top)
-            all_ys.append(y_top)
-            all_colors.append(tok_norm_last / global_max_tnorm)
-            all_layer_ids.append(li_last)
-
-            all_xs = np.array(all_xs)
-            all_ys = np.array(all_ys)
-            all_colors = np.array(all_colors)
-            all_layer_ids = np.array(all_layer_ids)
-
-            # Build line segments
-            points = np.array([all_xs, all_ys]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-            # Color: green hue, brightness from token norm at that layer
-            # Per-layer hue shift derived from that layer's cosine drift
-            colors_rgba = []
-            for ci in range(len(segments)):
-                intensity = 0.25 + 0.75 * all_colors[ci]
-                li_ci = all_layer_ids[ci]
-                # Hue shift from cosine drift (deterministic, from network)
-                drift_ci = layer_stats[li_ci]["cosine_drift"]
-                drift_norm = abs(drift_ci) / max_drift if max_drift > 0 else 0
-                r = 0.05 + 0.12 * drift_norm
-                g = 0.15 + 0.35 * intensity
-                b = 0.10 + 0.15 * drift_norm
-                a = 0.4 + 0.5 * intensity
-                colors_rgba.append((r, g, b, a))
-
-            # Strand thickness: thicker at base, thinner at top
-            fracs = np.linspace(0, 1, len(segments))
-            linewidths = 2.5 - 1.5 * fracs
-
-            lc = LineCollection(segments, colors=colors_rgba, linewidths=linewidths,
-                                capstyle="round", joinstyle="round")
-            ax.add_collection(lc)
-
-            # ── Draw nodes at EACH layer boundary ───────────────────────
-            # These are the discrete fibre morphism points Φ^(ℓ)
-            for li in range(n_layers):
-                # Find the exact position of this layer boundary on the strand
-                seg_idx = li * sub_segments_per_layer
-                seg_idx = min(seg_idx, len(all_xs) - 1)
-                node_x = all_xs[seg_idx]
-                node_y = all_ys[seg_idx]
-
-                # Node size from layer's mean norm
-                node_size = 2.0 + 3.0 * (layer_stats[li]["mean_norm"] / max_mean_norm)
-
-                # Color from per-token norm at this layer
-                tn_li = layer_stats[li]["token_norms"]
-                tok_n = tn_li[min(ti, len(tn_li) - 1)] if len(tn_li) > 0 else 0
-                node_intensity = tok_n / global_max_tnorm
-
-                node_color = (
-                        0.2 + 0.3 * node_intensity,
-                        0.5 + 0.4 * node_intensity,
-                        0.3 + 0.2 * node_intensity,
-                        0.6 + 0.3 * node_intensity,
-                        )
-                ax.plot(node_x, node_y, 'o',
-                        color=node_color, markersize=node_size,
-                        markeredgecolor=(0.4, 0.8, 0.5, 0.3),
-                        markeredgewidth=0.5, zorder=4)
-
-            # ── Draw fronds at layer midpoints (deterministic) ──────────
-            # One frond per layer, positioned at the midpoint of each
-            # layer zone. Direction derived from cosine drift sign.
-            for li in range(n_layers):
-                mid_seg = li * sub_segments_per_layer + sub_segments_per_layer // 2
-                mid_seg = min(mid_seg, len(all_xs) - 1)
-                fx = all_xs[mid_seg]
-                fy = all_ys[mid_seg]
-
-                drift_li = layer_stats[li]["cosine_drift"]
-                # Frond direction: sign of drift determines left/right
-                frond_sign = 1.0 if drift_li >= 0 else -1.0
-                # Alternate sides for even/odd tokens
-                if ti_display % 2 == 1:
-                    frond_sign *= -1.0
-
-                frond_angle = frond_sign * (0.4 + 0.3 * abs(drift_li) / max_drift) if max_drift > 0 else frond_sign * 0.4
-                frond_angle += 0.1 * np.sin(t_anim * 0.7 + phase + li)
-
-                # Frond length from std norm (more variation = longer frond)
-                frond_len = 0.012 + 0.01 * (layer_stats[li]["std_norm"] / max_std_norm)
-                frond_dx = np.cos(frond_angle) * frond_len
-                frond_dy = np.sin(frond_angle) * frond_len
-
-                frond_intensity = layer_stats[li]["mean_norm"] / max_mean_norm
-                ax.plot([fx, fx + frond_dx], [fy, fy + frond_dy],
-                        color=(0.10 + 0.08 * frond_intensity,
-                               0.35 + 0.15 * frond_intensity,
-                               0.20 + 0.08 * frond_intensity,
-                               0.35 + 0.2 * frond_intensity),
-                        linewidth=1.0)
-
-            # ── Root anchor ─────────────────────────────────────────────
-            from matplotlib.patches import Ellipse
-            anchor = Ellipse((base_x, y_floor), width=0.012, height=0.008,
-                             facecolor="#2a1540", edgecolor="#4a2a6a",
-                             linewidth=0.5, alpha=0.7)
-            ax.add_patch(anchor)
-
-        # ── Layer boundary lines ────────────────────────────────────────
-        for li in range(n_layers + 1):
-            frac = li / n_layers
-            y_line = y_floor + frac * total_height
-
-            if li == 0 or li == n_layers:
-                ax.axhline(y=y_line, color="#5a8aaa", linewidth=1.0,
-                           linestyle="-", alpha=0.4, zorder=2)
-            else:
-                ax.axhline(y=y_line, color="#4a7a9a", linewidth=0.8,
-                           linestyle="--", alpha=0.35, zorder=2)
-
-            # Layer labels
-            if li < n_layers:
-                label_y = y_floor + (li + 0.5) / n_layers * total_height
-                if li == 0:
-                    label = "Embed"
-                elif li == n_layers - 1:
-                    label = "Output"
-                else:
-                    label = f"L{li}"
-
-                ax.text(0.995, label_y, label,
-                        fontsize=7, color="#6a9aba", alpha=0.6,
-                        ha="right", va="center", transform=ax.get_yaxis_transform(),
-                        fontweight="bold",
-                        bbox=dict(boxstyle="round,pad=0.15", facecolor="#0a1a2a",
-                                  edgecolor="none", alpha=0.5))
-
-        # ── Water caustics (deterministic, from layer stats) ────────────
-        # One caustic per layer, position and size from that layer's stats
-        from matplotlib.patches import Circle
-        for li in range(min(n_layers, 8)):
-            norm_frac = layer_stats[li]["mean_norm"] / max_mean_norm
-            std_frac = layer_stats[li]["std_norm"] / max_std_norm
-            cx = 0.1 + li * (0.8 / max(n_layers - 1, 1)) + 0.03 * np.sin(t_anim * 0.4 + norm_frac * 6.28)
-            cy = y_floor + (li + 0.5) / n_layers * total_height
-            caustic_alpha = 0.01 + 0.015 * std_frac
-            caustic_radius = 0.04 + 0.03 * norm_frac
-            caustic = Circle((cx, cy), radius=caustic_radius,
-                             facecolor="#60b0d0",
-                             alpha=max(0, min(caustic_alpha, 0.03)),
-                             edgecolor="none")
-            ax.add_patch(caustic)
-
-        # ── Floating particles (deterministic, from per-token norms) ────
-        # Instead of random particles, place one "spore" per token per
-        # layer, at a position derived from that token's norm at that layer.
-        # This makes every particle a real data point.
-        n_display = len(token_indices)
-        for li in range(n_layers):
-            tn_li = layer_stats[li]["token_norms"]
-            for ti_d, ti in enumerate(token_indices):
-                tok_n = tn_li[min(ti, len(tn_li) - 1)] if len(tn_li) > 0 else 0
-                norm_frac = tok_n / global_max_tnorm
-
-                # Position: offset from the strand, derived from norm
-                # Small deterministic displacement so particles don't overlap strands
-                px = x_margin + ti_d * actual_spacing + 0.015 * np.sin(norm_frac * 6.28 + li * 1.618)
-                py = y_floor + (li + 0.5) / n_layers * total_height + 0.005 * np.cos(norm_frac * 6.28 + ti * 1.618)
-                py = np.clip(py, y_floor, y_top)
-
-                p_alpha = 0.08 + 0.15 * norm_frac
-                p_size = 0.3 + 1.2 * norm_frac
-
-                ax.plot(px, py, '.', color="#80c0e0",
-                        alpha=min(p_alpha, 0.25), markersize=p_size, zorder=5)
-
-        # ── Stats annotation ────────────────────────────────────────────
-        mean_norms_str = ", ".join(f"{s['mean_norm']:.1f}" for s in layer_stats[:6])
-        if n_layers > 6:
-            mean_norms_str += " …"
-        drift_str = ", ".join(f"{s['cosine_drift']:.3f}" for s in layer_stats[:6])
-        if n_layers > 6:
-            drift_str += " …"
-
-        ax.text(0.01, 0.98,
-                f"Layers: {n_layers}  Tokens: {n_tokens}  Fibres: {len(token_indices)}\n"
-                f"Mean‖h‖: [{mean_norms_str}]\n"
-                f"Drift:   [{drift_str}]",
-                fontsize=5.5, color="#5a8aaa", alpha=0.5,
-                ha="left", va="top", transform=ax.transAxes,
-                fontfamily="monospace")
-
-        # ── Axis limits and cleanup ─────────────────────────────────────
-        ax.set_xlim(-0.02, 1.02)
-        ax.set_ylim(-0.02, 1.02)
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-
     @torch.no_grad()
-    def update_kelp_forest(self, model: nn.Module, input_ids: torch.Tensor):
+    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
         """
-        Extract hidden-state statistics from the model and render the kelp forest.
-
-        Each kelp strand = one layer's embedding space.
-        The strand is rooted at the "index manifold" (bottom axis = token position).
-        Sway is driven by per-layer statistics:
-          - mean activation magnitude  → lateral sway amplitude
-          - std of activations         → sway frequency multiplier
-          - cross-layer cosine drift   → additional twist
+        Extract Jacobi fields from the residual stream and render them.
+        Called every batch; only redraws every kelp_every batches.
         """
         if not self.enabled:
             return
@@ -571,60 +287,255 @@ class LivePlotter:
         model.eval()
 
         try:
-            output = model(input_ids=input_ids, output_hidden_states=True)
-            hidden_states = output.hidden_states
-            if hidden_states is None or len(hidden_states) < 2:
+            fields = compute_layer_jacobi_fields(
+                model, input_ids, input_ids.device, max_tokens=64
+            )
+
+            if not fields:
                 return
 
-            # Gather per-layer statistics
-            layer_stats = []
-            prev_mean_vec = None
-            for li, hs in enumerate(hidden_states):
-                # hs shape: (B, T, D)
-                flat = hs.float().reshape(-1, hs.shape[-1])  # (B*T, D)
-                norms = flat.norm(dim=-1)  # (B*T,)
-                mean_norm = norms.mean().item()
-                std_norm = norms.std().item()
-                mean_vec = flat.mean(dim=0)  # (D,)
+            self._jacobi_data = {
+                'fields': fields,
+                'step': self._kelp_step,
+            }
 
-                # Cosine similarity to previous layer's mean vector
-                cosine_drift = 0.0
-                if prev_mean_vec is not None:
-                    cos = F.cosine_similarity(
-                            mean_vec.unsqueeze(0), prev_mean_vec.unsqueeze(0)
-                            ).item()
-                    cosine_drift = 1.0 - cos  # 0 = identical, ~2 = opposite
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, self._kelp_step
+            )
 
-                # Per-token norms for this layer (take first batch element)
-                token_norms = hs[0].float().norm(dim=-1).cpu().numpy()  # (T,)
+            # Force a FULL canvas redraw — inset axes require this
+            try:
+                self.fig.canvas.draw()
+                if not self.suppress_window:
+                    self.fig.canvas.flush_events()
+            except Exception:
+                pass
 
-                layer_stats.append({
-                    "mean_norm": mean_norm,
-                    "std_norm": std_norm,
-                    "cosine_drift": cosine_drift,
-                    "token_norms": token_norms,
-                    })
-                prev_mean_vec = mean_vec
-
-            self._kelp_data = {
-                    "layer_stats": layer_stats,
-                    "n_layers": len(hidden_states),
-                    "n_tokens": hidden_states[0].shape[1],
-                    "step": self._kelp_step,
-                    }
-
-            # Advance the sway "time" so animation progresses between updates
-            self._kelp_time_offset += 1.0
-
-            self._draw_kelp_forest()
-            self._refresh()
-
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            console.print(f"[yellow]⚠ Jacobi field error at step {self._kelp_step}: {e}[/]")
+            traceback.print_exc()
         finally:
             if was_training:
                 model.train()
 
+    def _draw_jacobi_fields(self, ax, jacobi_data, step):
+        """
+        Render N subplots (one per layer), each showing the Jacobi field as:
+          - Background color: divergence field (red=expanding, blue=contracting)
+            computed as the radial component of displacement at each grid point
+          - Overlaid arrows: the displacement vector field F(x) = (J-I)x
+            showing direction and magnitude of space deformation
+          - Text: div, curl, shear, anisotropy, top singular values
+
+        The Jacobian J^(ℓ) = I + ∇f^(ℓ) is projected onto its top-2
+        singular vectors to get a 2×2 matrix J_2d. The displacement
+        field F_2d = J_2d - I is then evaluated on a grid.
+        """
+        if ax is None or jacobi_data is None:
+            return
+
+        fields = jacobi_data['fields']
+        n_layers = len(fields)
+
+        if n_layers == 0:
+            ax.clear()
+            ax.set_facecolor("#0a0a1a")
+            ax.text(0.5, 0.5, "Waiting for hidden states...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            return
+
+        # ── Remove old inset axes ──────────────────────────────────────
+        for old_ax in self._jacobi_subaxes:
+            try:
+                old_ax.remove()
+            except Exception:
+                pass
+        self._jacobi_subaxes = []
+
+        # ── Clear the parent axis (container only) ─────────────────────
+        ax.clear()
+        ax.set_facecolor("#0a0a1a")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        # ── Grid layout ────────────────────────────────────────────────
+        n_cols = min(n_layers, 6)
+        n_rows = math.ceil(n_layers / n_cols)
+
+        pad_x = 0.02
+        pad_y = 0.10
+        cell_w = (1.0 - 2 * pad_x) / n_cols
+        cell_h = (1.0 - pad_y - 0.03) / n_rows
+        inset_margin = 0.006
+
+        parent_bbox = ax.get_position()
+        px0, py0 = parent_bbox.x0, parent_bbox.y0
+        pw, ph = parent_bbox.width, parent_bbox.height
+
+        # ── Grid resolutions ───────────────────────────────────────────
+        color_n = 40   # resolution of the background color field
+        arrow_n = 12   # resolution of the arrow grid (sparser for clarity)
+
+        for ell, f in enumerate(fields):
+            col = ell % n_cols
+            row = n_rows - 1 - (ell // n_cols)
+
+            fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
+            fy = py0 + ph * (0.03 + row * cell_h + inset_margin)
+            fw = pw * (cell_w - 2 * inset_margin)
+            fh = ph * (cell_h - 2 * inset_margin)
+
+            sub_ax = self.fig.add_axes([fx, fy, fw, fh])
+            sub_ax.set_facecolor("#0d1117")
+            self._jacobi_subaxes.append(sub_ax)
+
+            # ── Get the Jacobian and its SVD ───────────────────────────
+            J = f['jacobian']  # (D, D) numpy
+            D_dim = J.shape[0]
+
+            try:
+                U, S, Vh = np.linalg.svd(J)
+            except Exception:
+                S = np.ones(D_dim)
+                U = np.eye(D_dim)
+                Vh = np.eye(D_dim)
+
+            # ── Project J into the top-2 principal plane ───────────────
+            V2 = Vh[:2, :]          # (2, D)
+            J_2d = V2 @ J @ V2.T   # (2, 2) projected Jacobian
+            F_2d = J_2d - np.eye(2) # displacement field
+
+            # ── Background: dense divergence color field ───────────────
+            # At each grid point (x,y), compute displacement d = F_2d @ [x,y]
+            # then compute radial component: d · r_hat
+            # Positive = expanding outward, negative = contracting inward
+            c_coords = np.linspace(-1.0, 1.0, color_n)
+            cgx, cgy = np.meshgrid(c_coords, c_coords)
+
+            cdx = F_2d[0, 0] * cgx + F_2d[0, 1] * cgy
+            cdy = F_2d[1, 0] * cgx + F_2d[1, 1] * cgy
+
+            # Radial component of displacement (positive = outward = expanding)
+            r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
+            radial = (cdx * cgx + cdy * cgy) / r_mag
+
+            # Normalize for color mapping
+            r_absmax = max(np.abs(radial).max(), 1e-10)
+            div_color = radial / r_absmax  # in [-1, 1]
+
+            sub_ax.imshow(
+                div_color,
+                extent=[-1, 1, -1, 1],
+                origin='lower',
+                cmap='RdBu_r',
+                vmin=-1, vmax=1,
+                aspect='equal',
+                interpolation='bilinear',
+                alpha=0.6,
+            )
+
+            # ── Overlay: sparse vector field arrows ────────────────────
+            a_coords = np.linspace(-0.9, 0.9, arrow_n)
+            agx, agy = np.meshgrid(a_coords, a_coords)
+
+            adx = F_2d[0, 0] * agx + F_2d[0, 1] * agy
+            ady = F_2d[1, 0] * agx + F_2d[1, 1] * agy
+
+            mag = np.sqrt(adx**2 + ady**2)
+            mag_max = mag.max() if mag.max() > 1e-10 else 1.0
+
+            # Arrow color: same radial divergence metric
+            a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
+            a_rc_max = max(np.abs(a_radial).max(), 1e-10)
+            arrow_colors = (a_radial / a_rc_max).ravel()
+
+            sub_ax.quiver(
+                agx, agy, adx, ady,
+                arrow_colors,
+                cmap='RdBu_r',
+                clim=(-1, 1),
+                scale=mag_max * arrow_n * 0.9,
+                width=0.015,
+                headwidth=3.5,
+                headlength=4,
+                alpha=0.9,
+                zorder=2,
+            )
+
+            # ── Crosshairs ─────────────────────────────────────────────
+            sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
+            sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
+
+            # ── Annotations ────────────────────────────────────────────
+            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            div_val = f['divergence']
+            curl_val = f['curl']
+            shear_val = f['shear']
+            aniso_val = f['anisotropy']
+
+            sub_ax.set_title(
+                f"{layer_label}",
+                fontsize=6, fontweight="bold", color="#8ab8d8",
+                pad=1,
+            )
+
+            # Bottom-left: geometric invariants
+            sub_ax.text(
+                0.03, 0.03,
+                f"div={div_val:.1f} curl={curl_val:.2f}\n"
+                f"shear={shear_val:.2f} σ₁/σₙ={aniso_val:.1f}",
+                fontsize=4, color="#6a9ab8", alpha=0.8,
+                ha="left", va="bottom", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                          edgecolor="none", alpha=0.7),
+            )
+
+            # Top-right: top 3 singular values
+            top_svs = S[:3]
+            sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
+            sub_ax.text(
+                0.97, 0.97,
+                f"σ=[{sv_str}]",
+                fontsize=4, color="#4fc3f7", alpha=0.8,
+                ha="right", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+            )
+
+            # Top-left: 2×2 projected Jacobian values
+            sub_ax.text(
+                0.03, 0.97,
+                f"J₂=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
+                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
+                fontsize=3.5, color="#9ab8d8", alpha=0.6,
+                ha="left", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                          edgecolor="none", alpha=0.5),
+            )
+
+            sub_ax.set_xlim(-1.1, 1.1)
+            sub_ax.set_ylim(-1.1, 1.1)
+            sub_ax.set_aspect('equal')
+            sub_ax.tick_params(labelsize=0, length=0)
+            for spine in sub_ax.spines.values():
+                spine.set_color('#2a3a4a')
+                spine.set_linewidth(0.5)
+
+        # ── Parent axis title ──────────────────────────────────────────
+        ax.set_title(
+            f"Jacobi Fields — Per-Layer Space Deformation  "
+            f"(step {step})\n"
+            f"[Background color = divergence (red=expanding, blue=contracting) · "
+            f"Arrows = displacement direction & magnitude]",
+            fontsize=9, fontweight="bold", color="#c0d8e8",
+        )
 
     def accumulate_predictions(self, predictions: list):
         """Accumulate predictions across batches (call clear_predictions() at epoch start)."""
@@ -644,37 +555,28 @@ class LivePlotter:
     # ── Figure layout helpers ───────────────────────────────────────────
 
     def _build_figure_and_gridspec(self):
-        """Create the figure and return named axes based on topo mode."""
-        if self.topo_enabled:
-            fig = self.plt.figure(figsize=(26, 22))
-            gs = fig.add_gridspec(4, 3, hspace=0.50, wspace=0.35)
-            axes = {
-                "epoch":   fig.add_subplot(gs[0, 0]),
-                "batch":   fig.add_subplot(gs[0, 1]),
-                "lr":      fig.add_subplot(gs[0, 2]),
-                "val":     fig.add_subplot(gs[1, 0]),
-                "barcode": fig.add_subplot(gs[1, 1]),
-                "bd":      fig.add_subplot(gs[1, 2]),
-                "kelp":    fig.add_subplot(gs[2, 0:2]),
-                "diffs":   fig.add_subplot(gs[2, 2]),
-                "preds":   fig.add_subplot(gs[3, 0:2]),
-                "info":    fig.add_subplot(gs[3, 2]),
-            }
-        else:
-            fig = self.plt.figure(figsize=(24, 18))
-            gs = fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
-            axes = {
-                "epoch":   fig.add_subplot(gs[0, 0]),
-                "batch":   fig.add_subplot(gs[0, 1]),
-                "lr":      fig.add_subplot(gs[0, 2]),
-                "val":     fig.add_subplot(gs[1, 0]),
-                "diffs":   fig.add_subplot(gs[1, 1]),
-                "kelp":    fig.add_subplot(gs[1, 2]),
-                "preds":   fig.add_subplot(gs[2, 0:2]),
-                "info":    fig.add_subplot(gs[2, 2]),
-                "barcode": None,
-                "bd":      None,
-            }
+        """Create the figure and return named axes.
+
+        Layout (3 rows × 3 cols):
+          Row 0: [epoch loss] [batch loss (train EMA)] [learning rate]
+          Row 1: [jacobi fields ──────────────────────] [val batch loss]
+          Row 2: [predictions ────────────] [pred diffs] [model info]
+        """
+        fig = self.plt.figure(figsize=(26, 18))
+        gs = fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35,
+                              height_ratios=[1, 1.3, 1])
+        axes = {
+            "epoch":   fig.add_subplot(gs[0, 0]),
+            "batch":   fig.add_subplot(gs[0, 1]),
+            "lr":      fig.add_subplot(gs[0, 2]),
+            "kelp":    fig.add_subplot(gs[1, 0:2]),   # jacobi fields — wide
+            "val":     fig.add_subplot(gs[1, 2]),      # val batch loss — right
+            "preds":   fig.add_subplot(gs[2, 0]),
+            "diffs":   fig.add_subplot(gs[2, 1]),
+            "info":    fig.add_subplot(gs[2, 2]),
+            "barcode": None,
+            "bd":      None,
+        }
         return fig, axes
 
     def _setup_diffs_axis(self, ax):
@@ -688,10 +590,10 @@ class LivePlotter:
         self._scatter_diffs = None
 
     def _setup_kelp_axis(self, ax):
-        """Configure the kelp forest axis with placeholder text."""
-        ax.set_title("Kelp Forest — Embedding Space Dynamics",
-                      fontsize=10, fontweight="bold")
-        ax.set_facecolor("#020a1a")
+        """Configure the Jacobi field axis with placeholder text."""
+        ax.set_title("Jacobi Fields — Per-Layer Space Deformation",
+                      fontsize=10, fontweight="bold", color="#c0d8e8")
+        ax.set_facecolor("#0a0a1a")
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
         ax.set_xticks([])
@@ -700,6 +602,7 @@ class LivePlotter:
                 ha="center", va="center", fontsize=11, alpha=0.4,
                 color="#6a9ab8", transform=ax.transAxes)
         self.ax_kelp = ax
+        self._jacobi_subaxes = []
 
     def _setup_epoch_axis(self, ax):
         """Configure the epoch loss axis and create its line artists."""
@@ -753,35 +656,6 @@ class LivePlotter:
         )
         ax.legend(loc="upper right", fontsize=8)
 
-    def _setup_barcode_axis(self, ax):
-        """Configure the persistence landscape axis (topo mode only)."""
-        if ax is None:
-            return
-        ax.set_title("Persistence Landscapes (H₁, all layers)",
-                      fontsize=10, fontweight="bold")
-        ax.text(0.5, 0.5, "Waiting for data...",
-                ha="center", va="center",
-                transform=ax.transAxes, fontsize=11, alpha=0.4)
-        ax.grid(True, alpha=0.2)
-
-    def _setup_bd_axis(self, ax):
-        """Configure the Wasserstein heatmap axis with a permanent colorbar."""
-        if ax is None:
-            return
-        ax.set_title("Wasserstein-1 Distance Heatmap (layers × layers)",
-                      fontsize=10, fontweight="bold")
-        self._wass_im = ax.imshow(
-            np.zeros((1, 1)),
-            cmap="inferno", interpolation="nearest",
-            origin="lower", aspect="equal", vmin=0.0, vmax=1.0,
-        )
-        self._wass_cbar = self.fig.colorbar(
-            self._wass_im, ax=ax, fraction=0.046, pad=0.04,
-        )
-        self._wass_cbar.ax.tick_params(labelsize=6)
-        self._wass_cbar.set_label("Relative W₁", fontsize=7)
-        self._wass_ax_pos = ax.get_position()
-
     def _setup_preds_axis(self, ax):
         """Configure the predictions text panel."""
         ax.set_xlim(0, 1)
@@ -807,10 +681,6 @@ class LivePlotter:
         ]
         if self.ax_diffs is not None:
             data_axes.append(self.ax_diffs)
-        if self.ax_barcode is not None:
-            data_axes.append(self.ax_barcode)
-        if self.ax_bd is not None:
-            data_axes.append(self.ax_bd)
         return data_axes
 
     def _apply_figure_chrome(self):
@@ -847,13 +717,13 @@ class LivePlotter:
 
         # 3. Configure each axis (order doesn't matter — no dependencies)
         self._setup_diffs_axis(named_axes["diffs"])
+        self._jacobi_subaxes = []
+        self._jacobi_data = None
         self._setup_kelp_axis(named_axes["kelp"])
         self._setup_epoch_axis(named_axes["epoch"])
         self._setup_batch_axis(named_axes["batch"])
         self._setup_lr_axis(named_axes["lr"])
         self._setup_val_axis(named_axes["val"])
-        self._setup_barcode_axis(self.ax_barcode)
-        self._setup_bd_axis(self.ax_bd)
         self._setup_preds_axis(named_axes["preds"])
         self._setup_info_axis(named_axes["info"])
 

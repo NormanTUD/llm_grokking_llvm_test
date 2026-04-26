@@ -821,11 +821,6 @@ class ReplayBuffer:
     """
     Stores a fraction of generated programs and mixes them back into
     future batches.
-
-    Args:
-        save_rate:    probability of saving any given generated sample (e.g. 0.10)
-        sprinkle_rate: fraction of each batch to fill from the buffer (e.g. 0.10)
-        max_size:     maximum number of samples to retain in the buffer
     """
 
     def __init__(self, save_rate: float = 0.10, sprinkle_rate: float = 0.10,
@@ -833,43 +828,32 @@ class ReplayBuffer:
         self.save_rate = save_rate
         self.sprinkle_rate = sprinkle_rate
         self.max_size = max_size
-        self._buffer: List[Tuple[List[int], int]] = []  # (token_ids, prompt_len)
+        self._buffer: deque = deque(maxlen=max_size)  # ← O(1) eviction
         self._lock = threading.Lock()
         self._total_saved = 0
         self._total_sprinkled = 0
 
     def maybe_save(self, samples: List[Tuple[List[int], int]]):
-        """
-        Probabilistically save samples into the buffer.
-        Each sample is independently saved with probability `save_rate`.
-        """
         with self._lock:
             for sample in samples:
                 if random.random() < self.save_rate:
-                    self._buffer.append(sample)
+                    self._buffer.append(sample)  # deque auto-evicts oldest
                     self._total_saved += 1
-                    # Evict oldest if over capacity
-                    if len(self._buffer) > self.max_size:
-                        self._buffer.pop(0)
 
     def sprinkle(self, batch_size: int) -> List[Tuple[List[int], int]]:
-        """
-        Return a list of replayed samples to mix into the current batch.
-        The number of samples is `floor(batch_size * sprinkle_rate)`,
-        capped by buffer availability.
-        """
         n_sprinkle = int(batch_size * self.sprinkle_rate)
         if n_sprinkle == 0 or not self._buffer:
             return []
 
         with self._lock:
             n_sprinkle = min(n_sprinkle, len(self._buffer))
-            chosen = random.sample(self._buffer, n_sprinkle)
+            # random.sample doesn't work on deque directly in all Python versions
+            buffer_list = list(self._buffer)
+            chosen = random.sample(buffer_list, n_sprinkle)
             self._total_sprinkled += n_sprinkle
             return chosen
 
     def get_state(self) -> dict:
-        """Serialize buffer for checkpoint saving."""
         with self._lock:
             return {
                 "buffer": list(self._buffer),
@@ -878,11 +862,10 @@ class ReplayBuffer:
             }
 
     def restore_state(self, state: dict):
-        """Restore buffer from checkpoint."""
         if not state:
             return
         with self._lock:
-            self._buffer = state.get("buffer", [])
+            self._buffer = deque(state.get("buffer", []), maxlen=self.max_size)
             self._total_saved = state.get("total_saved", 0)
             self._total_sprinkled = state.get("total_sprinkled", 0)
         console.print(
@@ -902,8 +885,6 @@ class ReplayBuffer:
                 "total_saved": self._total_saved,
                 "total_sprinkled": self._total_sprinkled,
             }
-
-
 
 args = parse_args()
 
@@ -945,34 +926,30 @@ signal.signal(signal.SIGINT, _sigint_handler)
 def wait_for_pid(pid: int, poll_interval: float = 2.0):
     """Block until the given PID is no longer running."""
     console.print(
-            Panel(
-                f"[bold yellow]⏳ Waiting for PID {pid} to finish before starting training...[/]\n"
-                f"[dim]Polling every {poll_interval}s[/]",
-                border_style="yellow",
-                )
-            )
-    while True:
-        try:
-            os.kill(pid, 0)  # signal 0: doesn't kill, just checks existence
-        except OSError as e:
-            import errno
-            if e.errno == errno.ESRCH:
-                break
-            raise
-        except PermissionError:
-            # Process exists but we don't own it — still alive
-            pass
-        else:
-            # No exception → process is alive
-            pass
+        Panel(
+            f"[bold yellow]⏳ Waiting for PID {pid} to finish before starting training...[/]\n"
+            f"[dim]Polling every {poll_interval}s[/]",
+            border_style="yellow",
+        )
+    )
+    while _pid_alive(pid):
         time.sleep(poll_interval)
-
-        # Double-check with /proc on Linux or `ps` as fallback
-        if not _pid_alive(pid):
-            break
 
     console.print(f"[bold green]✅ PID {pid} is done. Proceeding to training.[/]")
 
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if pid is still in the process table."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we don't own it — still alive
+        return True
+    except OSError:
+        return False
+    return True
 
 def _pid_alive(pid: int) -> bool:
     """Return True if pid is still in the process table."""
@@ -1176,15 +1153,22 @@ def generate_batch(
         ) -> List[List[int]]:
     samples = []
     attempts = 0
-    while len(samples) < batch_size and attempts < batch_size * 5:
+    max_attempts = batch_size * 5
+    while len(samples) < batch_size and attempts < max_attempts:
         attempts += 1
         s = generate_single_sample(
                 tokenizer, max_params, max_ops, allowed_ops, param_range, max_seq_len
                 )
         if s is not None:
             samples.append(s)
-    return samples
 
+    if len(samples) < batch_size and len(samples) > 0:
+        console.print(
+            f"  [dim yellow]⚠ Only generated {len(samples)}/{batch_size} samples "
+            f"after {max_attempts} attempts[/]"
+        )
+
+    return samples
 
 def collate_batch(batch, pad_id=0, tokenizer=None):
     max_len = max(len(s) for s, _ in batch)
@@ -1202,21 +1186,19 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
         inp = padded[:-1]
         tgt = padded[1:]
 
-        # Mask out everything before the answer
         for i in range(min(prompt_len - 1, len(tgt))):
             tgt[i] = pad_id
 
         input_ids.append(inp)
         target_ids.append(tgt)
 
-        # Value position = end of prompt (where the answer starts)
         vp = max(0, prompt_len - 1)
-        vt = float("nan")
+        vt = 0.0  # ← default sentinel instead of NaN
         parseable = False
 
         if prompt_len > 0:
             answer_start = prompt_len
-            answer_end = len(s) - 1  # exclude <eos>
+            answer_end = len(s) - 1
             answer_ids = s[answer_start:answer_end]
 
             try:
@@ -1224,19 +1206,20 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
                 vt = float(int(answer_str))
                 parseable = True
             except (ValueError, TypeError):
-                pass
+                vt = 0.0  # explicit sentinel
+                parseable = False
 
         value_positions.append(vp)
         value_targets.append(vt)
         answer_parseable.append(parseable)
 
     return (
-            torch.tensor(input_ids, dtype=torch.long),
-            torch.tensor(target_ids, dtype=torch.long),
-            torch.tensor(value_positions, dtype=torch.long),
-            torch.tensor(value_targets, dtype=torch.float),
-            torch.tensor(answer_parseable, dtype=torch.bool),
-            )
+        torch.tensor(input_ids, dtype=torch.long),
+        torch.tensor(target_ids, dtype=torch.long),
+        torch.tensor(value_positions, dtype=torch.long),
+        torch.tensor(value_targets, dtype=torch.float),
+        torch.tensor(answer_parseable, dtype=torch.bool),
+    )
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                  max_params=4, max_ops=6,
@@ -3022,8 +3005,7 @@ def _save_checkpoint(
     return full_path
 
 def _find_latest_checkpoint(run_path: str) -> Optional[str]:
-    """Find the most recent VALID model_epoch_*.pt checkpoint in a run directory.
-    Skips corrupted checkpoints (e.g. from interrupted saves)."""
+    """Find the most recent VALID model_epoch_*.pt checkpoint in a run directory."""
     import glob
     pattern = os.path.join(run_path, "model_epoch_*.pt")
     checkpoints = glob.glob(pattern)
@@ -3037,14 +3019,21 @@ def _find_latest_checkpoint(run_path: str) -> Optional[str]:
         except ValueError:
             return -1
 
-    # Sort by epoch number, highest first
     checkpoints.sort(key=_epoch_num, reverse=True)
 
-    # Try each checkpoint from newest to oldest, skip corrupt ones
     for ckpt in checkpoints:
         try:
-            # Quick validation: try to open the zip and list contents
-            torch.load(ckpt, map_location="cpu", weights_only=False)
+            # Light validation: just check it's a valid zip/tar archive
+            # by loading only the keys, not the full tensors
+            import zipfile
+            if zipfile.is_zipfile(ckpt):
+                with zipfile.ZipFile(ckpt, 'r') as zf:
+                    names = zf.namelist()
+                    if not names:
+                        raise ValueError("Empty checkpoint archive")
+            else:
+                # Fallback: try loading with map_location=meta to avoid RAM usage
+                torch.load(ckpt, map_location="meta", weights_only=False)
             return ckpt
         except Exception as e:
             epoch_n = _epoch_num(ckpt)
@@ -3052,7 +3041,6 @@ def _find_latest_checkpoint(run_path: str) -> Optional[str]:
                 f"  [yellow]⚠ Checkpoint model_epoch_{epoch_n}.pt is corrupt "
                 f"(likely interrupted save), skipping...[/]"
             )
-            # Optionally remove the corrupt file
             try:
                 os.remove(ckpt)
                 console.print(f"  [dim]🗑️  Removed corrupt checkpoint: {os.path.basename(ckpt)}[/]")
@@ -3641,7 +3629,7 @@ def _run_train_epoch(
 
             plotter.update_batch(bl)
             plotter.update_topo(model, inp)
-            plotter.update_kelp_forest(model, inp)
+            plotter.update_jacobi_fields(model, inp)
 
             if preds:
                 plotter.accumulate_predictions(preds)
@@ -4181,30 +4169,30 @@ def train(args: argparse.Namespace):
 # 11.  ENTRY POINT
 # ════════════════════════════════════════════════════════════════════════════
 
-
+# From train.py — existing but incomplete
 def compute_jacobian_spectra(model, input_ids, device):
     """Compute singular values of the per-layer Jacobian via finite differences."""
     model.eval()
-    output = model(input_ids=input_ids, output_hidden_states=True)
+    with torch.no_grad():
+        output = model(input_ids=input_ids, output_hidden_states=True)
     hidden_states = output.hidden_states
+
+    if hidden_states is None:
+        return []
 
     spectra = []
     for ell in range(len(hidden_states) - 1):
-        h_in = hidden_states[ell][0].detach()    # (T, D)
-        h_out = hidden_states[ell + 1][0].detach()  # (T, D)
-        delta = h_out - h_in  # residual delta
+        h_in = hidden_states[ell][0].detach().float()   # (T, D)
+        h_out = hidden_states[ell + 1][0].detach().float()  # (T, D)
+        delta = h_out - h_in
 
-        # Estimate local Jacobian via SVD of the delta cloud
-        # Center both
         h_in_c = h_in - h_in.mean(0)
         delta_c = delta - delta.mean(0)
 
-        # Least-squares Jacobian: delta ≈ h_in @ J^T
-        # J = (h_in^T h_in)^{-1} h_in^T delta
         try:
             J = torch.linalg.lstsq(h_in_c, delta_c).solution  # (D, D)
             svs = torch.linalg.svdvals(J).cpu().numpy()
-        except:
+        except Exception:
             svs = np.zeros(h_in.shape[-1])
         spectra.append(svs)
 
@@ -4213,14 +4201,18 @@ def compute_jacobian_spectra(model, input_ids, device):
 def compute_jacobian_invariants(spectra_or_jacobians):
     """From per-layer Jacobians, extract div/curl/shear per token."""
     results = []
-    for J in jacobians:  # J: (D, D) per layer
-        div = torch.trace(J).item()
+    for J in spectra_or_jacobians:  # ← was `jacobians` (undefined)
+        # J should be a 2D tensor (D, D)
+        if isinstance(J, np.ndarray):
+            J = torch.from_numpy(J).float()
+        D = J.shape[0]
+        div_val = torch.trace(J).item()
         J_antisym = (J - J.T) / 2
-        curl = torch.norm(J_antisym, p='fro').item()
+        curl_val = torch.norm(J_antisym, p='fro').item()
         J_sym = (J + J.T) / 2
-        shear_mat = J_sym - (torch.trace(J_sym) / J.shape[0]) * torch.eye(J.shape[0], device=J.device)
-        shear = torch.norm(shear_mat, p='fro').item()
-        results.append({'div': div, 'curl': curl, 'shear': shear})
+        shear_mat = J_sym - (torch.trace(J_sym) / D) * torch.eye(D, device=J.device)
+        shear_val = torch.norm(shear_mat, p='fro').item()
+        results.append({'div': div_val, 'curl': curl_val, 'shear': shear_val})
     return results
 
 def compute_cka_matrix(hidden_states):
