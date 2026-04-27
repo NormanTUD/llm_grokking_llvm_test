@@ -319,6 +319,102 @@ class LivePlotter:
         finally:
             _restore_c_stderr()
 
+        # ── Title for the parent axis ──────────────────────────────────
+        ax.set_title(
+            f"Jacobi Fields — Per-Layer Space Deformation  "
+            f"(step {step})\n"
+            f"[Background = divergence (red=expanding, blue=contracting) · "
+            f"Arrows = displacement field]",
+            fontsize=9, fontweight="bold", color="#c0d8e8",
+        )
+
+
+
+    def _remove_jacobi_subaxes(self):
+        """Safely remove all Jacobi inset sub-axes from the figure."""
+        for old_ax in self._jacobi_subaxes:
+            try:
+                old_ax.remove()
+            except Exception:
+                try:
+                    self.fig.delaxes(old_ax)
+                except Exception:
+                    pass
+        self._jacobi_subaxes = []
+
+
+
+    @torch.no_grad()
+    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
+        """
+        Extract Jacobi fields from the residual stream and render them.
+        Called every batch; only recomputes every kelp_every batches.
+        """
+        if not self.enabled:
+            return
+
+        self._kelp_step += 1
+
+        should_draw = (self._kelp_step == 1) or (self._kelp_step % self.kelp_every == 0)
+        if not should_draw:
+            return
+
+        was_training = model.training
+        model.eval()
+
+        try:
+            fields = compute_layer_jacobi_fields(
+                model, input_ids, input_ids.device, max_tokens=64
+            )
+
+            if not fields:
+                return
+
+            # Use a monotonically increasing draw key that is NEVER reused.
+            # _global_batch is incremented once per batch in update_batch(),
+            # but update_jacobi_fields is only called every kelp_every batches,
+            # so the draw_key is always different between qualifying calls.
+            draw_key = self._global_batch
+
+            self._jacobi_data = {
+                'fields': fields,
+                'step': self._kelp_step,
+                'draw_key': draw_key,
+            }
+
+            # Remove old inset axes BEFORE clearing the parent
+            self._remove_jacobi_subaxes()
+
+            # Invalidate the guard so _draw_jacobi_fields will execute
+            self._jacobi_drawn_step = -1
+
+            # Draw the new fields
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, draw_key
+            )
+
+            # Force the canvas to actually display the new sub-axes.
+            # fig.canvas.draw() alone is NOT sufficient on TkAgg —
+            # we must pump the GUI event loop via plt.pause().
+            _suppress_c_stderr()
+            try:
+                if not self.suppress_window and self._is_window_alive():
+                    self.fig.canvas.draw_idle()
+                    self.plt.pause(0.001)
+                else:
+                    self.fig.canvas.draw()
+            finally:
+                _restore_c_stderr()
+
+        except Exception as e:
+            import traceback
+            console.print(f"[yellow]⚠ Jacobi field error at step {self._kelp_step}: {e}[/]")
+            traceback.print_exc()
+        finally:
+            if was_training:
+                model.train()
+
+
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
         Render N subplots (one per layer), each showing the Jacobi field
@@ -518,319 +614,6 @@ class LivePlotter:
                 spine.set_color('#2a3a4a')
                 spine.set_linewidth(0.5)
 
-        # ── Title for the parent axis ──────────────────────────────────
-        ax.set_title(
-            f"Jacobi Fields — Per-Layer Space Deformation  "
-            f"(step {step})\n"
-            f"[Background = divergence (red=expanding, blue=contracting) · "
-            f"Arrows = displacement field]",
-            fontsize=9, fontweight="bold", color="#c0d8e8",
-        )
-
-
-
-    def _remove_jacobi_subaxes(self):
-        """Safely remove all Jacobi inset sub-axes from the figure."""
-        for old_ax in self._jacobi_subaxes:
-            try:
-                old_ax.remove()
-            except Exception:
-                try:
-                    self.fig.delaxes(old_ax)
-                except Exception:
-                    pass
-        self._jacobi_subaxes = []
-
-
-
-    @torch.no_grad()
-    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
-        """
-        Extract Jacobi fields from the residual stream and render them.
-        Called every batch; only recomputes every kelp_every batches.
-        """
-        if not self.enabled:
-            return
-
-        self._kelp_step += 1
-
-        should_draw = (self._kelp_step == 1) or (self._kelp_step % self.kelp_every == 0)
-        if not should_draw:
-            return
-
-        was_training = model.training
-        model.eval()
-
-        try:
-            fields = compute_layer_jacobi_fields(
-                model, input_ids, input_ids.device, max_tokens=64
-            )
-
-            if not fields:
-                return
-
-            # Use a monotonically increasing draw key that is NEVER reused.
-            # _global_batch is incremented once per batch in update_batch(),
-            # but update_jacobi_fields is only called every kelp_every batches,
-            # so the draw_key is always different between qualifying calls.
-            draw_key = self._global_batch
-
-            self._jacobi_data = {
-                'fields': fields,
-                'step': self._kelp_step,
-                'draw_key': draw_key,
-            }
-
-            # Remove old inset axes BEFORE clearing the parent
-            self._remove_jacobi_subaxes()
-
-            # Invalidate the guard so _draw_jacobi_fields will execute
-            self._jacobi_drawn_step = -1
-
-            # Draw the new fields
-            self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, draw_key
-            )
-
-            # Force the canvas to actually display the new sub-axes.
-            # fig.canvas.draw() alone is NOT sufficient on TkAgg —
-            # we must pump the GUI event loop via plt.pause().
-            _suppress_c_stderr()
-            try:
-                if not self.suppress_window and self._is_window_alive():
-                    self.fig.canvas.draw_idle()
-                    self.plt.pause(0.001)
-                else:
-                    self.fig.canvas.draw()
-            finally:
-                _restore_c_stderr()
-
-        except Exception as e:
-            import traceback
-            console.print(f"[yellow]⚠ Jacobi field error at step {self._kelp_step}: {e}[/]")
-            traceback.print_exc()
-        finally:
-            if was_training:
-                model.train()
-
-
-
-    def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
-        """
-        Render N subplots (one per layer), each showing the Jacobi field.
-
-        Args:
-            ax:          The parent axis to draw into.
-            jacobi_data: Dict with 'fields', 'step', and 'draw_key'.
-            draw_key:    Unique key for the redraw guard. Must differ
-                         between calls that should produce a new frame.
-        """
-        if ax is None or jacobi_data is None:
-            return
-
-        # Skip redundant redraws — only recreate when draw_key changes
-        if self._jacobi_drawn_step == draw_key:
-            return
-        self._jacobi_drawn_step = draw_key
-
-        fields = jacobi_data['fields']
-        step = jacobi_data.get('step', draw_key)  # display step for title
-        n_layers = len(fields)
-
-        # ── Remove old inset axes (robust cleanup) ─────────────────────
-        self._remove_jacobi_subaxes()
-
-        # ── Clear the parent axis ──────────────────────────────────────
-        ax.clear()
-        ax.set_facecolor("#0a0a1a")
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-        if n_layers == 0:
-            ax.text(0.5, 0.5, "Waiting for hidden states...",
-                    ha="center", va="center", fontsize=11, alpha=0.4,
-                    color="#6a9ab8", transform=ax.transAxes)
-            return
-
-        # ── Grid layout ────────────────────────────────────────────────
-        n_cols = min(n_layers, 6)
-        n_rows = math.ceil(n_layers / n_cols)
-
-        pad_x = 0.02
-        pad_y = 0.12
-        pad_bottom = 0.03
-        cell_w = (1.0 - 2 * pad_x) / n_cols
-        cell_h = (1.0 - pad_y - pad_bottom) / n_rows
-        inset_margin = 0.006
-
-        parent_bbox = ax.get_position()
-        px0, py0 = parent_bbox.x0, parent_bbox.y0
-        pw, ph = parent_bbox.width, parent_bbox.height
-
-        color_n = 40
-        arrow_n = 12
-
-        for ell, f in enumerate(fields):
-            col = ell % n_cols
-            row = n_rows - 1 - (ell // n_cols)
-
-            fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
-            fy = py0 + ph * (pad_bottom + row * cell_h + inset_margin)
-            fw = pw * (cell_w - 2 * inset_margin)
-            fh = ph * (cell_h - 2 * inset_margin)
-
-            sub_ax = self.fig.add_axes([fx, fy, fw, fh])
-            sub_ax.set_facecolor("#0d1117")
-            self._jacobi_subaxes.append(sub_ax)
-
-            J = f['jacobian']
-            D_dim = J.shape[0]
-            S = f['singular_values']
-
-            try:
-                U_svd, S_svd, Vh = np.linalg.svd(J)
-            except Exception:
-                S_svd = np.ones(D_dim)
-                Vh = np.eye(D_dim)
-
-            F_residual = J - np.eye(D_dim)
-            F_sym = (F_residual + F_residual.T) / 2
-            try:
-                eigvals, eigvecs = np.linalg.eigh(F_sym)
-                v_contract = eigvecs[:, 0]
-                v_expand = eigvecs[:, -1]
-                v_expand = v_expand - np.dot(v_expand, v_contract) * v_contract
-                v_expand = v_expand / (np.linalg.norm(v_expand) + 1e-10)
-                V2 = np.stack([v_expand, v_contract], axis=0)
-            except Exception:
-                V2 = Vh[:2, :]
-
-            J_2d = V2 @ J @ V2.T
-            F_2d = J_2d - np.eye(2)
-
-            # ── Dense divergence color field ───────────────────────────
-            c_coords = np.linspace(-1.0, 1.0, color_n)
-            cgx, cgy = np.meshgrid(c_coords, c_coords)
-
-            cdx = F_2d[0, 0] * cgx + F_2d[0, 1] * cgy
-            cdy = F_2d[1, 0] * cgx + F_2d[1, 1] * cgy
-
-            r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
-            radial = (cdx * cgx + cdy * cgy) / r_mag
-
-            radial_asinh = np.arcsinh(radial * 3.0)
-            r_absmax = max(np.abs(radial_asinh).max(), 1e-10)
-            div_color = radial_asinh / r_absmax
-
-            sub_ax.imshow(
-                div_color,
-                extent=[-1, 1, -1, 1],
-                origin='lower',
-                cmap='RdBu_r',
-                vmin=-1, vmax=1,
-                aspect='equal',
-                interpolation='bilinear',
-                alpha=0.6,
-            )
-
-            # ── Sparse vector field arrows ─────────────────────────────
-            a_coords = np.linspace(-0.9, 0.9, arrow_n)
-            agx, agy = np.meshgrid(a_coords, a_coords)
-
-            adx = F_2d[0, 0] * agx + F_2d[0, 1] * agy
-            ady = F_2d[1, 0] * agx + F_2d[1, 1] * agy
-
-            mag = np.sqrt(adx**2 + ady**2)
-            mag_max = mag.max() if mag.max() > 1e-10 else 1.0
-
-            a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
-            a_radial_asinh = np.arcsinh(a_radial * 3.0)
-            a_rc_max = max(np.abs(a_radial_asinh).max(), 1e-10)
-            arrow_colors = (a_radial_asinh / a_rc_max).ravel()
-
-            sub_ax.quiver(
-                agx, agy, adx, ady,
-                arrow_colors,
-                cmap='RdBu_r',
-                clim=(-1, 1),
-                scale=mag_max * arrow_n * 0.9,
-                width=0.015,
-                headwidth=3.5,
-                headlength=4,
-                alpha=0.9,
-                zorder=2,
-            )
-
-            sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
-            sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
-
-            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
-            div_val = f['divergence']
-            curl_val = f['curl']
-            shear_val = f['shear']
-            aniso_val = f['anisotropy']
-
-            sub_ax.set_title(
-                f"{layer_label}",
-                fontsize=6, fontweight="bold", color="#8ab8d8", pad=1,
-            )
-
-            sub_ax.text(
-                0.03, 0.03,
-                f"div={div_val:.1f} curl={curl_val:.2f}\n"
-                f"shear={shear_val:.2f} σ₁/σₙ={aniso_val:.1f}",
-                fontsize=4, color="#6a9ab8", alpha=0.8,
-                ha="left", va="bottom", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
-                          edgecolor="none", alpha=0.7),
-            )
-
-            top_svs = S[:3]
-            sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
-            sub_ax.text(
-                0.97, 0.97,
-                f"σ=[{sv_str}]",
-                fontsize=4, color="#4fc3f7", alpha=0.8,
-                ha="right", va="top", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-            )
-
-            sub_ax.text(
-                0.03, 0.97,
-                f"J₂=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
-                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
-                fontsize=3.5, color="#9ab8d8", alpha=0.6,
-                ha="left", va="top", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
-                          edgecolor="none", alpha=0.5),
-            )
-
-            sub_ax.set_xlim(-1.1, 1.1)
-            sub_ax.set_ylim(-1.1, 1.1)
-            sub_ax.set_aspect('equal')
-            sub_ax.tick_params(labelsize=0, length=0)
-            for spine in sub_ax.spines.values():
-                spine.set_color('#2a3a4a')
-                spine.set_linewidth(0.5)
-
-            sub_ax.stale = True
-
-        # ── Title for the parent axis (OUTSIDE the loop) ───────────────
-        ax.set_title(
-            f"Jacobi Fields — Per-Layer Space Deformation  "
-            f"(step {step})\n"
-            f"[Background = divergence (red=expanding, blue=contracting) · "
-            f"Arrows = displacement field]",
-            fontsize=9, fontweight="bold", color="#c0d8e8",
-        )
-
-        ax.stale = True
 
 
     def _redraw_jacobi(self):

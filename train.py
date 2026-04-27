@@ -919,7 +919,7 @@ class ReplayBuffer:
                 "total_decayed": self._total_decayed,
             }
 
-args = parse_args()
+args = None
 
 def _is_int_str(s: str) -> bool:
     """Return True if s can be parsed as an integer."""
@@ -4272,6 +4272,8 @@ def compute_cka_matrix(hidden_states):
 # ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    args = parse_args()
+
     console.print(
         Panel(
             "[bold white]LLVM IR GPT Trainer[/]\n"
