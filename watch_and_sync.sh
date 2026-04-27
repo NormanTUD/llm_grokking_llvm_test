@@ -110,39 +110,10 @@ run_visualizations() {
 }
 
 # -------------------------------------------------------
-# Generate a standalone HTML slideshow for training_plot history
+# Shared CSS + JS for both slideshows (called by each generator)
 # -------------------------------------------------------
-generate_slideshow_html() {
-    local DIR="$1"
-    local OUT="${DIR}slideshow.html"
-
-    # Collect all training_plot history images in order
-    local IMAGES=()
-    while IFS= read -r f; do
-        [ -n "$f" ] && IMAGES+=("${f#./}")
-    done < <(cd "$DIR" && find . -type f -name 'training_plot-*.png' 2>/dev/null | sort)
-
-    # Add the current latest as the final frame
-    if [ -f "${DIR}training_plot.png" ]; then
-        IMAGES+=("training_plot.png")
-    fi
-
-    if [ ${#IMAGES[@]} -eq 0 ]; then
-        return
-    fi
-
-    local TOTAL=${#IMAGES[@]}
-    local TIMESTAMP
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
-
-    cat > "$OUT" <<'SLIDESHOW_HEAD'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Training Plot History</title>
-<style>
+_slideshow_common_css() {
+    cat <<'CSS'
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: #08090d;
@@ -227,98 +198,63 @@ generate_slideshow_html() {
     transition: width 0.1s ease;
     border-radius: 0 2px 2px 0;
   }
-  .slide-container {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
-    background: #000;
-  }
-  .slide-container img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-  }
   .hint {
     position: absolute;
-    bottom: 1rem;
+    bottom: 0.5rem;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #4a4f78;
     pointer-events: none;
     opacity: 0.7;
+    z-index: 5;
   }
   .speed-label {
     font-size: 0.7rem;
     color: #6b70a0;
   }
-</style>
-</head>
-<body>
-SLIDESHOW_HEAD
+CSS
+}
 
-    # Build the JS image array
-    cat >> "$OUT" <<EOF
+_slideshow_common_toolbar_html() {
+    local TITLE="$1"
+    local DEFAULT_SPEED="$2"
+    local COUNTER_HTML="$3"
+    cat <<EOF
 <div class="toolbar">
-  <div class="title">Training Plot History</div>
+  <div class="title">${TITLE}</div>
   <div class="controls">
-    <button id="btn-start" title="Go to first (Home)">⏮</button>
-    <button id="btn-prev" title="Previous (←)">◀</button>
+    <button id="btn-start" title="First (Home)">⏮</button>
+    <button id="btn-prev" title="Previous (←/↑)">◀</button>
     <button id="btn-play" title="Play/Pause (Space)">▶</button>
-    <button id="btn-next" title="Next (→)">▶▶</button>
-    <button id="btn-end" title="Go to last (End)">⏭</button>
+    <button id="btn-next" title="Next (→/↓)">▶▶</button>
+    <button id="btn-end" title="Last (End)">⏭</button>
     <span class="speed-label">Speed:</span>
-    <button id="btn-slower" title="Slower">−</button>
-    <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
-    <button id="btn-faster" title="Faster">+</button>
-    <div class="counter"><span class="current" id="frame-num">1</span> / ${TOTAL}</div>
+    <button id="btn-slower" title="Slower (−)">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">${DEFAULT_SPEED}ms</span>
+    <button id="btn-faster" title="Faster (+)">+</button>
+    ${COUNTER_HTML}
   </div>
 </div>
 <div class="progress-bar-container" id="progress-bar">
   <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
 </div>
-<div class="slide-container">
-  <img id="slide-img" src="" alt="Training plot">
-  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump</div>
-</div>
-<script>
-const images = [
 EOF
+}
 
-    # Write each image path as a JS string
-    for img in "${IMAGES[@]}"; do
-        local cb="?t=$(date +%s)"
-        echo "  \"${img}${cb}\"," >> "$OUT"
-    done
-
-    cat >> "$OUT" <<'SLIDESHOW_JS'
-];
-const total = images.length;
-let idx = total - 1;  // start at the latest
+_slideshow_common_controls_js() {
+    local SPEED_STEP="$1"
+    local DEFAULT_SPEED="$2"
+    local MIN_SPEED="$3"
+    local MAX_SPEED="$4"
+    cat <<JSEOF
 let playing = false;
 let playInterval = null;
-let speed = 500;  // ms between frames
+let speed = ${DEFAULT_SPEED};
 
-const imgEl = document.getElementById('slide-img');
-const frameNum = document.getElementById('frame-num');
 const progressFill = document.getElementById('progress-fill');
 const btnPlay = document.getElementById('btn-play');
 const speedDisplay = document.getElementById('speed-display');
-
-function show(i) {
-  idx = Math.max(0, Math.min(total - 1, i));
-  imgEl.src = images[idx];
-  frameNum.textContent = idx + 1;
-  progressFill.style.width = ((idx + 1) / total * 100) + '%';
-}
-
-function next() { show(idx + 1); if (idx >= total - 1 && playing) togglePlay(); }
-function prev() { show(idx - 1); }
-function goStart() { show(0); }
-function goEnd() { show(total - 1); }
 
 function togglePlay() {
   playing = !playing;
@@ -333,7 +269,7 @@ function togglePlay() {
 }
 
 function updateSpeed(newSpeed) {
-  speed = Math.max(50, Math.min(5000, newSpeed));
+  speed = Math.max(${MIN_SPEED}, Math.min(${MAX_SPEED}, newSpeed));
   speedDisplay.textContent = speed + 'ms';
   if (playing) {
     clearInterval(playInterval);
@@ -346,45 +282,149 @@ document.getElementById('btn-prev').addEventListener('click', prev);
 document.getElementById('btn-start').addEventListener('click', goStart);
 document.getElementById('btn-end').addEventListener('click', goEnd);
 document.getElementById('btn-play').addEventListener('click', togglePlay);
-document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
-document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + ${SPEED_STEP}));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - ${SPEED_STEP}));
 
 document.getElementById('progress-bar').addEventListener('click', (e) => {
   const rect = e.currentTarget.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
-  show(Math.round(pct * (total - 1)));
+  show(Math.round(pct * (getTotal() - 1)));
 });
 
 document.addEventListener('keydown', (e) => {
   switch (e.key) {
-    case 'ArrowRight': e.preventDefault(); next(); break;
-    case 'ArrowLeft':  e.preventDefault(); prev(); break;
+    case 'ArrowRight':
+    case 'ArrowDown':  e.preventDefault(); next(); break;
+    case 'ArrowLeft':
+    case 'ArrowUp':    e.preventDefault(); prev(); break;
     case 'Home':       e.preventDefault(); goStart(); break;
     case 'End':        e.preventDefault(); goEnd(); break;
     case ' ':          e.preventDefault(); togglePlay(); break;
-    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 100); break;
-    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 100); break;
+    case '+':          e.preventDefault(); updateSpeed(speed - ${SPEED_STEP}); break;
+    case '-':          e.preventDefault(); updateSpeed(speed + ${SPEED_STEP}); break;
   }
 });
-
-// Preload adjacent images for smooth navigation
-function preload(i) {
-  if (i >= 0 && i < total) { const img = new Image(); img.src = images[i]; }
+JSEOF
 }
-const observer = new MutationObserver(() => { preload(idx + 1); preload(idx - 1); });
+
+# -------------------------------------------------------
+# Generate a standalone HTML slideshow for training_plot history
+# -------------------------------------------------------
+generate_slideshow_html() {
+    local DIR="$1"
+    local OUT="${DIR}slideshow.html"
+
+    # Collect all training_plot history images in order
+    local IMAGES=()
+    while IFS= read -r f; do
+        [ -n "$f" ] && IMAGES+=("${f#./}")
+    done < <(cd "$DIR" && find . -type f -name 'training_plot-*.png' 2>/dev/null | sort)
+
+    # Add the current latest as the final frame
+    if [ -f "${DIR}training_plot.png" ]; then
+        IMAGES+=("training_plot.png")
+    fi
+
+    if [ ${#IMAGES[@]} -eq 0 ]; then
+        return
+    fi
+
+    local TOTAL=${#IMAGES[@]}
+
+    # --- Write HTML ---
+    cat > "$OUT" <<HEADER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Plot History</title>
+<style>
+$(_slideshow_common_css)
+  .slide-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    background: #000;
+  }
+  .slide-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+</style>
+</head>
+<body>
+HEADER
+
+    _slideshow_common_toolbar_html \
+        "Training Plot History" \
+        "500" \
+        "<div class=\"counter\"><span class=\"current\" id=\"frame-num\">1</span> / ${TOTAL}</div>" \
+        >> "$OUT"
+
+    cat >> "$OUT" <<'CONTAINER'
+<div class="slide-container">
+  <img id="slide-img" src="" alt="Training plot">
+  <div class="hint">↑ ↓ ← → navigate · Space play/pause · Home/End jump · +/− speed</div>
+</div>
+<script>
+CONTAINER
+
+    # Build the JS image array
+    echo 'const images = [' >> "$OUT"
+    for img in "${IMAGES[@]}"; do
+        local cb="?t=$(date +%s)"
+        echo "  \"${img}${cb}\"," >> "$OUT"
+    done
+    echo '];' >> "$OUT"
+
+    cat >> "$OUT" <<'SLIDESHOW_LOGIC'
+const total = images.length;
+let idx = 0;  // start at the first frame
+
+const imgEl = document.getElementById('slide-img');
+const frameNum = document.getElementById('frame-num');
+
+function getTotal() { return total; }
+
+function show(i) {
+  idx = Math.max(0, Math.min(total - 1, i));
+  imgEl.src = images[idx];
+  frameNum.textContent = idx + 1;
+  progressFill.style.width = ((idx + 1) / total * 100) + '%';
+}
+
+function next() { show(idx + 1); if (idx >= total - 1 && playing) togglePlay(); }
+function prev() { show(idx - 1); }
+function goStart() { show(0); }
+function goEnd() { show(total - 1); }
+SLIDESHOW_LOGIC
+
+    _slideshow_common_controls_js "100" "500" "50" "5000" >> "$OUT"
+
+    cat >> "$OUT" <<'PRELOAD_AND_INIT'
+
+// Preload ALL images on page load for smooth navigation
+(function preloadAll() {
+  for (let i = 0; i < total; i++) {
+    const img = new Image();
+    img.src = images[i];
+  }
+})();
 
 show(idx);
 </script>
 </body>
 </html>
-SLIDESHOW_JS
+PRELOAD_AND_INIT
 
     echo "Slideshow generated: $OUT (${TOTAL} frames)"
 }
 
-# -------------------------------------------------------
-# Generate a standalone HTML slideshow for Jacobi field images
-# -------------------------------------------------------
 # -------------------------------------------------------
 # Generate a standalone HTML slideshow for Jacobi field images
 # grouped by step (all layers from the same step shown together)
@@ -408,10 +448,8 @@ generate_jacobi_slideshow_html() {
         return
     fi
 
-    local TIMESTAMP
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
-
-    cat > "$OUT" <<'JACOBI_HEAD'
+    # --- Write HTML ---
+    cat > "$OUT" <<HEADER
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -419,90 +457,7 @@ generate_jacobi_slideshow_html() {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jacobi Field History</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #08090d;
-    color: #e8eaf6;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    user-select: none;
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 1.5rem;
-    background: #12152a;
-    border-bottom: 1px solid #1e2340;
-    flex-shrink: 0;
-    z-index: 10;
-  }
-  .toolbar .title {
-    font-size: 1rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .toolbar .controls {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .toolbar button {
-    background: #1e2340;
-    border: 1px solid #2a2f55;
-    color: #e8eaf6;
-    padding: 0.35rem 0.9rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-family: 'JetBrains Mono', monospace;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .toolbar button:hover {
-    background: #2a2f55;
-    border-color: #7c5cfc;
-  }
-  .toolbar button:active {
-    background: #7c5cfc;
-    color: #fff;
-  }
-  .toolbar button.playing {
-    background: #00d4aa;
-    color: #08090d;
-    border-color: #00d4aa;
-  }
-  .counter {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem;
-    color: #6b70a0;
-    min-width: 120px;
-    text-align: center;
-  }
-  .counter .current {
-    color: #7c5cfc;
-    font-weight: 700;
-  }
-  .progress-bar-container {
-    flex-shrink: 0;
-    height: 4px;
-    background: #1e2340;
-    cursor: pointer;
-    position: relative;
-  }
-  .progress-bar-container:hover {
-    height: 8px;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #7c5cfc, #00d4aa);
-    transition: width 0.1s ease;
-    border-radius: 0 2px 2px 0;
-  }
+$(_slideshow_common_css)
   .slide-container {
     flex: 1;
     display: flex;
@@ -524,7 +479,6 @@ generate_jacobi_slideshow_html() {
     border-radius: 4px;
     flex-shrink: 1;
   }
-  /* Single layer: let it be bigger */
   .slide-container.single-layer .layer-img {
     max-height: 95%;
     max-width: 95%;
@@ -544,62 +498,34 @@ generate_jacobi_slideshow_html() {
     z-index: 5;
     font-family: 'JetBrains Mono', monospace;
   }
-  .hint {
-    position: absolute;
-    bottom: 0.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.7rem;
-    color: #4a4f78;
-    pointer-events: none;
-    opacity: 0.7;
-    z-index: 5;
-  }
-  .speed-label {
-    font-size: 0.7rem;
-    color: #6b70a0;
-  }
 </style>
 </head>
 <body>
-JACOBI_HEAD
+HEADER
 
-    cat >> "$OUT" <<'TOOLBAR_HTML'
-<div class="toolbar">
-  <div class="title">Jacobi Field History</div>
-  <div class="controls">
-    <button id="btn-start" title="Go to first (Home)">⏮</button>
-    <button id="btn-prev" title="Previous step (←)">◀</button>
-    <button id="btn-play" title="Play/Pause (Space)">▶</button>
-    <button id="btn-next" title="Next step (→)">▶▶</button>
-    <button id="btn-end" title="Go to last (End)">⏭</button>
-    <span class="speed-label">Speed:</span>
-    <button id="btn-slower" title="Slower (↓)">−</button>
-    <span id="speed-display" class="counter" style="min-width:50px;">1000ms</span>
-    <button id="btn-faster" title="Faster (↑)">+</button>
-    <div class="counter">Step <span class="current" id="step-num">?</span> — <span id="step-pos">1</span> / <span id="step-total">?</span></div>
-  </div>
-</div>
-<div class="progress-bar-container" id="progress-bar">
-  <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
-</div>
+    _slideshow_common_toolbar_html \
+        "Jacobi Field History" \
+        "1000" \
+        "<div class=\"counter\">Step <span class=\"current\" id=\"step-num\">?</span> — <span id=\"step-pos\">1</span> / <span id=\"step-total\">?</span></div>" \
+        >> "$OUT"
+
+    cat >> "$OUT" <<'CONTAINER'
 <div class="slide-container" id="slide-container">
   <div class="step-label" id="step-label">Step ?</div>
-  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump · ↑↓ speed</div>
+  <div class="hint">↑ ↓ ← → navigate · Space play/pause · Home/End jump · +/− speed</div>
 </div>
-TOOLBAR_HTML
+<script>
+CONTAINER
 
     # Build the JS image array
-    echo '<script>' >> "$OUT"
     echo 'const allImages = [' >> "$OUT"
-
     for img in "${IMAGES[@]}"; do
         local cb="?t=$(date +%s)"
         echo "  \"${img}${cb}\"," >> "$OUT"
     done
+    echo '];' >> "$OUT"
 
-    cat >> "$OUT" <<'JACOBI_JS'
-];
+    cat >> "$OUT" <<'JACOBI_LOGIC'
 
 // Parse step and layer from filenames
 function parseInfo(path) {
@@ -609,7 +535,7 @@ function parseInfo(path) {
 }
 
 // Group images by step
-const stepMap = new Map(); // step -> [{path, layer}, ...]
+const stepMap = new Map();
 allImages.forEach(path => {
   const info = parseInfo(path);
   if (!stepMap.has(info.step)) stepMap.set(info.step, []);
@@ -620,21 +546,17 @@ allImages.forEach(path => {
 stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
 const steps = [...stepMap.keys()].sort((a, b) => a - b);
 
-let idx = steps.length - 1; // start at latest
-let playing = false;
-let playInterval = null;
-let speed = 1000;
+let idx = 0;  // start at the first step
 
 const container = document.getElementById('slide-container');
 const stepNum = document.getElementById('step-num');
 const stepPos = document.getElementById('step-pos');
 const stepTotal = document.getElementById('step-total');
-const progressFill = document.getElementById('progress-fill');
-const btnPlay = document.getElementById('btn-play');
-const speedDisplay = document.getElementById('speed-display');
 const stepLabel = document.getElementById('step-label');
 
 stepTotal.textContent = steps.length;
+
+function getTotal() { return steps.length; }
 
 function show(i) {
   if (steps.length === 0) return;
@@ -669,73 +591,28 @@ function next() { show(idx + 1); if (idx >= steps.length - 1 && playing) toggleP
 function prev() { show(idx - 1); }
 function goStart() { show(0); }
 function goEnd() { show(steps.length - 1); }
+JACOBI_LOGIC
 
-function togglePlay() {
-  playing = !playing;
-  btnPlay.textContent = playing ? '⏸' : '▶';
-  btnPlay.classList.toggle('playing', playing);
-  if (playing) {
-    playInterval = setInterval(next, speed);
-  } else {
-    clearInterval(playInterval);
-    playInterval = null;
-  }
-}
+    _slideshow_common_controls_js "200" "1000" "100" "10000" >> "$OUT"
 
-function updateSpeed(newSpeed) {
-  speed = Math.max(100, Math.min(10000, newSpeed));
-  speedDisplay.textContent = speed + 'ms';
-  if (playing) {
-    clearInterval(playInterval);
-    playInterval = setInterval(next, speed);
-  }
-}
+    cat >> "$OUT" <<'PRELOAD_AND_INIT'
 
-document.getElementById('btn-next').addEventListener('click', next);
-document.getElementById('btn-prev').addEventListener('click', prev);
-document.getElementById('btn-start').addEventListener('click', goStart);
-document.getElementById('btn-end').addEventListener('click', goEnd);
-document.getElementById('btn-play').addEventListener('click', togglePlay);
-document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 200));
-document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 200));
-
-document.getElementById('progress-bar').addEventListener('click', (e) => {
-  const rect = e.currentTarget.getBoundingClientRect();
-  const pct = (e.clientX - rect.left) / rect.width;
-  show(Math.round(pct * (steps.length - 1)));
-});
-
-document.addEventListener('keydown', (e) => {
-  switch (e.key) {
-    case 'ArrowRight': e.preventDefault(); next(); break;
-    case 'ArrowLeft':  e.preventDefault(); prev(); break;
-    case 'Home':       e.preventDefault(); goStart(); break;
-    case 'End':        e.preventDefault(); goEnd(); break;
-    case ' ':          e.preventDefault(); togglePlay(); break;
-    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 200); break;
-    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 200); break;
-  }
-});
-
-// Preload next step's images
-function preloadStep(i) {
-  if (i >= 0 && i < steps.length) {
-    const layers = stepMap.get(steps[i]);
-    layers.forEach(l => { const img = new Image(); img.src = l.path; });
-  }
-}
-
-// Watch for navigation and preload
-const observer = new MutationObserver(() => { preloadStep(idx + 1); preloadStep(idx - 1); });
-observer.observe(container, { childList: true });
+// Preload ALL step images on page load for smooth navigation
+(function preloadAll() {
+  steps.forEach(step => {
+    stepMap.get(step).forEach(l => {
+      const img = new Image();
+      img.src = l.path;
+    });
+  });
+})();
 
 show(idx);
 </script>
 </body>
 </html>
-JACOBI_JS
+PRELOAD_AND_INIT
 
-    local STEP_COUNT=${#steps[@]}
     # Count unique steps for the log message
     local UNIQUE_STEPS
     UNIQUE_STEPS=$(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sed 's/.*jacobi_step\([0-9]*\)_.*/\1/' | sort -u | wc -l)
