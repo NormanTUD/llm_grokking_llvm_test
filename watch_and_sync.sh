@@ -293,9 +293,9 @@ document.getElementById('progress-bar').addEventListener('click', (e) => {
 
 document.addEventListener('keydown', (e) => {
   switch (e.key) {
-    case 'ArrowRight':
-    case 'ArrowDown':  e.preventDefault(); prev(); break;
     case 'ArrowLeft':
+    case 'ArrowDown':  e.preventDefault(); prev(); break;
+    case 'ArrowRight':
     case 'ArrowUp':    e.preventDefault(); next(); break;
     case 'Home':       e.preventDefault(); goStart(); break;
     case 'End':        e.preventDefault(); goEnd(); break;
