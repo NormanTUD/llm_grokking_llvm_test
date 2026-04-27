@@ -25,7 +25,7 @@ _HAS_RIPSER = False
 _HAS_GUDHI = False
 
 @torch.no_grad()
-def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
+def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
     """
     Compute the Jacobi field of the space deformation itself at each layer.
     
@@ -74,8 +74,10 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
         var_explained = 0.0
 
     for ell in range(len(hidden_states) - 1):
-        h_in = hidden_states[ell][0].detach().float()    # (T, D)
-        h_out = hidden_states[ell + 1][0].detach().float()  # (T, D)
+        h_in = hidden_states[ell].detach().float()         # (B, T, D)
+        h_in = h_in.reshape(-1, h_in.shape[-1])            # (B*T, D)
+        h_out = hidden_states[ell + 1].detach().float()      # (B, T, D)  ← FIXED
+        h_out = h_out.reshape(-1, h_out.shape[-1])           # (B*T, D)  ← FIXED
 
         T, D = h_in.shape
         if T > max_tokens:
@@ -531,7 +533,7 @@ class LivePlotter:
 
         try:
             fields = compute_layer_jacobi_fields(
-                model, input_ids, input_ids.device, max_tokens=64
+                model, input_ids, input_ids.device, max_tokens=1024
             )
 
             if not fields:
