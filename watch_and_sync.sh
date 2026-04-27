@@ -385,6 +385,10 @@ SLIDESHOW_JS
 # -------------------------------------------------------
 # Generate a standalone HTML slideshow for Jacobi field images
 # -------------------------------------------------------
+# -------------------------------------------------------
+# Generate a standalone HTML slideshow for Jacobi field images
+# grouped by step (all layers from the same step shown together)
+# -------------------------------------------------------
 generate_jacobi_slideshow_html() {
     local DIR="$1"
     local JACOBI_DIR="${DIR}jacobi_images/"
@@ -404,7 +408,6 @@ generate_jacobi_slideshow_html() {
         return
     fi
 
-    local TOTAL=${#IMAGES[@]}
     local TIMESTAMP
     TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
 
@@ -484,30 +487,6 @@ generate_jacobi_slideshow_html() {
     color: #7c5cfc;
     font-weight: 700;
   }
-  .filter-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 1.5rem;
-    background: #0d0f16;
-    border-bottom: 1px solid #1e2340;
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .filter-bar label {
-    font-size: 0.75rem;
-    color: #6b70a0;
-    font-weight: 600;
-  }
-  .filter-bar select, .filter-bar input {
-    background: #1e2340;
-    border: 1px solid #2a2f55;
-    color: #e8eaf6;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
-  }
   .progress-bar-container {
     flex-shrink: 0;
     height: 4px;
@@ -527,26 +506,54 @@ generate_jacobi_slideshow_html() {
   .slide-container {
     flex: 1;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    align-content: center;
     justify-content: center;
-    overflow: hidden;
+    overflow: auto;
     position: relative;
     background: #000;
+    gap: 6px;
+    padding: 8px;
   }
-  .slide-container img {
-    max-width: 100%;
-    max-height: 100%;
+  .slide-container .layer-img {
+    max-height: 48%;
+    max-width: 48%;
     object-fit: contain;
+    border: 1px solid #1e2340;
+    border-radius: 4px;
+    flex-shrink: 1;
+  }
+  /* Single layer: let it be bigger */
+  .slide-container.single-layer .layer-img {
+    max-height: 95%;
+    max-width: 95%;
+  }
+  .step-label {
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #7c5cfc;
+    background: rgba(8,9,13,0.85);
+    padding: 0.2rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #2a2f55;
+    z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
   }
   .hint {
     position: absolute;
-    bottom: 1rem;
+    bottom: 0.5rem;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #4a4f78;
     pointer-events: none;
     opacity: 0.7;
+    z-index: 5;
   }
   .speed-label {
     font-size: 0.7rem;
@@ -557,38 +564,34 @@ generate_jacobi_slideshow_html() {
 <body>
 JACOBI_HEAD
 
-    cat >> "$OUT" <<EOF
+    cat >> "$OUT" <<'TOOLBAR_HTML'
 <div class="toolbar">
   <div class="title">Jacobi Field History</div>
   <div class="controls">
     <button id="btn-start" title="Go to first (Home)">⏮</button>
-    <button id="btn-prev" title="Previous (←)">◀</button>
+    <button id="btn-prev" title="Previous step (←)">◀</button>
     <button id="btn-play" title="Play/Pause (Space)">▶</button>
-    <button id="btn-next" title="Next (→)">▶▶</button>
+    <button id="btn-next" title="Next step (→)">▶▶</button>
     <button id="btn-end" title="Go to last (End)">⏭</button>
     <span class="speed-label">Speed:</span>
-    <button id="btn-slower" title="Slower">−</button>
-    <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
-    <button id="btn-faster" title="Faster">+</button>
-    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">${TOTAL}</span></div>
+    <button id="btn-slower" title="Slower (↓)">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">1000ms</span>
+    <button id="btn-faster" title="Faster (↑)">+</button>
+    <div class="counter">Step <span class="current" id="step-num">?</span> — <span id="step-pos">1</span> / <span id="step-total">?</span></div>
   </div>
-</div>
-<div class="filter-bar">
-  <label>Filter layer:</label>
-  <select id="filter-layer"><option value="all">All layers</option></select>
-  <label>Filter step:</label>
-  <select id="filter-step"><option value="all">All steps</option></select>
 </div>
 <div class="progress-bar-container" id="progress-bar">
   <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
 </div>
-<div class="slide-container">
-  <img id="slide-img" src="" alt="Jacobi field">
-  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump · Filter by layer/step above</div>
+<div class="slide-container" id="slide-container">
+  <div class="step-label" id="step-label">Step ?</div>
+  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump · ↑↓ speed</div>
 </div>
-<script>
-const allImages = [
-EOF
+TOOLBAR_HTML
+
+    # Build the JS image array
+    echo '<script>' >> "$OUT"
+    echo 'const allImages = [' >> "$OUT"
 
     for img in "${IMAGES[@]}"; do
         local cb="?t=$(date +%s)"
@@ -598,82 +601,74 @@ EOF
     cat >> "$OUT" <<'JACOBI_JS'
 ];
 
-// Parse step and layer from filenames like "jacobi_images/jacobi_step000005_layer00.png?t=..."
+// Parse step and layer from filenames
 function parseInfo(path) {
   const m = path.match(/jacobi_step(\d+)_layer(\d+)/);
   if (!m) return { step: 0, layer: 0 };
   return { step: parseInt(m[1], 10), layer: parseInt(m[2], 10) };
 }
 
-// Build unique steps and layers for filters
-const allInfo = allImages.map(parseInfo);
-const uniqueSteps = [...new Set(allInfo.map(i => i.step))].sort((a, b) => a - b);
-const uniqueLayers = [...new Set(allInfo.map(i => i.layer))].sort((a, b) => a - b);
-
-const filterLayer = document.getElementById('filter-layer');
-const filterStep = document.getElementById('filter-step');
-
-uniqueLayers.forEach(l => {
-  const opt = document.createElement('option');
-  opt.value = l;
-  opt.textContent = 'Layer ' + l;
-  filterLayer.appendChild(opt);
-});
-uniqueSteps.forEach(s => {
-  const opt = document.createElement('option');
-  opt.value = s;
-  opt.textContent = 'Step ' + s;
-  filterStep.appendChild(opt);
+// Group images by step
+const stepMap = new Map(); // step -> [{path, layer}, ...]
+allImages.forEach(path => {
+  const info = parseInfo(path);
+  if (!stepMap.has(info.step)) stepMap.set(info.step, []);
+  stepMap.get(info.step).push({ path, layer: info.layer });
 });
 
-let filteredImages = [...allImages];
-let idx = 0;
+// Sort each step's layers, and collect sorted step numbers
+stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
+const steps = [...stepMap.keys()].sort((a, b) => a - b);
+
+let idx = steps.length - 1; // start at latest
 let playing = false;
 let playInterval = null;
-let speed = 500;
+let speed = 1000;
 
-const imgEl = document.getElementById('slide-img');
-const frameNum = document.getElementById('frame-num');
-const frameTotal = document.getElementById('frame-total');
+const container = document.getElementById('slide-container');
+const stepNum = document.getElementById('step-num');
+const stepPos = document.getElementById('step-pos');
+const stepTotal = document.getElementById('step-total');
 const progressFill = document.getElementById('progress-fill');
 const btnPlay = document.getElementById('btn-play');
 const speedDisplay = document.getElementById('speed-display');
+const stepLabel = document.getElementById('step-label');
 
-function applyFilter() {
-  const layerVal = filterLayer.value;
-  const stepVal = filterStep.value;
-  filteredImages = allImages.filter((path, i) => {
-    const info = allInfo[i];
-    if (layerVal !== 'all' && info.layer !== parseInt(layerVal, 10)) return false;
-    if (stepVal !== 'all' && info.step !== parseInt(stepVal, 10)) return false;
-    return true;
-  });
-  frameTotal.textContent = filteredImages.length;
-  idx = Math.min(idx, filteredImages.length - 1);
-  if (idx < 0) idx = 0;
-  show(idx);
-}
-
-filterLayer.addEventListener('change', applyFilter);
-filterStep.addEventListener('change', applyFilter);
+stepTotal.textContent = steps.length;
 
 function show(i) {
-  if (filteredImages.length === 0) {
-    imgEl.src = '';
-    frameNum.textContent = '0';
-    progressFill.style.width = '0%';
-    return;
-  }
-  idx = Math.max(0, Math.min(filteredImages.length - 1, i));
-  imgEl.src = filteredImages[idx];
-  frameNum.textContent = idx + 1;
-  progressFill.style.width = ((idx + 1) / filteredImages.length * 100) + '%';
+  if (steps.length === 0) return;
+  idx = Math.max(0, Math.min(steps.length - 1, i));
+  const step = steps[idx];
+  const layers = stepMap.get(step);
+
+  stepNum.textContent = step;
+  stepPos.textContent = idx + 1;
+  progressFill.style.width = ((idx + 1) / steps.length * 100) + '%';
+  stepLabel.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
+
+  // Remove old images (keep the label and hint)
+  container.querySelectorAll('.layer-img').forEach(el => el.remove());
+
+  // Adjust class for layout
+  container.classList.toggle('single-layer', layers.length === 1);
+
+  // Add layer images
+  layers.forEach(l => {
+    const img = document.createElement('img');
+    img.className = 'layer-img';
+    img.src = l.path;
+    img.alt = 'Layer ' + l.layer;
+    img.title = 'Step ' + step + ', Layer ' + l.layer;
+    img.loading = 'eager';
+    container.appendChild(img);
+  });
 }
 
-function next() { show(idx + 1); if (idx >= filteredImages.length - 1 && playing) togglePlay(); }
+function next() { show(idx + 1); if (idx >= steps.length - 1 && playing) togglePlay(); }
 function prev() { show(idx - 1); }
 function goStart() { show(0); }
-function goEnd() { show(filteredImages.length - 1); }
+function goEnd() { show(steps.length - 1); }
 
 function togglePlay() {
   playing = !playing;
@@ -688,7 +683,7 @@ function togglePlay() {
 }
 
 function updateSpeed(newSpeed) {
-  speed = Math.max(50, Math.min(5000, newSpeed));
+  speed = Math.max(100, Math.min(10000, newSpeed));
   speedDisplay.textContent = speed + 'ms';
   if (playing) {
     clearInterval(playInterval);
@@ -701,13 +696,13 @@ document.getElementById('btn-prev').addEventListener('click', prev);
 document.getElementById('btn-start').addEventListener('click', goStart);
 document.getElementById('btn-end').addEventListener('click', goEnd);
 document.getElementById('btn-play').addEventListener('click', togglePlay);
-document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
-document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 200));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 200));
 
 document.getElementById('progress-bar').addEventListener('click', (e) => {
   const rect = e.currentTarget.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
-  show(Math.round(pct * (filteredImages.length - 1)));
+  show(Math.round(pct * (steps.length - 1)));
 });
 
 document.addEventListener('keydown', (e) => {
@@ -717,19 +712,34 @@ document.addEventListener('keydown', (e) => {
     case 'Home':       e.preventDefault(); goStart(); break;
     case 'End':        e.preventDefault(); goEnd(); break;
     case ' ':          e.preventDefault(); togglePlay(); break;
-    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 100); break;
-    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 100); break;
+    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 200); break;
+    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 200); break;
   }
 });
 
-// Start at the latest image
-show(filteredImages.length - 1);
+// Preload next step's images
+function preloadStep(i) {
+  if (i >= 0 && i < steps.length) {
+    const layers = stepMap.get(steps[i]);
+    layers.forEach(l => { const img = new Image(); img.src = l.path; });
+  }
+}
+
+// Watch for navigation and preload
+const observer = new MutationObserver(() => { preloadStep(idx + 1); preloadStep(idx - 1); });
+observer.observe(container, { childList: true });
+
+show(idx);
 </script>
 </body>
 </html>
 JACOBI_JS
 
-    echo "Jacobi slideshow generated: $OUT (${TOTAL} frames)"
+    local STEP_COUNT=${#steps[@]}
+    # Count unique steps for the log message
+    local UNIQUE_STEPS
+    UNIQUE_STEPS=$(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sed 's/.*jacobi_step\([0-9]*\)_.*/\1/' | sort -u | wc -l)
+    echo "Jacobi slideshow generated: $OUT (${#IMAGES[@]} images across ${UNIQUE_STEPS} steps, grouped by step)"
 }
 
 # -------------------------------------------------------
