@@ -432,7 +432,6 @@ PRELOAD_AND_INIT
 generate_jacobi_slideshow_html() {
     local DIR="$1"
     local JACOBI_DIR="${DIR}jacobi_images/"
-    local JACOBI_DATA_DIR="${DIR}jacobi_data/"
     local OUT="${DIR}jacobi.html"
 
     if [ ! -d "$JACOBI_DIR" ]; then
@@ -447,14 +446,6 @@ generate_jacobi_slideshow_html() {
 
     if [ ${#IMAGES[@]} -eq 0 ]; then
         return
-    fi
-
-    # Collect all JSON hover data files
-    local JSON_FILES=()
-    if [ -d "$JACOBI_DATA_DIR" ]; then
-        while IFS= read -r f; do
-            [ -n "$f" ] && JSON_FILES+=("${f#./}")
-        done < <(cd "$DIR" && find jacobi_data -type f -name 'jacobi_step*_layer*.json' 2>/dev/null | sort)
     fi
 
     # --- Write HTML ---
@@ -480,32 +471,17 @@ $(_slideshow_common_css)
     gap: 6px;
     padding: 8px;
   }
-  .layer-wrapper {
-    position: relative;
+  .slide-container .layer-img {
     max-height: 48%;
     max-width: 48%;
-    flex-shrink: 1;
-  }
-  .slide-container.single-layer .layer-wrapper {
-    max-height: 95%;
-    max-width: 95%;
-  }
-  .layer-wrapper img.layer-img {
-    width: 100%;
-    height: 100%;
     object-fit: contain;
     border: 1px solid #1e2340;
     border-radius: 4px;
-    display: block;
+    flex-shrink: 1;
   }
-  .layer-wrapper canvas.hover-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: auto;
-    cursor: crosshair;
+  .slide-container.single-layer .layer-img {
+    max-height: 95%;
+    max-width: 95%;
   }
   .step-label {
     position: absolute;
@@ -522,53 +498,13 @@ $(_slideshow_common_css)
     z-index: 5;
     font-family: 'JetBrains Mono', monospace;
   }
-  #tooltip {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    background: rgba(12, 14, 30, 0.96);
-    border: 1px solid #7c5cfc;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    color: #e8eaf6;
-    pointer-events: none;
-    max-width: 380px;
-    box-shadow: 0 8px 32px rgba(124, 92, 252, 0.3);
-    line-height: 1.6;
-  }
-  #tooltip .tt-token {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #00d4aa;
-    margin-bottom: 4px;
-    word-break: break-all;
-  }
-  #tooltip .tt-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-  #tooltip .tt-label { color: #6b70a0; }
-  #tooltip .tt-val { color: #e8eaf6; font-weight: 600; }
-  #tooltip .tt-expand { color: #ff5c72; }
-  #tooltip .tt-contract { color: #4488ff; }
-  #tooltip .tt-neutral { color: #aab; }
-  #tooltip .tt-section {
-    margin-top: 6px;
-    padding-top: 4px;
-    border-top: 1px solid #1e2340;
-    font-size: 0.7rem;
-  }
 </style>
 </head>
 <body>
-<div id="tooltip"></div>
 HEADER
 
     _slideshow_common_toolbar_html \
-        "Jacobi Field History (hover for token data)" \
+        "Jacobi Field History" \
         "1000" \
         "<div class=\"counter\">Step <span class=\"current\" id=\"step-num\">?</span> — <span id=\"step-pos\">1</span> / <span id=\"step-total\">?</span></div>" \
         >> "$OUT"
@@ -576,7 +512,7 @@ HEADER
     cat >> "$OUT" <<'CONTAINER'
 <div class="slide-container" id="slide-container">
   <div class="step-label" id="step-label">Step ?</div>
-  <div class="hint">← ↓ ↑ → navigate · Space play/pause · Hover points for token data</div>
+  <div class="hint">↑ ↓ ← → navigate · Space play/pause · Home/End jump · +/− speed</div>
 </div>
 <script>
 CONTAINER
@@ -589,19 +525,9 @@ CONTAINER
     done
     echo '];' >> "$OUT"
 
-    # Build the JS JSON paths array
-    echo 'const allJsonPaths = [' >> "$OUT"
-    for jf in "${JSON_FILES[@]}"; do
-        local cb="?t=$(date +%s)"
-        echo "  \"${jf}${cb}\"," >> "$OUT"
-    done
-    echo '];' >> "$OUT"
-
     cat >> "$OUT" <<'JACOBI_LOGIC'
 
-// ═══════════════════════════════════════════════════════════════
 // Parse step and layer from filenames
-// ═══════════════════════════════════════════════════════════════
 function parseInfo(path) {
   const m = path.match(/jacobi_step(\d+)_layer(\d+)/);
   if (!m) return { step: 0, layer: 0 };
@@ -615,140 +541,23 @@ allImages.forEach(path => {
   if (!stepMap.has(info.step)) stepMap.set(info.step, []);
   stepMap.get(info.step).push({ path, layer: info.layer });
 });
+
+// Sort each step's layers, and collect sorted step numbers
 stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
 const steps = [...stepMap.keys()].sort((a, b) => a - b);
 
-// Group JSON paths by step+layer for quick lookup
-const jsonMap = new Map(); // key: "step_layer" → path
-allJsonPaths.forEach(path => {
-  const info = parseInfo(path);
-  jsonMap.set(`${info.step}_${info.layer}`, path);
-});
+let idx = 0;  // start at the first step
 
-// Cache for loaded JSON data
-const hoverDataCache = new Map();
-
-async function loadHoverData(step, layer) {
-  const key = `${step}_${layer}`;
-  if (hoverDataCache.has(key)) return hoverDataCache.get(key);
-  const jsonPath = jsonMap.get(key);
-  if (!jsonPath) return null;
-  try {
-    const resp = await fetch(jsonPath);
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    hoverDataCache.set(key, data);
-    return data;
-  } catch (e) {
-    console.warn('Failed to load hover data:', key, e);
-    return null;
-  }
-}
-
-let idx = 0;
 const container = document.getElementById('slide-container');
 const stepNum = document.getElementById('step-num');
 const stepPos = document.getElementById('step-pos');
 const stepTotal = document.getElementById('step-total');
 const stepLabel = document.getElementById('step-label');
-const tooltip = document.getElementById('tooltip');
 
 stepTotal.textContent = steps.length;
 
 function getTotal() { return steps.length; }
 
-// ═══════════════════════════════════════════════════════════════
-// Tooltip logic
-// ═══════════════════════════════════════════════════════════════
-function showTooltip(e, tokenData, layerData) {
-  const vol = tokenData.volume;
-  let volClass = 'tt-neutral';
-  let volLabel = '≈1.0 (neutral)';
-  if (vol > 1.05) { volClass = 'tt-expand'; volLabel = 'expanding'; }
-  else if (vol < 0.95) { volClass = 'tt-contract'; volLabel = 'contracting'; }
-
-  const J = tokenData.J_2d;
-  const jStr = J ? `[[${J[0][0].toFixed(3)}, ${J[0][1].toFixed(3)}], [${J[1][0].toFixed(3)}, ${J[1][1].toFixed(3)}]]` : 'N/A';
-
-  tooltip.innerHTML = `
-    <div class="tt-token">"${escapeHtml(tokenData.token)}"</div>
-    <div class="tt-row"><span class="tt-label">Index:</span> <span class="tt-val">${tokenData.idx}</span></div>
-    <div class="tt-row"><span class="tt-label">PCA pos:</span> <span class="tt-val">(${tokenData.x.toFixed(3)}, ${tokenData.y.toFixed(3)})</span></div>
-    <div class="tt-row"><span class="tt-label">Volume (det J):</span> <span class="tt-val ${volClass}">${vol.toFixed(4)} — ${volLabel}</span></div>
-    <div class="tt-row"><span class="tt-label">Rotation:</span> <span class="tt-val">${tokenData.rotation_deg.toFixed(1)}°</span></div>
-    <div class="tt-row"><span class="tt-label">Shear:</span> <span class="tt-val">${tokenData.shear.toFixed(4)}</span></div>
-    <div class="tt-section">
-      <div class="tt-row"><span class="tt-label">Local J (2D):</span></div>
-      <div class="tt-val" style="font-size:0.65rem;word-break:break-all;">${jStr}</div>
-    </div>
-    <div class="tt-section">
-      <div class="tt-row"><span class="tt-label">Layer:</span> <span class="tt-val">${layerData.layer}</span></div>
-      <div class="tt-row"><span class="tt-label">Step:</span> <span class="tt-val">${layerData.step}</span></div>
-      <div class="tt-row"><span class="tt-label">Anisotropy:</span> <span class="tt-val">${layerData.anisotropy.toFixed(2)}</span></div>
-      <div class="tt-row"><span class="tt-label">PCA var:</span> <span class="tt-val">${(layerData.var_explained * 100).toFixed(1)}%</span></div>
-    </div>
-  `;
-
-  tooltip.style.display = 'block';
-
-  // Position near cursor but keep on screen
-  const rect = tooltip.getBoundingClientRect();
-  let tx = e.clientX + 16;
-  let ty = e.clientY - 10;
-  if (tx + rect.width > window.innerWidth - 10) tx = e.clientX - rect.width - 16;
-  if (ty + rect.height > window.innerHeight - 10) ty = window.innerHeight - rect.height - 10;
-  if (ty < 10) ty = 10;
-  tooltip.style.left = tx + 'px';
-  tooltip.style.top = ty + 'px';
-}
-
-function hideTooltip() {
-  tooltip.style.display = 'none';
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Find nearest token to mouse position within a layer image
-// ═══════════════════════════════════════════════════════════════
-function findNearestToken(mouseX01, mouseY01, hoverData, maxDist01) {
-  // mouseX01, mouseY01 are in [0,1] relative to the image
-  // Map to PCA coordinates using x_lim, y_lim
-  const xLim = hoverData.x_lim;
-  const yLim = hoverData.y_lim;
-  const pcaX = xLim[0] + mouseX01 * (xLim[1] - xLim[0]);
-  // Y is flipped: image top = high PCA y, image bottom = low PCA y
-  // Actually the images use origin='lower', so bottom = y_lim[0], top = y_lim[1]
-  const pcaY = yLim[0] + (1 - mouseY01) * (yLim[1] - yLim[0]);
-
-  const xSpan = xLim[1] - xLim[0];
-  const ySpan = yLim[1] - yLim[0];
-  const threshold = maxDist01 * Math.max(xSpan, ySpan);
-
-  let best = null;
-  let bestDist = Infinity;
-
-  for (const tok of hoverData.tokens) {
-    const dx = tok.x - pcaX;
-    const dy = tok.y - pcaY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = tok;
-    }
-  }
-
-  if (best && bestDist < threshold) return best;
-  return null;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Show step: create images with hover canvases
-// ═══════════════════════════════════════════════════════════════
 function show(i) {
   if (steps.length === 0) return;
   idx = Math.max(0, Math.min(steps.length - 1, i));
@@ -760,62 +569,21 @@ function show(i) {
   progressFill.style.width = ((idx + 1) / steps.length * 100) + '%';
   stepLabel.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
 
-  // Remove old layer wrappers
-  container.querySelectorAll('.layer-wrapper').forEach(el => el.remove());
+  // Remove old images (keep the label and hint)
+  container.querySelectorAll('.layer-img').forEach(el => el.remove());
+
+  // Adjust class for layout
   container.classList.toggle('single-layer', layers.length === 1);
-  hideTooltip();
 
-  // Add layer images with hover canvases
+  // Add layer images
   layers.forEach(l => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'layer-wrapper';
-
     const img = document.createElement('img');
     img.className = 'layer-img';
     img.src = l.path;
     img.alt = 'Layer ' + l.layer;
+    img.title = 'Step ' + step + ', Layer ' + l.layer;
     img.loading = 'eager';
-
-    const canvas = document.createElement('canvas');
-    canvas.className = 'hover-canvas';
-
-    wrapper.appendChild(img);
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
-
-    // Set up hover interaction once image loads
-    img.addEventListener('load', () => {
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-    });
-
-    // Load hover data and attach mouse events
-    loadHoverData(step, l.layer).then(hoverData => {
-      if (!hoverData) return;
-
-      canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const mx = (e.clientX - rect.left) / rect.width;
-        const my = (e.clientY - rect.top) / rect.height;
-
-        // Account for image padding from object-fit: contain
-        // For simplicity, assume the image fills the wrapper well enough
-        // A more precise version would compute the actual rendered image bounds
-
-        const nearest = findNearestToken(mx, my, hoverData, 0.05);
-        if (nearest) {
-          showTooltip(e, nearest, hoverData);
-          canvas.style.cursor = 'pointer';
-        } else {
-          hideTooltip();
-          canvas.style.cursor = 'crosshair';
-        }
-      });
-
-      canvas.addEventListener('mouseleave', () => {
-        hideTooltip();
-      });
-    });
+    container.appendChild(img);
   });
 }
 
@@ -829,22 +597,12 @@ JACOBI_LOGIC
 
     cat >> "$OUT" <<'PRELOAD_AND_INIT'
 
-// Preload images
+// Preload ALL step images on page load for smooth navigation
 (function preloadAll() {
   steps.forEach(step => {
     stepMap.get(step).forEach(l => {
       const img = new Image();
       img.src = l.path;
-    });
-  });
-})();
-
-// Preload JSON hover data for all steps
-(function preloadJson() {
-  steps.forEach(step => {
-    const layers = stepMap.get(step);
-    layers.forEach(l => {
-      loadHoverData(step, l.layer);
     });
   });
 })();
@@ -855,12 +613,11 @@ show(idx);
 </html>
 PRELOAD_AND_INIT
 
+    # Count unique steps for the log message
     local UNIQUE_STEPS
     UNIQUE_STEPS=$(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sed 's/.*jacobi_step\([0-9]*\)_.*/\1/' | sort -u | wc -l)
-    local JSON_COUNT=${#JSON_FILES[@]}
-    echo "Jacobi slideshow generated: $OUT (${#IMAGES[@]} images, ${JSON_COUNT} hover data files, across ${UNIQUE_STEPS} steps)"
+    echo "Jacobi slideshow generated: $OUT (${#IMAGES[@]} images across ${UNIQUE_STEPS} steps, grouped by step)"
 }
-
 
 # -------------------------------------------------------
 # Use awk to parse ALL epoch .txt files at once

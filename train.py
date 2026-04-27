@@ -3663,7 +3663,7 @@ def _run_train_epoch(
 
             plotter.update_batch(bl)
             plotter.update_topo(model, inp)
-            plotter.update_jacobi_fields(model, input_ids, tokenizer=tokenizer)
+            plotter.update_jacobi_fields(model, inp)
 
             if preds:
                 plotter.accumulate_predictions(preds)

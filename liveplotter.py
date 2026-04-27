@@ -514,15 +514,20 @@ class LivePlotter:
         self._jacobi_subaxes = []
 
 
-    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor, tokenizer=None):
+    @torch.no_grad()
+    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
         """
         Extract Jacobi fields from the residual stream and render them.
-        Now also exports per-token hover data as JSON for the HTML viewer.
+        Called every batch; only recomputes every kelp_every batches.
         """
         if not self.enabled:
             return
 
         self._kelp_step += 1
+
+        should_draw = True
+        if not should_draw:
+            return
 
         was_training = model.training
         model.eval()
@@ -535,40 +540,26 @@ class LivePlotter:
             if not fields:
                 return
 
-            # ── Decode token strings for hover data ─────────────────
-            token_strings = None
-            if tokenizer is not None:
-                try:
-                    flat_ids = input_ids.reshape(-1).tolist()
-                    max_tokens = fields[0]['h_in_2d'].shape[0]
-                    if len(flat_ids) > max_tokens:
-                        # Match the same subsampling used in compute_layer_jacobi_fields
-                        idx = torch.linspace(0, len(flat_ids) - 1, max_tokens).long().tolist()
-                        flat_ids = [flat_ids[i] for i in idx]
-                    token_strings = []
-                    for tid in flat_ids:
-                        try:
-                            token_strings.append(tokenizer.decode([tid]))
-                        except Exception:
-                            token_strings.append(f"<id:{tid}>")
-                except Exception as e:
-                    console.print(f"[yellow]⚠ Could not decode tokens for hover: {e}[/]")
-                    token_strings = None
-
+            # Use _kelp_step as draw_key — guaranteed unique and monotonically
+            # increasing, unlike _global_batch which is modified by update_batch
             draw_key = self._kelp_step
 
             self._jacobi_data = {
                 'fields': fields,
                 'step': self._kelp_step,
                 'draw_key': draw_key,
-                'token_strings': token_strings,  # ← NEW
             }
 
+            # Invalidate the guard so _draw_jacobi_fields will execute
             self._jacobi_drawn_step = -1
-            self._draw_jacobi_fields(self.ax_kelp, self._jacobi_data, draw_key)
-            self._flush_canvas()
 
-            # ── Save .npz files (existing code) ... ──────────────────
+            # Draw the new fields
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, draw_key
+            )
+
+            # Force a synchronous repaint so the new sub-axes actually appear
+            self._flush_canvas()
 
             try:
                 if run_dir is not None:
@@ -598,78 +589,16 @@ class LivePlotter:
                         self._save_jacobi_layer_images(self._jacobi_data)
                     except Exception as e:
                         console.print(f"[yellow]⚠ Could not save Jacobi layer images: {e}[/]")
-
-            # ── NEW: Save JSON hover data alongside images ───────────
-            try:
-                if run_dir is not None:
-                    import json
-                    jacobi_dir = os.path.join(run_dir, "jacobi_data")
-                    os.makedirs(jacobi_dir, exist_ok=True)
-                    step = self._kelp_step
-
-                    for f in fields:
-                        layer = f['layer']
-                        hover_data = {
-                            'step': step,
-                            'layer': layer,
-                            'var_explained': float(f.get('var_explained', 0)),
-                            'anisotropy': float(f['anisotropy']),
-                            'log_det': float(f['log_det']),
-                            'divergence': float(f['divergence']),
-                            'curl': float(f['curl']),
-                            'shear': float(f['shear']),
-                            'x_lim': [float(f['x_lim'][0]), float(f['x_lim'][1])],
-                            'y_lim': [float(f['y_lim'][0]), float(f['y_lim'][1])],
-                            'tokens': [],
-                        }
-
-                        h_in_2d = f['h_in_2d']
-                        per_token_volume = f['per_token_volume']
-                        per_token_rotation = f['per_token_rotation']
-                        per_token_shear = f['per_token_shear_mag']
-                        per_token_J_2d = f['per_token_J_2d']
-
-                        for t in range(h_in_2d.shape[0]):
-                            token_entry = {
-                                'x': float(h_in_2d[t, 0]),
-                                'y': float(h_in_2d[t, 1]),
-                                'volume': float(per_token_volume[t]),
-                                'rotation_rad': float(per_token_rotation[t]),
-                                'rotation_deg': float(np.degrees(per_token_rotation[t])),
-                                'shear': float(per_token_shear[t]),
-                                'J_2d': per_token_J_2d[t].tolist(),  # 2x2 list
-                                'idx': t,
-                            }
-                            if token_strings is not None and t < len(token_strings):
-                                token_entry['token'] = token_strings[t]
-                            else:
-                                token_entry['token'] = f'tok_{t}'
-
-                            hover_data['tokens'].append(token_entry)
-
-                        json_path = os.path.join(
-                            jacobi_dir,
-                            f"jacobi_step{step:06d}_layer{layer:02d}.json"
-                        )
-                        with open(json_path, 'w') as jf:
-                            json.dump(hover_data, jf)
-
             except Exception as e:
-                console.print(f"[yellow]⚠ Could not save Jacobi JSON hover data: {e}[/]")
-
-            try:
-                self._save_jacobi_layer_images(self._jacobi_data)
-            except Exception as e:
-                console.print(f"[yellow]⚠ Could not save Jacobi layer images: {e}[/]")
+                console.print(f"[yellow]⚠ Could not save Jacobi data: {e}[/]")
 
         except Exception as e:
             import traceback
-            console.print(f"[yellow]⚠ Jacobi field error at step {self._kelp_step}: {e}[/]")
+            console.print(f"[yellow]\u26a0 Jacobi field error at step {self._kelp_step}: {e}[/]")
             traceback.print_exc()
         finally:
             if was_training:
                 model.train()
-
 
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
