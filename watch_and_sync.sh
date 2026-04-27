@@ -1502,7 +1502,9 @@ while true; do
     generate_html "$RUN_DIR"
 
 	generate_slideshow_html "$RUN_DIR"
-	generate_jacobi_slideshow_html "$RUN_DIR"   # ← ADD THIS
+	echo "Generating Jacobi Slideshow"
+	generate_jacobi_slideshow_html "$RUN_DIR"
+	echo "DONE"
 
     # 4) Find all syncable files (now includes .py)
     FILES=$(find "$RUN_DIR" -type f \( \
