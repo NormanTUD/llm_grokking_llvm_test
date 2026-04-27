@@ -308,6 +308,10 @@ class LivePlotter:
         self._lock = threading.Lock()
         self._abs_diffs_history: List[List[int]] = []
 
+        self._save_dpi = 150
+        self._fig_width = 26    # inches
+        self._fig_height = 18   # inches
+
         # ── Kelp forest config ──────────────────────────────────────────
         self.kelp_every = kelp_every
         self._kelp_step = 0
@@ -1300,12 +1304,7 @@ class LivePlotter:
 
     # ── Save figure to file ─────────────────────────────────────────────
     def _save_to_file(self):
-        """Save the current figure to disk.
-        
-        Always saves as `training_plot.png` (latest).
-        Before overwriting, renames the previous latest to a sequential
-        history file: training_plot-00000001.png, training_plot-00000002.png, ...
-        """
+        """Save the current figure to disk at a fixed size, independent of window state."""
         if not self.enabled:
             return
         try:
@@ -1316,15 +1315,28 @@ class LivePlotter:
             # ── Rotate: move current latest → next numbered history file ──
             if os.path.exists(save_path):
                 base, ext = os.path.splitext(save_path)
-                # Find the next available history number
                 seq = 1
                 while os.path.exists(f"{base}-{seq:08d}{ext}"):
                     seq += 1
                 history_path = f"{base}-{seq:08d}{ext}"
                 os.rename(save_path, history_path)
 
-            # ── Save the new latest ─────────────────────────────────────
-            self.fig.savefig(save_path, dpi=150, bbox_inches="tight")
+            # ── Force a fixed size regardless of interactive window state ──
+            original_size = self.fig.get_size_inches()
+            self.fig.set_size_inches(self._fig_width, self._fig_height)
+
+            self.fig.savefig(
+                save_path,
+                dpi=self._save_dpi,
+                bbox_inches="tight",
+                facecolor=self.fig.get_facecolor(),
+                edgecolor="none",
+            )
+
+            # ── Restore the interactive window size so display isn't affected ──
+            if not self.suppress_window:
+                self.fig.set_size_inches(original_size)
+
         except Exception as e:
             pass  # Don't crash training for a file write error
 
