@@ -315,10 +315,15 @@ class LivePlotter:
             else:
                 self.fig.canvas.draw()
         except Exception:
-            pass
+            # Fallback: try draw_idle which is more forgiving of layout issues
+            try:
+                self.fig.canvas.draw_idle()
+                if not self.suppress_window and self._is_window_alive():
+                    self.fig.canvas.flush_events()
+            except Exception:
+                pass
         finally:
             _restore_c_stderr()
-
 
     def _remove_jacobi_subaxes(self):
         """Safely remove all Jacobi inset sub-axes from the figure."""
@@ -331,7 +336,6 @@ class LivePlotter:
                 except Exception:
                     pass
         self._jacobi_subaxes = []
-
 
 
     @torch.no_grad()
@@ -360,7 +364,9 @@ class LivePlotter:
             if not fields:
                 return
 
-            draw_key = self._global_batch
+            # Use _kelp_step as draw_key — guaranteed unique and monotonically
+            # increasing, unlike _global_batch which is modified by update_batch
+            draw_key = self._kelp_step
 
             self._jacobi_data = {
                 'fields': fields,
@@ -379,9 +385,7 @@ class LivePlotter:
                 self.ax_kelp, self._jacobi_data, draw_key
             )
 
-            # Force a synchronous repaint so the new sub-axes actually appear.
-            # _flush_canvas does draw() + flush_events(), which is required
-            # for dynamically added axes on TkAgg.
+            # Force a synchronous repaint so the new sub-axes actually appear
             self._flush_canvas()
 
         except Exception as e:
@@ -391,7 +395,6 @@ class LivePlotter:
         finally:
             if was_training:
                 model.train()
-
 
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
@@ -438,6 +441,18 @@ class LivePlotter:
                     color="#6a9ab8", transform=ax.transAxes)
             return
 
+        # ── Disable constrained/tight layout before adding inset axes ──
+        # tight_layout and constrained_layout will try to reposition
+        # manually-placed axes, causing them to vanish or overlap.
+        try:
+            self.fig.set_tight_layout(False)
+        except Exception:
+            pass
+        try:
+            self.fig.set_constrained_layout(False)
+        except Exception:
+            pass
+
         # ── Grid layout ────────────────────────────────────────────────
         n_cols = min(n_layers, 6)
         n_rows = math.ceil(n_layers / n_cols)
@@ -467,6 +482,9 @@ class LivePlotter:
 
             sub_ax = self.fig.add_axes([fx, fy, fw, fh])
             sub_ax.set_facecolor("#0d1117")
+            # ── Exclude from layout engine ─────────────────────────────
+            # This prevents tight_layout from repositioning these axes
+            sub_ax.set_in_layout(False)
             self._jacobi_subaxes.append(sub_ax)
 
             J = f['jacobian']
@@ -575,31 +593,6 @@ class LivePlotter:
             top_svs = S[:3]
             sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
             sub_ax.text(
-                0.97, 0.97,
-                f"\u03c3=[{sv_str}]",
-                fontsize=4, color="#4fc3f7", alpha=0.8,
-                ha="right", va="top", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-            )
-
-            sub_ax.text(
-                0.03, 0.97,
-                f"J\u2082=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
-                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
-                fontsize=3.5, color="#9ab8d8", alpha=0.6,
-                ha="left", va="top", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
-                          edgecolor="none", alpha=0.5),
-            )
-
-            sub_ax.set_xlim(-1.1, 1.1)
-            sub_ax.set_ylim(-1.1, 1.1)
-            sub_ax.set_aspect('equal')
-            sub_ax.tick_params(labelsize=0, length=0)
-            for spine in sub_ax.spines.values():
-                spine.set_color('#2a3a4a')
-                spine.set_linewidth(0.5)
 
 
     def _redraw_jacobi(self):
@@ -610,18 +603,19 @@ class LivePlotter:
         if self._jacobi_data is None:
             return
         if not hasattr(self, 'ax_kelp') or self.ax_kelp is None:
-            console.print("[yellow]⚠ Jacobi: ax_kelp is None, cannot draw[/]")
+            console.print("[yellow]\u26a0 Jacobi: ax_kelp is None, cannot draw[/]")
             return
         try:
             # Invalidate the guard so the redraw actually happens
             self._jacobi_drawn_step = -1
             self._draw_jacobi_fields(
                 self.ax_kelp, self._jacobi_data,
-                self._jacobi_data.get('draw_key', -1)
+                self._jacobi_data.get('draw_key', self._kelp_step)
             )
+            self._flush_canvas()
         except Exception as e:
             import traceback
-            console.print(f"[yellow]⚠ Jacobi redraw error: {e}[/]")
+            console.print(f"[yellow]\u26a0 Jacobi redraw error: {e}[/]")
             traceback.print_exc()
 
 
@@ -774,17 +768,28 @@ class LivePlotter:
         """Set suptitle, window title, tight_layout, close event, and force draw."""
         self.fig.suptitle("LLVM IR GPT Training", fontsize=14, fontweight="bold")
         try:
-            self.fig.canvas.manager.set_window_title("LLVM IR GPT — Live Training")
+            self.fig.canvas.manager.set_window_title("LLVM IR GPT \u2014 Live Training")
         except Exception:
             pass
 
-        self.fig.tight_layout()
+        # Apply tight_layout ONCE for initial positioning of the grid axes,
+        # then immediately disable it so it doesn't fight with manually
+        # positioned Jacobi sub-axes on subsequent draw() calls.
+        try:
+            self.fig.tight_layout()
+        except Exception:
+            pass
+        try:
+            self.fig.set_tight_layout(False)
+        except Exception:
+            pass
 
         if not self.suppress_window:
             self.fig.canvas.mpl_connect("close_event", self._on_close)
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
             self.plt.pause(0.001)
+
 
     # ── The director ────────────────────────────────────────────────────
 
