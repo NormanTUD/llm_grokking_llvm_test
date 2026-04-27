@@ -686,7 +686,7 @@ def main():
 
     # ── Build tokenizer ─────────────────────────────────────────────
     print("\n[2/6] Building tokenizer...")
-    tokenizer = BPETokenizer()
+    tokenizer = BPETokenizer.from_pretrained(discovered["run_dir"])
 
     # ── Extract config and load model ───────────────────────────────
     print("\n[3/6] Extracting model config...")
