@@ -3997,8 +3997,9 @@ def _finalize_training(
         f"and epoch_log.csv[/]"
     )
 
-    plotter.finalize()
-
+    # Save the final plot to file, then close the window automatically
+    plotter.save_plot()       # if you have such a method, or just save manually
+    plt.close('all')          # <-- close all matplotlib windows non-blockingly
 
 # ════════════════════════════════════════════════════════════════════════════
 # 9c. REFACTORED TRAIN — the coordinator
