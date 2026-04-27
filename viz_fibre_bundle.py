@@ -645,7 +645,16 @@ def main():
 
     # ── Build tokenizer ─────────────────────────────────────────────
     print("\n[2/6] Building tokenizer...")
-    tokenizer = BPETokenizer()
+    tok_dir = discovered["run_dir"]
+    tok_file = os.path.join(tok_dir, "tokenizer.json")
+    if os.path.exists(tok_file):
+        tokenizer = BPETokenizer.from_pretrained(tok_dir)
+        print(f"  Loaded BPE tokenizer from {tok_dir} (vocab_size={tokenizer.vocab_size})")
+    else:
+        print(f"  ERROR: No tokenizer.json found in {tok_dir}")
+        print(f"  The BPE tokenizer must exist alongside the checkpoint.")
+        print(f"  (It is saved automatically during training.)")
+        sys.exit(1)
 
     # ── Extract config and load model ───────────────────────────────
     print("\n[3/6] Extracting model config...")
