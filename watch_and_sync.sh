@@ -1442,12 +1442,6 @@ EOF
 # -------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-VIZ_SCRIPTS=(
-    "viz_fibre_bundle.py"
-    "viz_persistent_homology.py"
-    "viz_kelp_forest.py"
-)
-
 run_visualizations() {
     local DIR="$1"
 
