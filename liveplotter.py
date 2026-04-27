@@ -986,6 +986,7 @@ class LivePlotter:
             xs = list(range(len(self.batch_ema)))
             self.line_batch_ema.set_data(xs, self.batch_ema)
             self._refresh()
+            self._save_to_file()  # ← ADD THIS: re-save plot after each batch update
 
     # ── Val batch ───────────────────────────────────────────────────────
     def update_val_batch(self, val_batch_loss: float):
