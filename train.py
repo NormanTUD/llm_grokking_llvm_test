@@ -80,8 +80,6 @@ Controls (while training):
 # 0.  ARGPARSE
 # ════════════════════════════════════════════════════════════════════════════
 
-run_dir = None
-
 import json
 import math
 import os
@@ -3365,19 +3363,22 @@ def _create_plotter(args, cfg: dict, actual_params: int, tokenizer: BPETokenizer
 def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
                       actual_params: int) -> Tuple[Optional[RunLogger], Optional[str]]:
     """Set up the run logger and run directory. Returns (logger, run_dir)."""
-    global run_dir
+    global run_dir, _lp_module
 
     if args.no_run_log:
         run_dir = None
+        _lp_module.run_dir = run_dir
         return None, None
 
     if args.continue_run is not None:
         run_dir = args.continue_run
+        _lp_module.run_dir = run_dir
         run_logger = RunLogger(base_dir=args.run_dir, reuse_path=run_dir)
         console.print(f"[bold cyan]📁 Continuing run log in: {run_dir}[/]")
     else:
         run_logger = RunLogger(base_dir=args.run_dir)
         run_dir = run_logger.get_base_dir()
+        _lp_module.run_dir = run_dir
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
         run_logger.log_config(args)
         run_logger.log_model_summary(
