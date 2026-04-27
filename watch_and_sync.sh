@@ -743,12 +743,12 @@ while true; do
 
         if [ -n "$COPY_TO" ]; then
             echo "Synce nach $COPY_TO ..."
-            rsync -az \
-                --include='*/' \
-                --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' \
-                --include='*.csv' --include='*.txt' --include='*.html' \
-                --exclude='*' \
-                "${RUN_DIR}" "$COPY_TO"
+		rsync -avz \
+		    --include='*/' \
+		    --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' \
+		    --include='*.csv' --include='*.txt' --include='*.html' \
+		    --exclude='*' \
+		    "${RUN_DIR}" "$COPY_TO"
             echo "Sync abgeschlossen."
         fi
     else
