@@ -565,26 +565,16 @@ class LivePlotter:
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
         Render the Jacobi field as a colorful vector field image per layer.
-        
+
         Each layer panel shows:
-        
-        1. BACKGROUND: Two-channel color field
-           - Hue encodes the DIRECTION of space deformation (angle of (J-I)·r)
-           - Saturation/brightness encodes the MAGNITUDE of deformation
-           This creates a colorful "flow map" showing how space morphs.
-        
-        2. STREAMLINES: The displacement field (J-I)·r traced as continuous
-           curves, showing the flow topology — where space converges
-           (attractors) and diverges (repellers).
-        
-        3. TOKEN MARKERS: Fixed observer positions, ringed by volume change
-           (red ring = expanding, blue ring = contracting).
-        
-        4. STRETCH WHISKERS: Short line segments at sparse grid points
-           showing the direction and magnitude of maximum stretch.
-        
-        The result is a colorful, information-dense image that shows
-        the actual geometry of how each layer deforms representation space.
+        1. BACKGROUND: HSV color field
+           - Hue = direction of space deformation (angle of (J-I)·r)
+           - Brightness = magnitude of deformation
+           - Warm/cool tint for volume expansion/contraction
+        2. STREAMLINES: displacement field (J-I)·r as continuous curves
+        3. STRETCH WHISKERS: max stretch direction at sparse grid points
+        4. TOKEN MARKERS: fixed observers, ringed by volume change
+        5. COLOR WHEEL LEGEND + TEXT LEGEND on the right
         """
         if ax is None or jacobi_data is None:
             return
@@ -593,7 +583,6 @@ class LivePlotter:
             return
         self._jacobi_drawn_step = draw_key
 
-        # Clean up old sub-axes
         self._remove_jacobi_subaxes()
 
         fields = jacobi_data['fields']
@@ -611,12 +600,9 @@ class LivePlotter:
 
         var_exp = fields[0].get('var_explained', 0) if fields else 0
         ax.set_title(
-            f"Jacobi Fields — Space Deformation (step {step}, "
-            f"PCA var={var_exp:.0%})\n"
-            f"[Color=deformation direction+magnitude · "
-            f"Streamlines=space flow · "
-            f"Whiskers=max stretch]",
-            fontsize=9, fontweight="bold", color="#c0d8e8",
+            f"Jacobi Fields \u2014 Space Deformation (step {step}, "
+            f"PCA var={var_exp:.0%})",
+            fontsize=10, fontweight="bold", color="#c0d8e8",
         )
 
         if n_layers == 0:
@@ -630,21 +616,27 @@ class LivePlotter:
         except Exception:
             pass
 
+        from matplotlib.colors import hsv_to_rgb
+
+        # ═══════════════════════════════════════════════════════════════
+        # Layout: reserve right edge for the color wheel legend
+        # ═══════════════════════════════════════════════════════════════
+        legend_width_frac = 0.12
+        field_width_frac = 1.0 - legend_width_frac
+
         n_cols = min(n_layers, 6)
         n_rows = math.ceil(n_layers / n_cols)
 
         pad_x = 0.02
-        pad_y = 0.12
+        pad_y = 0.10
         pad_bottom = 0.03
-        cell_w = (1.0 - 2 * pad_x) / n_cols
+        cell_w = (field_width_frac - 2 * pad_x) / n_cols
         cell_h = (1.0 - pad_y - pad_bottom) / n_rows
-        inset_margin = 0.006
+        inset_margin = 0.005
 
         parent_bbox = ax.get_position()
         px0, py0 = parent_bbox.x0, parent_bbox.y0
         pw, ph = parent_bbox.width, parent_bbox.height
-
-        from matplotlib.colors import hsv_to_rgb
 
         for ell, f in enumerate(fields):
             col = ell % n_cols
@@ -660,14 +652,10 @@ class LivePlotter:
             sub_ax.set_in_layout(False)
             self._jacobi_subaxes.append(sub_ax)
 
-            # Extract all data from the field dict
             h_in_2d = f['h_in_2d']
             grid_x = f['grid_x']
             grid_y = f['grid_y']
-            grid_J = f['grid_J']
             grid_volume = f['grid_volume']
-            grid_rotation = f['grid_rotation']
-            grid_shear = f['grid_shear']
             grid_disp_x = f['grid_disp_x']
             grid_disp_y = f['grid_disp_y']
             grid_max_stretch_val = f['grid_max_stretch_val']
@@ -675,46 +663,41 @@ class LivePlotter:
             grid_max_stretch_dir = f['grid_max_stretch_dir']
             x_lim = f['x_lim']
             y_lim = f['y_lim']
-            S = f['singular_values']
-            per_token_J_2d = f['per_token_J_2d']
             per_token_volume = f['per_token_volume']
             per_token_shear = f['per_token_shear_mag']
             per_token_rotation = f['per_token_rotation']
 
             grid_n = grid_x.shape[0]
 
-            # ═══════════════════════════════════════════════════════════
-            # 1. COLORFUL BACKGROUND: HSV encoding of deformation field
-            # ═══════════════════════════════════════════════════════════
-            # Hue = angle of displacement vector (J-I)·r
-            # Saturation = 1 (full color)
-            # Value = magnitude of displacement (normalized)
-            
-            disp_angle = np.arctan2(grid_disp_y, grid_disp_x)  # [-π, π]
+            # ═══════════════════════════════════════════════════════
+            # 1. COLORFUL BACKGROUND: HSV encoding of deformation
+            # ═══════════════════════════════════════════════════════
+            disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
             disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
-            
-            # Normalize magnitude with arcsinh for dynamic range
+
             mag_norm = np.arcsinh(disp_mag * 2.0)
             mag_max = max(mag_norm.max(), 1e-10)
-            mag_norm = mag_norm / mag_max  # [0, 1]
-            
-            # Build HSV image
-            H = (disp_angle + np.pi) / (2 * np.pi)  # [0, 1]
-            S_hsv = np.ones_like(H) * 0.85  # high saturation
-            V_hsv = 0.15 + 0.85 * mag_norm  # dark where no deformation, bright where strong
-            
+            mag_norm = mag_norm / mag_max
+
+            H = (disp_angle + np.pi) / (2 * np.pi)
+            S_hsv = np.ones_like(H) * 0.85
+            V_hsv = 0.15 + 0.85 * mag_norm
+
             hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
             rgb_img = hsv_to_rgb(hsv_img)
-            
-            # Overlay volume change as a subtle tint:
-            # Expanding regions get a warm boost, contracting get cool
+
+            # Volume change tint
             log_vol = np.log(np.clip(grid_volume, 1e-6, None))
-            lv_norm = np.clip(log_vol / max(np.abs(log_vol).max(), 1e-6), -1, 1)
-            
-            # Blend: add red where expanding, blue where contracting
-            vol_blend = 0.2  # subtle
-            rgb_img[:, :, 0] = np.clip(rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1)
-            rgb_img[:, :, 2] = np.clip(rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1)
+            lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+            lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
+
+            vol_blend = 0.2
+            rgb_img[:, :, 0] = np.clip(
+                rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1
+            )
+            rgb_img[:, :, 2] = np.clip(
+                rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1
+            )
 
             sub_ax.imshow(
                 rgb_img,
@@ -725,16 +708,16 @@ class LivePlotter:
                 alpha=0.9,
             )
 
-            # ═══════════════════════════════════════════════════════════
-            # 2. STREAMLINES: trace the displacement field
-            # ═══════════════════════════════════════════════════════════
+            # ═══════════════════════════════════════════════════════
+            # 2. STREAMLINES
+            # ═══════════════════════════════════════════════════════
             gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
             gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
-            
+
             try:
                 speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
                 lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
-                
+
                 sub_ax.streamplot(
                     gx_1d, gy_1d, grid_disp_x, grid_disp_y,
                     color='white',
@@ -746,17 +729,16 @@ class LivePlotter:
                     minlength=0.2,
                 )
             except Exception:
-                pass  # streamplot can fail with degenerate fields
+                pass
 
-            # ═══════════════════════════════════════════════════════════
-            # 3. STRETCH WHISKERS at sparse grid points
-            # ═══════════════════════════════════════════════════════════
-            # Short line segments showing direction of maximum stretch
+            # ═══════════════════════════════════════════════════════
+            # 3. STRETCH WHISKERS
+            # ═══════════════════════════════════════════════════════
             whisker_step = max(1, grid_n // 8)
             x_span = x_lim[1] - x_lim[0]
             y_span = y_lim[1] - y_lim[0]
             whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
-            
+
             for gi in range(whisker_step // 2, grid_n, whisker_step):
                 for gj in range(whisker_step // 2, grid_n, whisker_step):
                     cx = grid_x[gi, gj]
@@ -764,43 +746,37 @@ class LivePlotter:
                     d = grid_max_stretch_dir[gi, gj]
                     s_max = grid_max_stretch_val[gi, gj]
                     s_min = grid_min_stretch_val[gi, gj]
-                    
+
                     ratio = s_max / max(s_min, 1e-10)
                     if ratio < 1.05:
-                        continue  # nearly isotropic, skip
-                    
-                    # Length proportional to stretch magnitude
+                        continue
+
                     length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
-                    
-                    # Color: yellow for moderate, red for extreme anisotropy
+
                     if ratio < 1.5:
-                        wcolor = '#ffff44'
-                        walpha = 0.4
+                        wcolor, walpha = '#ffff44', 0.4
                     elif ratio < 3.0:
-                        wcolor = '#ff8800'
-                        walpha = 0.6
+                        wcolor, walpha = '#ff8800', 0.6
                     else:
-                        wcolor = '#ff2222'
-                        walpha = 0.8
-                    
+                        wcolor, walpha = '#ff2222', 0.8
+
                     x0 = cx - length * d[0]
                     y0 = cy - length * d[1]
                     x1 = cx + length * d[0]
                     y1 = cy + length * d[1]
-                    
+
                     sub_ax.plot(
                         [x0, x1], [y0, y1],
                         color=wcolor, linewidth=1.0, alpha=walpha,
                         zorder=4, solid_capstyle='round',
                     )
 
-            # ═══════════════════════════════════════════════════════════
-            # 4. TOKEN MARKERS as fixed observers
-            # ═══════════════════════════════════════════════════════════
-            # Inner dot colored by shear, outer ring by volume change
+            # ═══════════════════════════════════════════════════════
+            # 4. TOKEN MARKERS
+            # ═══════════════════════════════════════════════════════
             shear_max = max(per_token_shear.max(), 1e-6)
             shear_norm = per_token_shear / shear_max
-            
+
             sub_ax.scatter(
                 h_in_2d[:, 0], h_in_2d[:, 1],
                 s=10, c=shear_norm, cmap='magma',
@@ -808,13 +784,12 @@ class LivePlotter:
                 edgecolors='none',
                 zorder=6, alpha=0.9,
             )
-            
-            # Volume rings
+
             vol_threshold_high = np.percentile(per_token_volume, 85)
             vol_threshold_low = np.percentile(per_token_volume, 15)
             expanding = per_token_volume > vol_threshold_high
             contracting = per_token_volume < vol_threshold_low
-            
+
             if expanding.any():
                 sub_ax.scatter(
                     h_in_2d[expanding, 0], h_in_2d[expanding, 1],
@@ -828,45 +803,16 @@ class LivePlotter:
                     linewidths=0.8, zorder=7,
                 )
 
-            # ═══════════════════════════════════════════════════════════
-            # 5. LABELS AND METRICS
-            # ═══════════════════════════════════════════════════════════
-            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            # ═══════════════════════════════════════════════════════
+            # 5. LAYER LABEL
+            # ═══════════════════════════════════════════════════════
+            layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
             mean_vol = per_token_volume.mean()
-            mean_shear = per_token_shear.mean()
-            mean_rot = np.abs(per_token_rotation).mean()
             aniso_val = f['anisotropy']
 
             sub_ax.set_title(
-                f"{layer_label}",
-                fontsize=6, fontweight="bold", color="#8ab8d8", pad=1,
-            )
-
-            sub_ax.text(
-                0.03, 0.03,
-                f"⟨det J⟩={mean_vol:.3f} ⟨shear⟩={mean_shear:.3f}\n"
-                f"⟨|rot|⟩={mean_rot:.3f} σ₁/σₙ={aniso_val:.1f}",
-                fontsize=3.5, color="white", alpha=0.85,
-                ha="left", va="bottom", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="black",
-                          edgecolor="none", alpha=0.6),
-            )
-
-            # Show the center 2×2 Jacobian
-            center_gi = grid_n // 2
-            center_gj = grid_n // 2
-            J_center = grid_J[center_gi, center_gj]
-
-            sub_ax.text(
-                0.97, 0.03,
-                f"J=[{J_center[0,0]:.2f} {J_center[0,1]:.2f}]\n"
-                f"  [{J_center[1,0]:.2f} {J_center[1,1]:.2f}]",
-                fontsize=3.5, color="white", alpha=0.7,
-                ha="right", va="bottom", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="black",
-                          edgecolor="none", alpha=0.5),
+                f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}",
+                fontsize=7, fontweight="bold", color="#aaccee", pad=2,
             )
 
             sub_ax.set_xlim(*x_lim)
@@ -876,6 +822,145 @@ class LivePlotter:
             for spine in sub_ax.spines.values():
                 spine.set_color('#2a3a4a')
                 spine.set_linewidth(0.5)
+
+        # ═══════════════════════════════════════════════════════════════
+        # 6. COLOR WHEEL LEGEND (Cartesian imshow, not polar pcolormesh)
+        # ═══════════════════════════════════════════════════════════════
+        legend_x = px0 + pw * (field_width_frac + 0.01)
+        legend_w = pw * (legend_width_frac - 0.02)
+
+        wheel_size = min(legend_w, ph * 0.22)
+        wheel_y = py0 + ph * 0.73
+        wheel_ax = self.fig.add_axes(
+            [legend_x + (legend_w - wheel_size) * 0.5, wheel_y,
+             wheel_size, wheel_size]
+        )
+        wheel_ax.set_facecolor("#0a0a1a")
+        wheel_ax.set_in_layout(False)
+        self._jacobi_subaxes.append(wheel_ax)
+
+        # Build the color wheel as a Cartesian RGBA image
+        wheel_res = 128
+        wx = np.linspace(-1, 1, wheel_res)
+        wy = np.linspace(-1, 1, wheel_res)
+        WX, WY = np.meshgrid(wx, wy)
+        W_angle = np.arctan2(WY, WX)
+        W_radius = np.sqrt(WX**2 + WY**2)
+
+        W_H = (W_angle + np.pi) / (2 * np.pi)
+        W_S = np.ones_like(W_H) * 0.85
+        W_V = 0.15 + 0.85 * np.clip(W_radius, 0, 1)
+
+        # Mask outside the unit circle
+        mask = W_radius > 1.0
+        W_S[mask] = 0.0
+        W_V[mask] = 0.0
+
+        hsv_wheel = np.stack([W_H, W_S, W_V], axis=-1)
+        rgb_wheel = hsv_to_rgb(hsv_wheel)
+
+        # RGBA with transparent outside
+        alpha_channel = np.ones((wheel_res, wheel_res))
+        alpha_channel[mask] = 0.0
+        rgba_wheel = np.concatenate(
+            [rgb_wheel, alpha_channel[:, :, np.newaxis]], axis=-1
+        )
+
+        wheel_ax.imshow(
+            rgba_wheel,
+            extent=[-1.0, 1.0, -1.0, 1.0],
+            origin='lower',
+            aspect='equal',
+            interpolation='bilinear',
+        )
+
+        # Direction labels at cardinal points
+        lbl_cfg = dict(fontsize=6.5, fontweight='bold', color='white',
+                       ha='center', va='center')
+        wheel_ax.text(1.35, 0.0, '+PC1\n\u2192', **lbl_cfg)
+        wheel_ax.text(-1.35, 0.0, '\u2190\n\u2212PC1', **lbl_cfg)
+        wheel_ax.text(0.0, 1.35, '\u2191 +PC2', **lbl_cfg)
+        wheel_ax.text(0.0, -1.35, '\u2193 \u2212PC2', **lbl_cfg)
+
+        # Center label
+        wheel_ax.text(0.0, 0.0, 'weak', fontsize=5, color='#666666',
+                      ha='center', va='center', fontstyle='italic')
+
+        wheel_ax.set_xlim(-1.7, 1.7)
+        wheel_ax.set_ylim(-1.7, 1.7)
+        wheel_ax.axis('off')
+
+        wheel_ax.set_title("Deformation\nDirection & Strength",
+                           fontsize=8, fontweight='bold', color='#c0d8e8',
+                           pad=8)
+
+        # ═══════════════════════════════════════════════════════════════
+        # 7. TEXT LEGEND below the color wheel
+        # ═══════════════════════════════════════════════════════════════
+        legend_text_y = py0 + ph * 0.03
+        legend_text_h = ph * 0.68
+        legend_text_ax = self.fig.add_axes(
+            [legend_x, legend_text_y, legend_w, legend_text_h]
+        )
+        legend_text_ax.set_facecolor("#0a0a1a")
+        legend_text_ax.set_xlim(0, 1)
+        legend_text_ax.set_ylim(0, 1)
+        legend_text_ax.axis('off')
+        legend_text_ax.set_in_layout(False)
+        self._jacobi_subaxes.append(legend_text_ax)
+
+        legend_items = [
+            ("BACKGROUND", "", "#c0d8e8", True),
+            ("\u2588\u2588 Hue", "deformation direction", "#ffffff", False),
+            ("\u2588\u2588 Bright", "strong deformation", "#dddddd", False),
+            ("\u2588\u2588 Dark", "weak / no deformation", "#555555", False),
+            ("\u2588\u2588 Red tint", "expanding (det J > 1)", "#ff6666", False),
+            ("\u2588\u2588 Blue tint", "contracting (det J < 1)", "#6688ff", False),
+            ("", "", "#000000", False),
+            ("OVERLAYS", "", "#c0d8e8", True),
+            ("\u2500\u2500 white", "streamlines (flow)", "#ffffff", False),
+            ("\u2500\u2500 yellow", "mild anisotropic stretch", "#ffff44", False),
+            ("\u2500\u2500 orange", "moderate stretch", "#ff8800", False),
+            ("\u2500\u2500 red", "extreme stretch", "#ff2222", False),
+            ("", "", "#000000", False),
+            ("TOKENS", "", "#c0d8e8", True),
+            ("\u25cf dot", "shear magnitude (magma)", "#dd6644", False),
+            ("\u25cb red ring", "expanding (top 15%)", "#ff4444", False),
+            ("\u25a1 blue ring", "contracting (top 15%)", "#4488ff", False),
+        ]
+
+        n_items = len(legend_items)
+        line_spacing = 0.95 / max(n_items, 1)
+
+        for i, (symbol, desc, color, is_header) in enumerate(legend_items):
+            y = 0.97 - i * line_spacing
+            if not symbol and not desc:
+                continue  # spacer line
+
+            if is_header:
+                # Section header
+                legend_text_ax.text(
+                    0.05, y, symbol,
+                    fontsize=7, fontweight='bold', color=color,
+                    fontfamily='sans-serif', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+            else:
+                # Symbol
+                legend_text_ax.text(
+                    0.05, y, symbol,
+                    fontsize=7, fontweight='bold', color=color,
+                    fontfamily='monospace', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+                # Description on next line, indented
+                legend_text_ax.text(
+                    0.08, y - line_spacing * 0.4, desc,
+                    fontsize=6, color='#999999',
+                    fontfamily='sans-serif', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+
 
     def _redraw_jacobi(self):
         """
