@@ -909,6 +909,9 @@ class LivePlotter:
         legend_text_ax.set_in_layout(False)
         self._jacobi_subaxes.append(legend_text_ax)
 
+        # ── Legend items: (symbol, description, color, is_header) ──
+        # For non-header items, symbol and description are rendered
+        # on the SAME line to avoid overlap.
         legend_items = [
             ("BACKGROUND", "", "#c0d8e8", True),
             ("\u2588\u2588 Hue", "deformation direction", "#ffffff", False),
@@ -938,7 +941,7 @@ class LivePlotter:
                 continue  # spacer line
 
             if is_header:
-                # Section header
+                # Section header — bold, larger font, standalone
                 legend_text_ax.text(
                     0.05, y, symbol,
                     fontsize=7, fontweight='bold', color=color,
@@ -946,17 +949,19 @@ class LivePlotter:
                     transform=legend_text_ax.transAxes,
                 )
             else:
-                # Symbol
+                # Symbol + description on ONE line to prevent overlap
+                # Symbol in its own color, then description in gray
+                # We render the colored symbol first, then the gray desc
+                # next to it using a fixed x-offset.
                 legend_text_ax.text(
                     0.05, y, symbol,
-                    fontsize=7, fontweight='bold', color=color,
+                    fontsize=6, fontweight='bold', color=color,
                     fontfamily='monospace', va='top',
                     transform=legend_text_ax.transAxes,
                 )
-                # Description on next line, indented
                 legend_text_ax.text(
-                    0.08, y - line_spacing * 0.4, desc,
-                    fontsize=6, color='#999999',
+                    0.55, y, desc,
+                    fontsize=5.5, color='#999999',
                     fontfamily='sans-serif', va='top',
                     transform=legend_text_ax.transAxes,
                 )
