@@ -887,7 +887,7 @@ while true; do
             rsync -avz \
                 --include='*/' \
                 --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' \
-                --include='*.csv' --include='*.txt' --include='*.html' --include='*.py' \
+                --include='*.csv' --include='*.txt' --include='*.html' \
                 --exclude='*' \
                 "${RUN_DIR}" "$COPY_TO"
             echo "Sync abgeschlossen."
