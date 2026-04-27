@@ -360,7 +360,7 @@ class LivePlotter:
 
         self._kelp_step += 1
 
-        should_draw = (self._kelp_step == 1) or (self._kelp_step % self.kelp_every == 0)
+        should_draw = True
         if not should_draw:
             return
 
@@ -384,9 +384,6 @@ class LivePlotter:
                 'step': self._kelp_step,
                 'draw_key': draw_key,
             }
-
-            # Remove old inset axes BEFORE clearing the parent
-            self._remove_jacobi_subaxes()
 
             # Invalidate the guard so _draw_jacobi_fields will execute
             self._jacobi_drawn_step = -1
@@ -423,9 +420,6 @@ class LivePlotter:
         fields = jacobi_data['fields']
         step = jacobi_data.get('step', draw_key)
         n_layers = len(fields)
-
-        # ── Remove any leftover sub-axes ───────────────────────────────
-        self._remove_jacobi_subaxes()
 
         # ── Clear the parent axis ──────────────────────────────────────
         ax.clear()
