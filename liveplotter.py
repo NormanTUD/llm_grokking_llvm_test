@@ -323,9 +323,13 @@ class LivePlotter:
                 self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
             )
 
-            # DO NOT flush here — let _refresh() handle it.
-            # Mark figure as needing redraw so the next _refresh picks it up.
-            self.fig.stale = True
+            # FIX: Force a synchronous canvas flush.
+            # The sub-axes created by _draw_jacobi_fields are new
+            # figure-level artists that draw_idle() (used by
+            # plt.pause in _refresh) may not pick up reliably.
+            # A synchronous draw() + flush_events() ensures the
+            # updated title and new sub-axes actually render.
+            self._flush_canvas()
 
         except Exception as e:
             import traceback
@@ -334,72 +338,6 @@ class LivePlotter:
         finally:
             if was_training:
                 model.train()
-
-    def _refresh(self):
-        """
-        Refresh all data axes and flush the canvas.
-        Uses plt.pause() which properly pumps the GUI event loop.
-        """
-        if not self.enabled:
-            return
-
-        if not self.suppress_window:
-            self._check_reopen()
-
-        _suppress_c_stderr()
-        try:
-            for ax in self._plot_axes:
-                if ax is self.ax_diffs:
-                    continue
-                ax.relim()
-                ax.autoscale_view()
-
-            if not self.suppress_window and self._is_window_alive():
-                self.plt.pause(0.001)
-            else:
-                self.fig.canvas.draw()
-        finally:
-            _restore_c_stderr()
-
-    def _flush_canvas(self):
-        """
-        Force a synchronous canvas repaint.
-        Uses draw() + flush_events() instead of draw_idle().
-        """
-        if not self.enabled:
-            return
-
-        _suppress_c_stderr()
-        try:
-            if not self.suppress_window and self._is_window_alive():
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
-            else:
-                self.fig.canvas.draw()
-        except Exception:
-            pass
-        finally:
-            _restore_c_stderr()
-
-
-    def _redraw_jacobi(self):
-        """
-        Redraw the Jacobi fields from cached data.
-        """
-        if self._jacobi_data is None:
-            return
-        if not hasattr(self, 'ax_kelp') or self.ax_kelp is None:
-            console.print("[yellow]⚠ Jacobi: ax_kelp is None, cannot draw[/]")
-            return
-        try:
-            self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
-            )
-        except Exception as e:
-            import traceback
-            console.print(f"[yellow]⚠ Jacobi redraw error: {e}[/]")
-            traceback.print_exc()
-
 
     def _draw_jacobi_fields(self, ax, jacobi_data, step):
         """
@@ -498,8 +436,14 @@ class LivePlotter:
             r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
             radial = (cdx * cgx + cdy * cgy) / r_mag
 
-            r_absmax = max(np.abs(radial).max(), 1e-10)
-            div_color = radial / r_absmax
+            # FIX: Use asinh normalization for better dynamic range.
+            # When the field is predominantly expanding (positive),
+            # linear normalization maps everything to the red half.
+            # asinh compresses large values while preserving sign,
+            # making small contracting regions visible as blue.
+            radial_asinh = np.arcsinh(radial * 3.0)
+            r_absmax = max(np.abs(radial_asinh).max(), 1e-10)
+            div_color = radial_asinh / r_absmax
 
             sub_ax.imshow(
                 div_color,
@@ -523,8 +467,10 @@ class LivePlotter:
             mag_max = mag.max() if mag.max() > 1e-10 else 1.0
 
             a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
-            a_rc_max = max(np.abs(a_radial).max(), 1e-10)
-            arrow_colors = (a_radial / a_rc_max).ravel()
+            # FIX: Match asinh normalization for arrows
+            a_radial_asinh = np.arcsinh(a_radial * 3.0)
+            a_rc_max = max(np.abs(a_radial_asinh).max(), 1e-10)
+            arrow_colors = (a_radial_asinh / a_rc_max).ravel()
 
             sub_ax.quiver(
                 agx, agy, adx, ady,
@@ -606,6 +552,319 @@ class LivePlotter:
 
         ax.stale = True
 
+    def _refresh(self):
+        """
+        Refresh all data axes and flush the canvas.
+        Uses plt.pause() which properly pumps the GUI event loop.
+        """
+        if not self.enabled:
+            return
+
+        if not self.suppress_window:
+            self._check_reopen()
+
+        _suppress_c_stderr()
+        try:
+            for ax in self._plot_axes:
+                if ax is self.ax_diffs:
+                    continue
+                ax.relim()
+                ax.autoscale_view()
+
+            if not self.suppress_window and self._is_window_alive():
+                self.plt.pause(0.001)
+            else:
+                self.fig.canvas.draw()
+        finally:
+            _restore_c_stderr()
+
+    def _flush_canvas(self):
+        """
+        Force a synchronous canvas repaint.
+        Uses draw() + flush_events() instead of draw_idle().
+        """
+        if not self.enabled:
+            return
+
+        _suppress_c_stderr()
+        try:
+            if not self.suppress_window and self._is_window_alive():
+                self.fig.canvas.draw()
+                self.fig.canvas.flush_events()
+            else:
+                self.fig.canvas.draw()
+        except Exception:
+            pass
+        finally:
+            _restore_c_stderr()
+
+
+    def _redraw_jacobi(self):
+        """
+        Redraw the Jacobi fields from cached data.
+        """
+        if self._jacobi_data is None:
+            return
+        if not hasattr(self, 'ax_kelp') or self.ax_kelp is None:
+            console.print("[yellow]⚠ Jacobi: ax_kelp is None, cannot draw[/]")
+            return
+        try:
+            self._draw_jacobi_fields(
+                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
+            )
+        except Exception as e:
+            import traceback
+            console.print(f"[yellow]⚠ Jacobi redraw error: {e}[/]")
+            traceback.print_exc()
+
+    def _draw_jacobi_fields(self, ax, jacobi_data, step):
+        """
+        Render N subplots (one per layer), each showing the Jacobi field.
+        """
+        if ax is None or jacobi_data is None:
+            return
+
+        # Skip redundant redraws — only recreate when step changes
+        if self._jacobi_drawn_step == step:
+            return
+        self._jacobi_drawn_step = step
+
+        fields = jacobi_data['fields']
+        n_layers = len(fields)
+
+        # ── Remove old inset axes (robust cleanup) ─────────────────────
+        old_axes = list(self._jacobi_subaxes)
+        self._jacobi_subaxes = []
+        for old_ax in old_axes:
+            try:
+                old_ax.remove()
+            except Exception:
+                try:
+                    self.fig.delaxes(old_ax)
+                except Exception:
+                    pass
+
+        # ── Clear the parent axis ──────────────────────────────────────
+        ax.clear()
+        ax.set_facecolor("#0a0a1a")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+        if n_layers == 0:
+            ax.text(0.5, 0.5, "Waiting for hidden states...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            return
+
+        # ── Grid layout ────────────────────────────────────────────────
+        n_cols = min(n_layers, 6)
+        n_rows = math.ceil(n_layers / n_cols)
+
+        pad_x = 0.02
+        pad_y = 0.12
+        pad_bottom = 0.03
+        cell_w = (1.0 - 2 * pad_x) / n_cols
+        cell_h = (1.0 - pad_y - pad_bottom) / n_rows
+        inset_margin = 0.006
+
+        parent_bbox = ax.get_position()
+        px0, py0 = parent_bbox.x0, parent_bbox.y0
+        pw, ph = parent_bbox.width, parent_bbox.height
+
+        color_n = 40
+        arrow_n = 12
+
+        for ell, f in enumerate(fields):
+            col = ell % n_cols
+            row = n_rows - 1 - (ell // n_cols)
+
+            fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
+            fy = py0 + ph * (pad_bottom + row * cell_h + inset_margin)
+            fw = pw * (cell_w - 2 * inset_margin)
+            fh = ph * (cell_h - 2 * inset_margin)
+
+            sub_ax = self.fig.add_axes([fx, fy, fw, fh])
+            sub_ax.set_facecolor("#0d1117")
+            self._jacobi_subaxes.append(sub_ax)
+
+            J = f['jacobian']
+            D_dim = J.shape[0]
+
+            try:
+                U, S, Vh = np.linalg.svd(J)
+            except Exception:
+                S = np.ones(D_dim)
+                Vh = np.eye(D_dim)
+
+            # ── FIX: Balanced 2D projection ────────────────────────────
+            # The old code used Vh[:2, :] (top-2 singular vectors),
+            # which are the directions of MAXIMUM stretch.  For a
+            # residual connection J = I + J_res, these directions
+            # almost always have singular values > 1 (expanding),
+            # so the projected field is purely expanding → only red.
+            #
+            # Instead, pick one expanding direction (top SV) and one
+            # contracting direction (bottom SV).  This gives a 2D
+            # slice that shows BOTH expansion and contraction, making
+            # blue regions visible when they exist.
+            #
+            # If all singular values > 1 (pure expansion), fall back
+            # to top-2 but use the residual F = J - I for coloring
+            # with asinh normalization to reveal subtle differences.
+            F_residual = J - np.eye(D_dim)
+
+            # Find the most contracting direction via eigendecomposition
+            # of the symmetric part of F_residual
+            F_sym = (F_residual + F_residual.T) / 2
+            try:
+                eigvals, eigvecs = np.linalg.eigh(F_sym)
+                # eigvals are sorted ascending: eigvals[0] is most negative
+                # eigvecs[:, 0] is the most contracting direction
+                # eigvecs[:, -1] is the most expanding direction
+                v_contract = eigvecs[:, 0]   # most contracting (or least expanding)
+                v_expand = eigvecs[:, -1]     # most expanding
+
+                # Orthogonalize (they should already be orthogonal from eigh,
+                # but ensure numerical stability)
+                v_expand = v_expand - np.dot(v_expand, v_contract) * v_contract
+                v_expand = v_expand / (np.linalg.norm(v_expand) + 1e-10)
+
+                V2 = np.stack([v_expand, v_contract], axis=0)  # (2, D)
+            except Exception:
+                V2 = Vh[:2, :]
+
+            J_2d = V2 @ J @ V2.T
+            F_2d = J_2d - np.eye(2)
+
+            # ── Dense divergence color field ───────────────────────────
+            c_coords = np.linspace(-1.0, 1.0, color_n)
+            cgx, cgy = np.meshgrid(c_coords, c_coords)
+
+            cdx = F_2d[0, 0] * cgx + F_2d[0, 1] * cgy
+            cdy = F_2d[1, 0] * cgx + F_2d[1, 1] * cgy
+
+            r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
+            radial = (cdx * cgx + cdy * cgy) / r_mag
+
+            # FIX: Use asinh normalization for better dynamic range.
+            # When the field is predominantly expanding, linear
+            # normalization maps everything to the red half of RdBu_r.
+            # asinh compresses large values while preserving sign,
+            # making small contracting regions visible as blue.
+            radial_asinh = np.arcsinh(radial * 3.0)
+            r_absmax = max(np.abs(radial_asinh).max(), 1e-10)
+            div_color = radial_asinh / r_absmax
+
+            sub_ax.imshow(
+                div_color,
+                extent=[-1, 1, -1, 1],
+                origin='lower',
+                cmap='RdBu_r',
+                vmin=-1, vmax=1,
+                aspect='equal',
+                interpolation='bilinear',
+                alpha=0.6,
+            )
+
+            # ── Sparse vector field arrows ─────────────────────────────
+            a_coords = np.linspace(-0.9, 0.9, arrow_n)
+            agx, agy = np.meshgrid(a_coords, a_coords)
+
+            adx = F_2d[0, 0] * agx + F_2d[0, 1] * agy
+            ady = F_2d[1, 0] * agx + F_2d[1, 1] * agy
+
+            mag = np.sqrt(adx**2 + ady**2)
+            mag_max = mag.max() if mag.max() > 1e-10 else 1.0
+
+            a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
+            # FIX: Match asinh normalization for arrow colors
+            a_radial_asinh = np.arcsinh(a_radial * 3.0)
+            a_rc_max = max(np.abs(a_radial_asinh).max(), 1e-10)
+            arrow_colors = (a_radial_asinh / a_rc_max).ravel()
+
+            sub_ax.quiver(
+                agx, agy, adx, ady,
+                arrow_colors,
+                cmap='RdBu_r',
+                clim=(-1, 1),
+                scale=mag_max * arrow_n * 0.9,
+                width=0.015,
+                headwidth=3.5,
+                headlength=4,
+                alpha=0.9,
+                zorder=2,
+            )
+
+            sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
+            sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
+
+            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            div_val = f['divergence']
+            curl_val = f['curl']
+            shear_val = f['shear']
+            aniso_val = f['anisotropy']
+
+            sub_ax.set_title(
+                f"{layer_label}",
+                fontsize=6, fontweight="bold", color="#8ab8d8", pad=1,
+            )
+
+            sub_ax.text(
+                0.03, 0.03,
+                f"div={div_val:.1f} curl={curl_val:.2f}\n"
+                f"shear={shear_val:.2f} σ₁/σₙ={aniso_val:.1f}",
+                fontsize=4, color="#6a9ab8", alpha=0.8,
+                ha="left", va="bottom", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                          edgecolor="none", alpha=0.7),
+            )
+
+            top_svs = S[:3]
+            sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
+            sub_ax.text(
+                0.97, 0.97,
+                f"σ=[{sv_str}]",
+                fontsize=4, color="#4fc3f7", alpha=0.8,
+                ha="right", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+            )
+
+            sub_ax.text(
+                0.03, 0.97,
+                f"J₂=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
+                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
+                fontsize=3.5, color="#9ab8d8", alpha=0.6,
+                ha="left", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                          edgecolor="none", alpha=0.5),
+            )
+
+            sub_ax.set_xlim(-1.1, 1.1)
+            sub_ax.set_ylim(-1.1, 1.1)
+            sub_ax.set_aspect('equal')
+            sub_ax.tick_params(labelsize=0, length=0)
+            for spine in sub_ax.spines.values():
+                spine.set_color('#2a3a4a')
+                spine.set_linewidth(0.5)
+
+            sub_ax.stale = True
+
+        # ── Title for the parent axis (OUTSIDE the loop) ───────────────
+        ax.set_title(
+            f"Jacobi Fields — Per-Layer Space Deformation  "
+            f"(step {step})\n"
+            f"[Background = divergence (red=expanding, blue=contracting) · "
+            f"Arrows = displacement field]",
+            fontsize=9, fontweight="bold", color="#c0d8e8",
+        )
+
+        ax.stale = True
 
     def accumulate_predictions(self, predictions: list):
         """Accumulate predictions across batches (call clear_predictions() at epoch start)."""
