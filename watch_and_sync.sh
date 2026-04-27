@@ -383,6 +383,356 @@ SLIDESHOW_JS
 }
 
 # -------------------------------------------------------
+# Generate a standalone HTML slideshow for Jacobi field images
+# -------------------------------------------------------
+generate_jacobi_slideshow_html() {
+    local DIR="$1"
+    local JACOBI_DIR="${DIR}jacobi_images/"
+    local OUT="${DIR}jacobi.html"
+
+    if [ ! -d "$JACOBI_DIR" ]; then
+        return
+    fi
+
+    # Collect all jacobi layer images in order
+    local IMAGES=()
+    while IFS= read -r f; do
+        [ -n "$f" ] && IMAGES+=("${f#./}")
+    done < <(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sort)
+
+    if [ ${#IMAGES[@]} -eq 0 ]; then
+        return
+    fi
+
+    local TOTAL=${#IMAGES[@]}
+    local TIMESTAMP
+    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    cat > "$OUT" <<'JACOBI_HEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jacobi Field History</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090d;
+    color: #e8eaf6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: #12152a;
+    border-bottom: 1px solid #1e2340;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .toolbar .title {
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .toolbar .controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .toolbar button {
+    background: #1e2340;
+    border: 1px solid #2a2f55;
+    color: #e8eaf6;
+    padding: 0.35rem 0.9rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover {
+    background: #2a2f55;
+    border-color: #7c5cfc;
+  }
+  .toolbar button:active {
+    background: #7c5cfc;
+    color: #fff;
+  }
+  .toolbar button.playing {
+    background: #00d4aa;
+    color: #08090d;
+    border-color: #00d4aa;
+  }
+  .counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #6b70a0;
+    min-width: 120px;
+    text-align: center;
+  }
+  .counter .current {
+    color: #7c5cfc;
+    font-weight: 700;
+  }
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1.5rem;
+    background: #0d0f16;
+    border-bottom: 1px solid #1e2340;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .filter-bar label {
+    font-size: 0.75rem;
+    color: #6b70a0;
+    font-weight: 600;
+  }
+  .filter-bar select, .filter-bar input {
+    background: #1e2340;
+    border: 1px solid #2a2f55;
+    color: #e8eaf6;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .progress-bar-container {
+    flex-shrink: 0;
+    height: 4px;
+    background: #1e2340;
+    cursor: pointer;
+    position: relative;
+  }
+  .progress-bar-container:hover {
+    height: 8px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    transition: width 0.1s ease;
+    border-radius: 0 2px 2px 0;
+  }
+  .slide-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    background: #000;
+  }
+  .slide-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .hint {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: #4a4f78;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .speed-label {
+    font-size: 0.7rem;
+    color: #6b70a0;
+  }
+</style>
+</head>
+<body>
+JACOBI_HEAD
+
+    cat >> "$OUT" <<EOF
+<div class="toolbar">
+  <div class="title">Jacobi Field History</div>
+  <div class="controls">
+    <button id="btn-start" title="Go to first (Home)">⏮</button>
+    <button id="btn-prev" title="Previous (←)">◀</button>
+    <button id="btn-play" title="Play/Pause (Space)">▶</button>
+    <button id="btn-next" title="Next (→)">▶▶</button>
+    <button id="btn-end" title="Go to last (End)">⏭</button>
+    <span class="speed-label">Speed:</span>
+    <button id="btn-slower" title="Slower">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
+    <button id="btn-faster" title="Faster">+</button>
+    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">${TOTAL}</span></div>
+  </div>
+</div>
+<div class="filter-bar">
+  <label>Filter layer:</label>
+  <select id="filter-layer"><option value="all">All layers</option></select>
+  <label>Filter step:</label>
+  <select id="filter-step"><option value="all">All steps</option></select>
+</div>
+<div class="progress-bar-container" id="progress-bar">
+  <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
+</div>
+<div class="slide-container">
+  <img id="slide-img" src="" alt="Jacobi field">
+  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump · Filter by layer/step above</div>
+</div>
+<script>
+const allImages = [
+EOF
+
+    for img in "${IMAGES[@]}"; do
+        local cb="?t=$(date +%s)"
+        echo "  \"${img}${cb}\"," >> "$OUT"
+    done
+
+    cat >> "$OUT" <<'JACOBI_JS'
+];
+
+// Parse step and layer from filenames like "jacobi_images/jacobi_step000005_layer00.png?t=..."
+function parseInfo(path) {
+  const m = path.match(/jacobi_step(\d+)_layer(\d+)/);
+  if (!m) return { step: 0, layer: 0 };
+  return { step: parseInt(m[1], 10), layer: parseInt(m[2], 10) };
+}
+
+// Build unique steps and layers for filters
+const allInfo = allImages.map(parseInfo);
+const uniqueSteps = [...new Set(allInfo.map(i => i.step))].sort((a, b) => a - b);
+const uniqueLayers = [...new Set(allInfo.map(i => i.layer))].sort((a, b) => a - b);
+
+const filterLayer = document.getElementById('filter-layer');
+const filterStep = document.getElementById('filter-step');
+
+uniqueLayers.forEach(l => {
+  const opt = document.createElement('option');
+  opt.value = l;
+  opt.textContent = 'Layer ' + l;
+  filterLayer.appendChild(opt);
+});
+uniqueSteps.forEach(s => {
+  const opt = document.createElement('option');
+  opt.value = s;
+  opt.textContent = 'Step ' + s;
+  filterStep.appendChild(opt);
+});
+
+let filteredImages = [...allImages];
+let idx = 0;
+let playing = false;
+let playInterval = null;
+let speed = 500;
+
+const imgEl = document.getElementById('slide-img');
+const frameNum = document.getElementById('frame-num');
+const frameTotal = document.getElementById('frame-total');
+const progressFill = document.getElementById('progress-fill');
+const btnPlay = document.getElementById('btn-play');
+const speedDisplay = document.getElementById('speed-display');
+
+function applyFilter() {
+  const layerVal = filterLayer.value;
+  const stepVal = filterStep.value;
+  filteredImages = allImages.filter((path, i) => {
+    const info = allInfo[i];
+    if (layerVal !== 'all' && info.layer !== parseInt(layerVal, 10)) return false;
+    if (stepVal !== 'all' && info.step !== parseInt(stepVal, 10)) return false;
+    return true;
+  });
+  frameTotal.textContent = filteredImages.length;
+  idx = Math.min(idx, filteredImages.length - 1);
+  if (idx < 0) idx = 0;
+  show(idx);
+}
+
+filterLayer.addEventListener('change', applyFilter);
+filterStep.addEventListener('change', applyFilter);
+
+function show(i) {
+  if (filteredImages.length === 0) {
+    imgEl.src = '';
+    frameNum.textContent = '0';
+    progressFill.style.width = '0%';
+    return;
+  }
+  idx = Math.max(0, Math.min(filteredImages.length - 1, i));
+  imgEl.src = filteredImages[idx];
+  frameNum.textContent = idx + 1;
+  progressFill.style.width = ((idx + 1) / filteredImages.length * 100) + '%';
+}
+
+function next() { show(idx + 1); if (idx >= filteredImages.length - 1 && playing) togglePlay(); }
+function prev() { show(idx - 1); }
+function goStart() { show(0); }
+function goEnd() { show(filteredImages.length - 1); }
+
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸' : '▶';
+  btnPlay.classList.toggle('playing', playing);
+  if (playing) {
+    playInterval = setInterval(next, speed);
+  } else {
+    clearInterval(playInterval);
+    playInterval = null;
+  }
+}
+
+function updateSpeed(newSpeed) {
+  speed = Math.max(50, Math.min(5000, newSpeed));
+  speedDisplay.textContent = speed + 'ms';
+  if (playing) {
+    clearInterval(playInterval);
+    playInterval = setInterval(next, speed);
+  }
+}
+
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-start').addEventListener('click', goStart);
+document.getElementById('btn-end').addEventListener('click', goEnd);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+
+document.getElementById('progress-bar').addEventListener('click', (e) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  show(Math.round(pct * (filteredImages.length - 1)));
+});
+
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowRight': e.preventDefault(); next(); break;
+    case 'ArrowLeft':  e.preventDefault(); prev(); break;
+    case 'Home':       e.preventDefault(); goStart(); break;
+    case 'End':        e.preventDefault(); goEnd(); break;
+    case ' ':          e.preventDefault(); togglePlay(); break;
+    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 100); break;
+    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 100); break;
+  }
+});
+
+// Start at the latest image
+show(filteredImages.length - 1);
+</script>
+</body>
+</html>
+JACOBI_JS
+
+    echo "Jacobi slideshow generated: $OUT (${TOTAL} frames)"
+}
+
+# -------------------------------------------------------
 # Use awk to parse ALL epoch .txt files at once
 # -------------------------------------------------------
 generate_epoch_html() {
@@ -1147,7 +1497,8 @@ while true; do
     # 3) Generate the HTML dashboard (now picks up .py files + new .png images)
     generate_html "$RUN_DIR"
 
-    generate_slideshow_html "$RUN_DIR"
+	generate_slideshow_html "$RUN_DIR"
+	generate_jacobi_slideshow_html "$RUN_DIR"   # ← ADD THIS
 
     # 4) Find all syncable files (now includes .py)
     FILES=$(find "$RUN_DIR" -type f \( \

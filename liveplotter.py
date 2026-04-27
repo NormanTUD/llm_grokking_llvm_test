@@ -584,6 +584,11 @@ class LivePlotter:
                             os.path.join(jacobi_dir, f"jacobi_step{step:06d}_layer{layer:02d}.npz"),
                             **save_dict,
                         )
+
+                    try:
+                        self._save_jacobi_layer_images(self._jacobi_data)
+                    except Exception as e:
+                        console.print(f"[yellow]⚠ Could not save Jacobi layer images: {e}[/]")
             except Exception as e:
                 console.print(f"[yellow]⚠ Could not save Jacobi data: {e}[/]")
 
@@ -2000,6 +2005,144 @@ class LivePlotter:
         ax.set_yticklabels(tick_labels, fontsize=6)
         ax.set_xlabel("Layer", fontsize=8)
         ax.set_ylabel("Layer", fontsize=8)
+
+    def _save_jacobi_layer_images(self, jacobi_data):
+        """Save each Jacobi field layer as a standalone PNG without surrounding chrome."""
+        import liveplotter as _lp_self
+        _run_dir = getattr(_lp_self, 'run_dir', None)
+        if _run_dir is None:
+            return
+
+        fields = jacobi_data.get('fields', [])
+        step = jacobi_data.get('step', 0)
+        if not fields:
+            return
+
+        jacobi_img_dir = os.path.join(_run_dir, "jacobi_images")
+        os.makedirs(jacobi_img_dir, exist_ok=True)
+
+        from matplotlib.colors import hsv_to_rgb
+
+        for f in fields:
+            layer = f['layer']
+            h_in_2d = f['h_in_2d']
+            grid_x = f['grid_x']
+            grid_y = f['grid_y']
+            grid_volume = f['grid_volume']
+            grid_disp_x = f['grid_disp_x']
+            grid_disp_y = f['grid_disp_y']
+            grid_max_stretch_val = f['grid_max_stretch_val']
+            grid_min_stretch_val = f['grid_min_stretch_val']
+            grid_max_stretch_dir = f['grid_max_stretch_dir']
+            x_lim = f['x_lim']
+            y_lim = f['y_lim']
+            per_token_volume = f['per_token_volume']
+            per_token_shear = f['per_token_shear_mag']
+            grid_n = grid_x.shape[0]
+            var_exp = f.get('var_explained', 0)
+            aniso_val = f['anisotropy']
+            mean_vol = per_token_volume.mean()
+
+            fig_s, ax_s = plt.subplots(1, 1, figsize=(6, 6))
+            ax_s.set_facecolor("#0d1117")
+
+            # ── Background HSV ──────────────────────────────────────
+            disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
+            disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+            mag_norm = np.arcsinh(disp_mag * 2.0)
+            mag_max = max(mag_norm.max(), 1e-10)
+            mag_norm = mag_norm / mag_max
+
+            H = (disp_angle + np.pi) / (2 * np.pi)
+            S_hsv = np.ones_like(H) * 0.85
+            V_hsv = 0.15 + 0.85 * mag_norm
+
+            hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
+            rgb_img = hsv_to_rgb(hsv_img)
+
+            log_vol = np.log(np.clip(grid_volume, 1e-6, None))
+            lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+            lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
+            vol_blend = 0.2
+            rgb_img[:, :, 0] = np.clip(rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1)
+            rgb_img[:, :, 2] = np.clip(rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1)
+
+            ax_s.imshow(rgb_img, extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
+                         origin='lower', aspect='auto', interpolation='bilinear', alpha=0.9)
+
+            # ── Streamlines ─────────────────────────────────────────
+            gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
+            gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
+            try:
+                speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+                lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
+                ax_s.streamplot(gx_1d, gy_1d, grid_disp_x, grid_disp_y,
+                                color='white', linewidth=lw, density=0.7,
+                                arrowsize=0.6, arrowstyle='->', zorder=2, minlength=0.2)
+            except Exception:
+                pass
+
+            # ── Stretch whiskers ────────────────────────────────────
+            whisker_step = max(1, grid_n // 8)
+            x_span = x_lim[1] - x_lim[0]
+            y_span = y_lim[1] - y_lim[0]
+            whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
+
+            for gi in range(whisker_step // 2, grid_n, whisker_step):
+                for gj in range(whisker_step // 2, grid_n, whisker_step):
+                    cx, cy = grid_x[gi, gj], grid_y[gi, gj]
+                    d = grid_max_stretch_dir[gi, gj]
+                    s_max = grid_max_stretch_val[gi, gj]
+                    s_min = grid_min_stretch_val[gi, gj]
+                    ratio = s_max / max(s_min, 1e-10)
+                    if ratio < 1.05:
+                        continue
+                    length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
+                    if ratio < 1.5:
+                        wcolor, walpha = '#ffff44', 0.4
+                    elif ratio < 3.0:
+                        wcolor, walpha = '#ff8800', 0.6
+                    else:
+                        wcolor, walpha = '#ff2222', 0.8
+                    ax_s.plot([cx - length*d[0], cx + length*d[0]],
+                              [cy - length*d[1], cy + length*d[1]],
+                              color=wcolor, linewidth=1.0, alpha=walpha, zorder=4,
+                              solid_capstyle='round')
+
+            # ── Token markers ───────────────────────────────────────
+            shear_max = max(per_token_shear.max(), 1e-6)
+            shear_norm = per_token_shear / shear_max
+            ax_s.scatter(h_in_2d[:, 0], h_in_2d[:, 1], s=10, c=shear_norm,
+                         cmap='magma', vmin=0, vmax=1, edgecolors='none', zorder=6, alpha=0.9)
+
+            vol_hi = np.percentile(per_token_volume, 85)
+            vol_lo = np.percentile(per_token_volume, 15)
+            expanding = per_token_volume > vol_hi
+            contracting = per_token_volume < vol_lo
+            if expanding.any():
+                ax_s.scatter(h_in_2d[expanding, 0], h_in_2d[expanding, 1],
+                             s=28, facecolors='none', edgecolors='#ff4444', linewidths=0.8, zorder=7)
+            if contracting.any():
+                ax_s.scatter(h_in_2d[contracting, 0], h_in_2d[contracting, 1],
+                             s=28, facecolors='none', edgecolors='#4488ff', linewidths=0.8, zorder=7)
+
+            layer_label = "Emb→L1" if layer == 0 else f"L{layer}→{layer+1}"
+            ax_s.set_title(
+                f"{layer_label}  det={mean_vol:.2f}  σ₁/σₙ={aniso_val:.1f}  "
+                f"(step {step}, PCA var={var_exp:.0%})",
+                fontsize=9, fontweight="bold", color="#aaccee", pad=4)
+
+            ax_s.set_xlim(*x_lim)
+            ax_s.set_ylim(*y_lim)
+            ax_s.set_aspect('auto')
+            ax_s.tick_params(labelsize=0, length=0)
+            for spine in ax_s.spines.values():
+                spine.set_color('#2a3a4a')
+                spine.set_linewidth(0.5)
+
+            fname = os.path.join(jacobi_img_dir, f"jacobi_step{step:06d}_layer{layer:02d}.png")
+            fig_s.savefig(fname, dpi=120, bbox_inches='tight', facecolor='#0a0a1a', edgecolor='none')
+            plt.close(fig_s)
 
 
     # ── Finalize ────────────────────────────────────────────────────────
