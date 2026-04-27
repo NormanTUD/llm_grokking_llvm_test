@@ -57,7 +57,8 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
     # ── Shared PCA basis from all layers for consistent 2D view ─────
     all_points = []
     for hs in hidden_states:
-        pts = hs[0].detach().float().cpu()
+        pts = hs.detach().float().cpu()
+        pts = pts.reshape(-1, pts.shape[-1])  # (B*T, D)
         all_points.append(pts)
 
     all_concat = torch.cat(all_points, dim=0)
