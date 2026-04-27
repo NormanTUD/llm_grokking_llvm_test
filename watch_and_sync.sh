@@ -48,8 +48,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Each produces a .png inside the run folder automatically.
 # -------------------------------------------------------
 VIZ_SCRIPTS=(
-    "viz_fibre_bundle.py"
-    "viz_persistent_homology.py"
+    #"viz_fibre_bundle.py"
+    #"viz_persistent_homology.py"
     "viz_kelp_forest.py"
 )
 
