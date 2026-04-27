@@ -3980,7 +3980,6 @@ def _save_final_model(
     console.print(f"[green]✓ Saved: {save_path}/[/]")
     console.print("[dim]  config.json  pytorch_model.bin  tokenizer.json  training_meta.json[/]")
 
-
 def _finalize_training(
         epoch_ctrl: EpochController,
         csv_log: CSVTrainingLogger,
@@ -3998,8 +3997,10 @@ def _finalize_training(
     )
 
     # Save the final plot to file, then close the window automatically
-    plotter.save_plot()       # if you have such a method, or just save manually
-    plt.close('all')          # <-- close all matplotlib windows non-blockingly
+    if plotter.enabled:
+        plotter._save_to_file()
+        console.print(f"[bold green]📊 Final plot saved to: {plotter.plot_file}[/]")
+        plt.close('all')
 
 # ════════════════════════════════════════════════════════════════════════════
 # 9c. REFACTORED TRAIN — the coordinator
