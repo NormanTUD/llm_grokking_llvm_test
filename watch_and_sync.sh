@@ -866,6 +866,8 @@ while true; do
     # 1) Generate error plots (existing)
     bash plot_errors.sh "$RUN_DIR"
 
+    bash plot_csv_extras.sh "$RUN_DIR"
+
     # 2) Run Python visualization scripts & copy .py files into run folder
     run_visualizations "$RUN_DIR"
 
