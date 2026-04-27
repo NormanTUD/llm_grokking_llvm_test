@@ -272,12 +272,7 @@ class LivePlotter:
         self._refresh()
         console.print("  [green]✓ Plot state restored — graphs continue from where they left off[/]")
 
-
     def _refresh(self):
-        """
-        Refresh all data axes and flush the canvas.
-        Uses plt.pause() which properly pumps the GUI event loop.
-        """
         if not self.enabled:
             return
 
@@ -292,10 +287,26 @@ class LivePlotter:
                 ax.relim()
                 ax.autoscale_view()
 
+            # ── Protect Jacobi sub-axes positions ──────────────────
+            # Save positions before draw/pause, restore after
+            saved_positions = []
+            for sub_ax in self._jacobi_subaxes:
+                try:
+                    saved_positions.append((sub_ax, sub_ax.get_position()))
+                except Exception:
+                    pass
+
             if not self.suppress_window and self._is_window_alive():
                 self.plt.pause(0.001)
             else:
                 self.fig.canvas.draw()
+
+            # Restore Jacobi sub-axes positions after redraw
+            for sub_ax, pos in saved_positions:
+                try:
+                    sub_ax.set_position(pos)
+                except Exception:
+                    pass
         finally:
             _restore_c_stderr()
 
