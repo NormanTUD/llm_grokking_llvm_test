@@ -593,6 +593,31 @@ class LivePlotter:
             top_svs = S[:3]
             sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
             sub_ax.text(
+                0.97, 0.97,
+                f"\u03c3=[{sv_str}]",
+                fontsize=4, color="#4fc3f7", alpha=0.8,
+                ha="right", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+            )
+
+            sub_ax.text(
+                0.03, 0.97,
+                f"J\u2082=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
+                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
+                fontsize=3.5, color="#9ab8d8", alpha=0.6,
+                ha="left", va="top", transform=sub_ax.transAxes,
+                fontfamily="monospace",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                          edgecolor="none", alpha=0.5),
+            )
+
+            sub_ax.set_xlim(-1.1, 1.1)
+            sub_ax.set_ylim(-1.1, 1.1)
+            sub_ax.set_aspect('equal')
+            sub_ax.tick_params(labelsize=0, length=0)
+            for spine in sub_ax.spines.values():
+                spine.set_color('#2a3a4a')
+                spine.set_linewidth(0.5)
 
 
     def _redraw_jacobi(self):
