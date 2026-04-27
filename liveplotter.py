@@ -1300,13 +1300,30 @@ class LivePlotter:
 
     # ── Save figure to file ─────────────────────────────────────────────
     def _save_to_file(self):
-        """Save the current figure to disk."""
+        """Save the current figure to disk.
+        
+        Always saves as `training_plot.png` (latest).
+        Before overwriting, renames the previous latest to a sequential
+        history file: training_plot-00000001.png, training_plot-00000002.png, ...
+        """
         if not self.enabled:
             return
         try:
             save_path = self.plot_file
             if run_dir is not None:
                 save_path = os.path.join(run_dir, self.plot_file)
+
+            # ── Rotate: move current latest → next numbered history file ──
+            if os.path.exists(save_path):
+                base, ext = os.path.splitext(save_path)
+                # Find the next available history number
+                seq = 1
+                while os.path.exists(f"{base}-{seq:08d}{ext}"):
+                    seq += 1
+                history_path = f"{base}-{seq:08d}{ext}"
+                os.rename(save_path, history_path)
+
+            # ── Save the new latest ─────────────────────────────────────
             self.fig.savefig(save_path, dpi=150, bbox_inches="tight")
         except Exception as e:
             pass  # Don't crash training for a file write error

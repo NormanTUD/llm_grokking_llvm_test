@@ -110,6 +110,279 @@ run_visualizations() {
 }
 
 # -------------------------------------------------------
+# Generate a standalone HTML slideshow for training_plot history
+# -------------------------------------------------------
+generate_slideshow_html() {
+    local DIR="$1"
+    local OUT="${DIR}slideshow.html"
+
+    # Collect all training_plot history images in order
+    local IMAGES=()
+    while IFS= read -r f; do
+        [ -n "$f" ] && IMAGES+=("${f#./}")
+    done < <(cd "$DIR" && find . -type f -name 'training_plot-*.png' 2>/dev/null | sort)
+
+    # Add the current latest as the final frame
+    if [ -f "${DIR}training_plot.png" ]; then
+        IMAGES+=("training_plot.png")
+    fi
+
+    if [ ${#IMAGES[@]} -eq 0 ]; then
+        return
+    fi
+
+    local TOTAL=${#IMAGES[@]}
+    local TIMESTAMP
+    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
+
+    cat > "$OUT" <<'SLIDESHOW_HEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training Plot History</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090d;
+    color: #e8eaf6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: #12152a;
+    border-bottom: 1px solid #1e2340;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .toolbar .title {
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .toolbar .controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .toolbar button {
+    background: #1e2340;
+    border: 1px solid #2a2f55;
+    color: #e8eaf6;
+    padding: 0.35rem 0.9rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover {
+    background: #2a2f55;
+    border-color: #7c5cfc;
+  }
+  .toolbar button:active {
+    background: #7c5cfc;
+    color: #fff;
+  }
+  .toolbar button.playing {
+    background: #00d4aa;
+    color: #08090d;
+    border-color: #00d4aa;
+  }
+  .counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #6b70a0;
+    min-width: 120px;
+    text-align: center;
+  }
+  .counter .current {
+    color: #7c5cfc;
+    font-weight: 700;
+  }
+  .progress-bar-container {
+    flex-shrink: 0;
+    height: 4px;
+    background: #1e2340;
+    cursor: pointer;
+    position: relative;
+  }
+  .progress-bar-container:hover {
+    height: 8px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    transition: width 0.1s ease;
+    border-radius: 0 2px 2px 0;
+  }
+  .slide-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    background: #000;
+  }
+  .slide-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .hint {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: #4a4f78;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .speed-label {
+    font-size: 0.7rem;
+    color: #6b70a0;
+  }
+</style>
+</head>
+<body>
+SLIDESHOW_HEAD
+
+    # Build the JS image array
+    cat >> "$OUT" <<EOF
+<div class="toolbar">
+  <div class="title">Training Plot History</div>
+  <div class="controls">
+    <button id="btn-start" title="Go to first (Home)">⏮</button>
+    <button id="btn-prev" title="Previous (←)">◀</button>
+    <button id="btn-play" title="Play/Pause (Space)">▶</button>
+    <button id="btn-next" title="Next (→)">▶▶</button>
+    <button id="btn-end" title="Go to last (End)">⏭</button>
+    <span class="speed-label">Speed:</span>
+    <button id="btn-slower" title="Slower">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
+    <button id="btn-faster" title="Faster">+</button>
+    <div class="counter"><span class="current" id="frame-num">1</span> / ${TOTAL}</div>
+  </div>
+</div>
+<div class="progress-bar-container" id="progress-bar">
+  <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
+</div>
+<div class="slide-container">
+  <img id="slide-img" src="" alt="Training plot">
+  <div class="hint">← → arrow keys · Space to play/pause · Home/End to jump</div>
+</div>
+<script>
+const images = [
+EOF
+
+    # Write each image path as a JS string
+    for img in "${IMAGES[@]}"; do
+        local cb="?t=$(date +%s)"
+        echo "  \"${img}${cb}\"," >> "$OUT"
+    done
+
+    cat >> "$OUT" <<'SLIDESHOW_JS'
+];
+const total = images.length;
+let idx = total - 1;  // start at the latest
+let playing = false;
+let playInterval = null;
+let speed = 500;  // ms between frames
+
+const imgEl = document.getElementById('slide-img');
+const frameNum = document.getElementById('frame-num');
+const progressFill = document.getElementById('progress-fill');
+const btnPlay = document.getElementById('btn-play');
+const speedDisplay = document.getElementById('speed-display');
+
+function show(i) {
+  idx = Math.max(0, Math.min(total - 1, i));
+  imgEl.src = images[idx];
+  frameNum.textContent = idx + 1;
+  progressFill.style.width = ((idx + 1) / total * 100) + '%';
+}
+
+function next() { show(idx + 1); if (idx >= total - 1 && playing) togglePlay(); }
+function prev() { show(idx - 1); }
+function goStart() { show(0); }
+function goEnd() { show(total - 1); }
+
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸' : '▶';
+  btnPlay.classList.toggle('playing', playing);
+  if (playing) {
+    playInterval = setInterval(next, speed);
+  } else {
+    clearInterval(playInterval);
+    playInterval = null;
+  }
+}
+
+function updateSpeed(newSpeed) {
+  speed = Math.max(50, Math.min(5000, newSpeed));
+  speedDisplay.textContent = speed + 'ms';
+  if (playing) {
+    clearInterval(playInterval);
+    playInterval = setInterval(next, speed);
+  }
+}
+
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-start').addEventListener('click', goStart);
+document.getElementById('btn-end').addEventListener('click', goEnd);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+
+document.getElementById('progress-bar').addEventListener('click', (e) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  show(Math.round(pct * (total - 1)));
+});
+
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowRight': e.preventDefault(); next(); break;
+    case 'ArrowLeft':  e.preventDefault(); prev(); break;
+    case 'Home':       e.preventDefault(); goStart(); break;
+    case 'End':        e.preventDefault(); goEnd(); break;
+    case ' ':          e.preventDefault(); togglePlay(); break;
+    case 'ArrowUp':    e.preventDefault(); updateSpeed(speed - 100); break;
+    case 'ArrowDown':  e.preventDefault(); updateSpeed(speed + 100); break;
+  }
+});
+
+// Preload adjacent images for smooth navigation
+function preload(i) {
+  if (i >= 0 && i < total) { const img = new Image(); img.src = images[i]; }
+}
+const observer = new MutationObserver(() => { preload(idx + 1); preload(idx - 1); });
+
+show(idx);
+</script>
+</body>
+</html>
+SLIDESHOW_JS
+
+    echo "Slideshow generated: $OUT (${TOTAL} frames)"
+}
+
+# -------------------------------------------------------
 # Use awk to parse ALL epoch .txt files at once
 # -------------------------------------------------------
 generate_epoch_html() {
@@ -873,6 +1146,8 @@ while true; do
 
     # 3) Generate the HTML dashboard (now picks up .py files + new .png images)
     generate_html "$RUN_DIR"
+
+    generate_slideshow_html "$RUN_DIR"
 
     # 4) Find all syncable files (now includes .py)
     FILES=$(find "$RUN_DIR" -type f \( \
