@@ -24,17 +24,26 @@ compute_cross_layer_wasserstein = None
 _HAS_RIPSER = False
 _HAS_GUDHI = False
 
-
 @torch.no_grad()
 def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
     """
-    Compute the full Jacobi field decomposition for each layer.
-
-    Instead of tracking where points go, this computes HOW SPACE DEFORMS
-    at each layer — the local divergence, curl, shear, and principal
-    stretches of the residual map Phi^(ell)(h) = h + f^(ell)(h).
-
-    Returns a list of dicts, one per layer transition (ell -> ell+1).
+    Compute the Jacobi field of the space deformation itself at each layer.
+    
+    Interpretation: tokens are FIXED OBSERVERS. The space (representation
+    manifold) deforms around them as it passes through each layer.
+    
+    At each point on a 2D grid (in PCA space), we interpolate the local
+    2×2 Jacobian from nearby token observations, then decompose it:
+    
+        J = R · S   (polar decomposition)
+        S = volumetric + shear
+    
+    We store everything needed for a colorful vector field rendering:
+    - The displacement field (J-I) applied to basis vectors → shows how
+      space is being pulled/pushed at each point
+    - Volume change (det J) → expansion vs contraction
+    - Principal stretch directions and magnitudes → anisotropy
+    - Rotation angle → local curl/twist of space
     """
     model.eval()
     output = model(input_ids=input_ids, output_hidden_states=True)
@@ -45,12 +54,30 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
 
     fields = []
 
+    # ── Shared PCA basis from all layers for consistent 2D view ─────
+    all_points = []
+    for hs in hidden_states:
+        pts = hs[0].detach().float().cpu()
+        all_points.append(pts)
+
+    all_concat = torch.cat(all_points, dim=0)
+    mean = all_concat.mean(0)
+    centered = all_concat - mean
+
+    try:
+        U, S_pca, Vh = torch.linalg.svd(centered, full_matrices=False)
+        pca_basis = Vh[:2, :]  # (2, D)
+        total_var = (S_pca ** 2).sum()
+        var_explained = ((S_pca[:2] ** 2).sum() / total_var).item()
+    except Exception:
+        pca_basis = torch.eye(2, centered.shape[1])
+        var_explained = 0.0
+
     for ell in range(len(hidden_states) - 1):
-        h_in = hidden_states[ell][0].detach().float()
-        h_out = hidden_states[ell + 1][0].detach().float()
+        h_in = hidden_states[ell][0].detach().float()    # (T, D)
+        h_out = hidden_states[ell + 1][0].detach().float()  # (T, D)
 
         T, D = h_in.shape
-
         if T > max_tokens:
             idx = torch.linspace(0, T - 1, max_tokens).long()
             h_in = h_in[idx]
@@ -59,72 +86,203 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=64):
 
         delta = h_out - h_in
 
+        # Project to 2D for visualization
+        h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()   # (T, 2)
+
+        # ── Per-token LOCAL Jacobian via neighbors ──────────────────
+        per_token_J_2d = np.zeros((T, 2, 2))
+        per_token_volume = np.zeros(T)
+        per_token_rotation = np.zeros(T)
+        per_token_shear_mag = np.zeros(T)
+
+        # Global Jacobian for aggregate metrics
         h_in_c = h_in - h_in.mean(0)
         delta_c = delta - delta.mean(0)
 
         try:
-            J_residual = torch.linalg.lstsq(h_in_c, delta_c).solution
-            J = torch.eye(D, device=device) + J_residual
+            J_residual = torch.linalg.lstsq(h_in_c.cpu(), delta_c.cpu()).solution
+            J_global = torch.eye(D) + J_residual
         except Exception:
-            J = torch.eye(D, device=device)
-            J_residual = torch.zeros(D, D, device=device)
+            J_global = torch.eye(D)
 
-        divergence = torch.trace(J).item()
-
-        J_sym = (J + J.T) / 2
-        J_antisym = (J - J.T) / 2
-
-        curl = torch.norm(J_antisym, p='fro').item()
-
-        trace_sym = torch.trace(J_sym)
-        shear_tensor = J_sym - (trace_sym / D) * torch.eye(D, device=device)
-        shear = torch.norm(shear_tensor, p='fro').item()
-
-        try:
-            U, S, Vh = torch.linalg.svd(J)
-            singular_values = S.cpu().numpy()
-            principal_directions = Vh.cpu().numpy()
-            log_det = torch.log(S.clamp(min=1e-10)).sum().item()
-            anisotropy = (S.max() / S.min().clamp(min=1e-10)).item()
-        except Exception:
-            singular_values = np.ones(D)
-            principal_directions = np.eye(D)
-            log_det = 0.0
-            anisotropy = 1.0
-
-        per_token_div = np.zeros(T)
-        per_token_curl = np.zeros(T)
-        per_token_shear = np.zeros(T)
+        P = pca_basis  # (2, D)
 
         for t in range(T):
-            h_norm = h_in[t].norm().item() + 1e-10
-            d_norm = delta[t].norm().item()
+            dists = torch.norm(h_in - h_in[t], dim=1)
+            dists[t] = float('inf')
+            k = min(max(D // 2, 8), T - 1)
+            nn_idx = torch.argsort(dists)[:k]
 
-            out_norm = h_out[t].norm().item()
-            per_token_div[t] = (out_norm / h_norm)
+            dh_in = (h_in[nn_idx] - h_in[t]).cpu()
+            dh_out = (h_out[nn_idx] - h_out[t]).cpu()
 
-            cos_angle = (F.cosine_similarity(
-                h_in[t].unsqueeze(0), delta[t].unsqueeze(0)
-            )).item()
-            per_token_curl[t] = np.sqrt(max(0, 1 - cos_angle**2))
+            try:
+                J_local = torch.linalg.lstsq(dh_in, dh_out).solution
+            except Exception:
+                J_local = torch.eye(D)
 
-            radial_component = cos_angle * d_norm
-            tangential_component = np.sqrt(max(0, d_norm**2 - radial_component**2))
-            per_token_shear[t] = tangential_component / (h_norm + 1e-10)
+            J_2d = (P @ J_local @ P.T).numpy()
+            per_token_J_2d[t] = J_2d
+
+            try:
+                U_j, sigma_j, Vht_j = np.linalg.svd(J_2d)
+                R_2d = U_j @ Vht_j
+            except Exception:
+                sigma_j = np.array([1.0, 1.0])
+                R_2d = np.eye(2)
+
+            per_token_volume[t] = sigma_j[0] * sigma_j[1]
+            per_token_rotation[t] = np.arctan2(R_2d[1, 0], R_2d[0, 0])
+
+            S_2d = Vht_j.T @ np.diag(sigma_j) @ Vht_j if 'Vht_j' in dir() else np.eye(2)
+            S_trace = np.trace(S_2d)
+            S_traceless = S_2d - (S_trace / 2.0) * np.eye(2)
+            per_token_shear_mag[t] = np.linalg.norm(S_traceless, 'fro')
+
+        # ── Build grid and interpolate the full 2×2 Jacobian ───────
+        from scipy.interpolate import RBFInterpolator
+
+        grid_n = 32
+        x_range = h_in_2d[:, 0]
+        y_range = h_in_2d[:, 1]
+        pad_frac = 0.2
+        x_span = max(np.ptp(x_range), 0.1)
+        y_span = max(np.ptp(y_range), 0.1)
+        x_min = x_range.min() - pad_frac * x_span
+        x_max = x_range.max() + pad_frac * x_span
+        y_min = y_range.min() - pad_frac * y_span
+        y_max = y_range.max() + pad_frac * y_span
+
+        gx = np.linspace(x_min, x_max, grid_n)
+        gy = np.linspace(y_min, y_max, grid_n)
+        grid_x, grid_y = np.meshgrid(gx, gy)
+        grid_pts = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1)
+
+        # Interpolate each component of the 2×2 Jacobian
+        grid_J = np.zeros((grid_n, grid_n, 2, 2))
+        try:
+            for i in range(2):
+                for j in range(2):
+                    rbf = RBFInterpolator(
+                        h_in_2d, per_token_J_2d[:, i, j],
+                        kernel='thin_plate_spline', smoothing=1.0
+                    )
+                    grid_J[:, :, i, j] = rbf(grid_pts).reshape(grid_n, grid_n)
+        except Exception:
+            J_2d_global = (pca_basis.numpy() @ J_global.numpy() @ pca_basis.numpy().T)
+            grid_J[:, :] = J_2d_global
+
+        # ── Decompose at each grid point ───────────────────────────
+        grid_volume = np.zeros((grid_n, grid_n))
+        grid_rotation = np.zeros((grid_n, grid_n))
+        grid_shear = np.zeros((grid_n, grid_n))
+        grid_max_stretch_val = np.zeros((grid_n, grid_n))
+        grid_min_stretch_val = np.zeros((grid_n, grid_n))
+        grid_max_stretch_dir = np.zeros((grid_n, grid_n, 2))
+        # The displacement field: (J - I) applied to the local position
+        # This shows how space is being PULLED at each point
+        grid_disp_x = np.zeros((grid_n, grid_n))
+        grid_disp_y = np.zeros((grid_n, grid_n))
+        # Also: (J - I) applied to e_x and e_y separately for a richer field
+        grid_Jm1_ex_x = np.zeros((grid_n, grid_n))
+        grid_Jm1_ex_y = np.zeros((grid_n, grid_n))
+        grid_Jm1_ey_x = np.zeros((grid_n, grid_n))
+        grid_Jm1_ey_y = np.zeros((grid_n, grid_n))
+
+        for gi in range(grid_n):
+            for gj in range(grid_n):
+                J_loc = grid_J[gi, gj]
+                F = J_loc - np.eye(2)  # deformation gradient minus identity
+
+                # Displacement = F · position (how space moves at this point)
+                pos = np.array([grid_x[gi, gj], grid_y[gi, gj]])
+                disp = F @ pos
+                grid_disp_x[gi, gj] = disp[0]
+                grid_disp_y[gi, gj] = disp[1]
+
+                # F applied to basis vectors (for the vector field)
+                grid_Jm1_ex_x[gi, gj] = F[0, 0]
+                grid_Jm1_ex_y[gi, gj] = F[1, 0]
+                grid_Jm1_ey_x[gi, gj] = F[0, 1]
+                grid_Jm1_ey_y[gi, gj] = F[1, 1]
+
+                try:
+                    U_g, sigma_g, Vht_g = np.linalg.svd(J_loc)
+                    R_g = U_g @ Vht_g
+                except Exception:
+                    sigma_g = np.array([1.0, 1.0])
+                    R_g = np.eye(2)
+                    Vht_g = np.eye(2)
+
+                grid_volume[gi, gj] = sigma_g[0] * sigma_g[1]
+                grid_rotation[gi, gj] = np.arctan2(R_g[1, 0], R_g[0, 0])
+                grid_max_stretch_val[gi, gj] = sigma_g[0]
+                grid_min_stretch_val[gi, gj] = sigma_g[1]
+                grid_max_stretch_dir[gi, gj] = Vht_g[0]
+
+                S_g = Vht_g.T @ np.diag(sigma_g) @ Vht_g
+                S_trace = np.trace(S_g)
+                S_traceless = S_g - (S_trace / 2.0) * np.eye(2)
+                grid_shear[gi, gj] = np.linalg.norm(S_traceless, 'fro')
+
+        # ── Global metrics ─────────────────────────────────────────
+        try:
+            S_global = torch.linalg.svdvals(J_global)
+            singular_values = S_global.cpu().numpy()
+            anisotropy = (S_global.max() / S_global.min().clamp(min=1e-10)).item()
+            log_det = torch.log(S_global.clamp(min=1e-10)).sum().item()
+        except Exception:
+            singular_values = np.ones(D)
+            anisotropy = 1.0
+            log_det = 0.0
+
+        divergence = torch.trace(J_global).item()
+        J_sym = (J_global + J_global.T) / 2
+        J_antisym = (J_global - J_global.T) / 2
+        curl = torch.norm(J_antisym, p='fro').item()
+        trace_sym = torch.trace(J_sym)
+        shear_tensor = J_sym - (trace_sym / D) * torch.eye(D)
+        shear = torch.norm(shear_tensor, p='fro').item()
 
         fields.append({
             'layer': ell,
-            'jacobian': J.cpu().numpy(),
+            'jacobian': J_global.cpu().numpy(),
             'divergence': divergence,
             'curl': curl,
             'shear': shear,
             'singular_values': singular_values,
             'log_det': log_det,
-            'per_token_divergence': per_token_div,
-            'per_token_curl': per_token_curl,
-            'per_token_shear': per_token_shear,
-            'principal_directions': principal_directions,
             'anisotropy': anisotropy,
+            # ── Token data ──────────────────────────────────────
+            'h_in_2d': h_in_2d,
+            'per_token_J_2d': per_token_J_2d,
+            'per_token_volume': per_token_volume,
+            'per_token_rotation': per_token_rotation,
+            'per_token_shear_mag': per_token_shear_mag,
+            # ── Grid data ───────────────────────────────────────
+            'grid_x': grid_x,
+            'grid_y': grid_y,
+            'grid_J': grid_J,
+            'grid_volume': grid_volume,
+            'grid_rotation': grid_rotation,
+            'grid_shear': grid_shear,
+            'grid_max_stretch_val': grid_max_stretch_val,
+            'grid_min_stretch_val': grid_min_stretch_val,
+            'grid_max_stretch_dir': grid_max_stretch_dir,
+            'grid_disp_x': grid_disp_x,
+            'grid_disp_y': grid_disp_y,
+            'grid_Jm1_ex_x': grid_Jm1_ex_x,
+            'grid_Jm1_ex_y': grid_Jm1_ex_y,
+            'grid_Jm1_ey_x': grid_Jm1_ey_x,
+            'grid_Jm1_ey_y': grid_Jm1_ey_y,
+            'x_lim': (x_min, x_max),
+            'y_lim': (y_min, y_max),
+            'var_explained': var_explained,
+            # ── Compatibility ───────────────────────────────────
+            'per_token_divergence': per_token_volume,
+            'per_token_curl': per_token_rotation,
+            'per_token_shear': per_token_shear_mag,
+            'principal_directions': pca_basis.numpy(),
         })
 
     return fields
@@ -406,22 +564,42 @@ class LivePlotter:
 
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
-        Render N subplots (one per layer), each showing the Jacobi field
-        projected onto the 2D plane of maximum/minimum stretch.
+        Render the Jacobi field as a colorful vector field image per layer.
+        
+        Each layer panel shows:
+        
+        1. BACKGROUND: Two-channel color field
+           - Hue encodes the DIRECTION of space deformation (angle of (J-I)·r)
+           - Saturation/brightness encodes the MAGNITUDE of deformation
+           This creates a colorful "flow map" showing how space morphs.
+        
+        2. STREAMLINES: The displacement field (J-I)·r traced as continuous
+           curves, showing the flow topology — where space converges
+           (attractors) and diverges (repellers).
+        
+        3. TOKEN MARKERS: Fixed observer positions, ringed by volume change
+           (red ring = expanding, blue ring = contracting).
+        
+        4. STRETCH WHISKERS: Short line segments at sparse grid points
+           showing the direction and magnitude of maximum stretch.
+        
+        The result is a colorful, information-dense image that shows
+        the actual geometry of how each layer deforms representation space.
         """
         if ax is None or jacobi_data is None:
             return
 
-        # ── Redraw guard: skip if we already drew this exact frame ─────
         if self._jacobi_drawn_step == draw_key:
             return
         self._jacobi_drawn_step = draw_key
+
+        # Clean up old sub-axes
+        self._remove_jacobi_subaxes()
 
         fields = jacobi_data['fields']
         step = jacobi_data.get('step', draw_key)
         n_layers = len(fields)
 
-        # ── Clear the parent axis ──────────────────────────────────────
         ax.clear()
         ax.set_facecolor("#0a0a1a")
         ax.set_xticks([])
@@ -431,12 +609,13 @@ class LivePlotter:
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-        # ── Title (must be set AFTER ax.clear()) ───────────────────────
+        var_exp = fields[0].get('var_explained', 0) if fields else 0
         ax.set_title(
-            f"Jacobi Fields \u2014 Per-Layer Space Deformation  "
-            f"(step {step})\n"
-            f"[Background = divergence (red=expanding, blue=contracting) \u00b7 "
-            f"Arrows = displacement field]",
+            f"Jacobi Fields — Space Deformation (step {step}, "
+            f"PCA var={var_exp:.0%})\n"
+            f"[Color=deformation direction+magnitude · "
+            f"Streamlines=space flow · "
+            f"Whiskers=max stretch]",
             fontsize=9, fontweight="bold", color="#c0d8e8",
         )
 
@@ -446,19 +625,11 @@ class LivePlotter:
                     color="#6a9ab8", transform=ax.transAxes)
             return
 
-        # ── Disable constrained/tight layout before adding inset axes ──
-        # tight_layout and constrained_layout will try to reposition
-        # manually-placed axes, causing them to vanish or overlap.
         try:
             self.fig.set_tight_layout(False)
         except Exception:
             pass
-        try:
-            self.fig.set_constrained_layout(False)
-        except Exception:
-            pass
 
-        # ── Grid layout ────────────────────────────────────────────────
         n_cols = min(n_layers, 6)
         n_rows = math.ceil(n_layers / n_cols)
 
@@ -473,8 +644,7 @@ class LivePlotter:
         px0, py0 = parent_bbox.x0, parent_bbox.y0
         pw, ph = parent_bbox.width, parent_bbox.height
 
-        color_n = 40
-        arrow_n = 12
+        from matplotlib.colors import hsv_to_rgb
 
         for ell, f in enumerate(fields):
             col = ell % n_cols
@@ -487,96 +657,184 @@ class LivePlotter:
 
             sub_ax = self.fig.add_axes([fx, fy, fw, fh])
             sub_ax.set_facecolor("#0d1117")
-            # ── Exclude from layout engine ─────────────────────────────
-            # This prevents tight_layout from repositioning these axes
             sub_ax.set_in_layout(False)
             self._jacobi_subaxes.append(sub_ax)
 
-            J = f['jacobian']
-            D_dim = J.shape[0]
+            # Extract all data from the field dict
+            h_in_2d = f['h_in_2d']
+            grid_x = f['grid_x']
+            grid_y = f['grid_y']
+            grid_J = f['grid_J']
+            grid_volume = f['grid_volume']
+            grid_rotation = f['grid_rotation']
+            grid_shear = f['grid_shear']
+            grid_disp_x = f['grid_disp_x']
+            grid_disp_y = f['grid_disp_y']
+            grid_max_stretch_val = f['grid_max_stretch_val']
+            grid_min_stretch_val = f['grid_min_stretch_val']
+            grid_max_stretch_dir = f['grid_max_stretch_dir']
+            x_lim = f['x_lim']
+            y_lim = f['y_lim']
             S = f['singular_values']
+            per_token_J_2d = f['per_token_J_2d']
+            per_token_volume = f['per_token_volume']
+            per_token_shear = f['per_token_shear_mag']
+            per_token_rotation = f['per_token_rotation']
 
-            try:
-                U_svd, S_svd, Vh = np.linalg.svd(J)
-            except Exception:
-                S_svd = np.ones(D_dim)
-                Vh = np.eye(D_dim)
+            grid_n = grid_x.shape[0]
 
-            F_residual = J - np.eye(D_dim)
-            F_sym = (F_residual + F_residual.T) / 2
-            try:
-                eigvals, eigvecs = np.linalg.eigh(F_sym)
-                v_contract = eigvecs[:, 0]
-                v_expand = eigvecs[:, -1]
-                v_expand = v_expand - np.dot(v_expand, v_contract) * v_contract
-                v_expand = v_expand / (np.linalg.norm(v_expand) + 1e-10)
-                V2 = np.stack([v_expand, v_contract], axis=0)
-            except Exception:
-                V2 = Vh[:2, :]
-
-            J_2d = V2 @ J @ V2.T
-            F_2d = J_2d - np.eye(2)
-
-            # ── Dense divergence color field ───────────────────────────
-            c_coords = np.linspace(-1.0, 1.0, color_n)
-            cgx, cgy = np.meshgrid(c_coords, c_coords)
-
-            cdx = F_2d[0, 0] * cgx + F_2d[0, 1] * cgy
-            cdy = F_2d[1, 0] * cgx + F_2d[1, 1] * cgy
-
-            r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
-            radial = (cdx * cgx + cdy * cgy) / r_mag
-
-            radial_asinh = np.arcsinh(radial * 3.0)
-            r_absmax = max(np.abs(radial_asinh).max(), 1e-10)
-            div_color = radial_asinh / r_absmax
+            # ═══════════════════════════════════════════════════════════
+            # 1. COLORFUL BACKGROUND: HSV encoding of deformation field
+            # ═══════════════════════════════════════════════════════════
+            # Hue = angle of displacement vector (J-I)·r
+            # Saturation = 1 (full color)
+            # Value = magnitude of displacement (normalized)
+            
+            disp_angle = np.arctan2(grid_disp_y, grid_disp_x)  # [-π, π]
+            disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+            
+            # Normalize magnitude with arcsinh for dynamic range
+            mag_norm = np.arcsinh(disp_mag * 2.0)
+            mag_max = max(mag_norm.max(), 1e-10)
+            mag_norm = mag_norm / mag_max  # [0, 1]
+            
+            # Build HSV image
+            H = (disp_angle + np.pi) / (2 * np.pi)  # [0, 1]
+            S_hsv = np.ones_like(H) * 0.85  # high saturation
+            V_hsv = 0.15 + 0.85 * mag_norm  # dark where no deformation, bright where strong
+            
+            hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
+            rgb_img = hsv_to_rgb(hsv_img)
+            
+            # Overlay volume change as a subtle tint:
+            # Expanding regions get a warm boost, contracting get cool
+            log_vol = np.log(np.clip(grid_volume, 1e-6, None))
+            lv_norm = np.clip(log_vol / max(np.abs(log_vol).max(), 1e-6), -1, 1)
+            
+            # Blend: add red where expanding, blue where contracting
+            vol_blend = 0.2  # subtle
+            rgb_img[:, :, 0] = np.clip(rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1)
+            rgb_img[:, :, 2] = np.clip(rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1)
 
             sub_ax.imshow(
-                div_color,
-                extent=[-1, 1, -1, 1],
+                rgb_img,
+                extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
                 origin='lower',
-                cmap='RdBu_r',
-                vmin=-1, vmax=1,
-                aspect='equal',
+                aspect='auto',
                 interpolation='bilinear',
-                alpha=0.6,
-            )
-
-            # ── Sparse vector field arrows ─────────────────────────────
-            a_coords = np.linspace(-0.9, 0.9, arrow_n)
-            agx, agy = np.meshgrid(a_coords, a_coords)
-
-            adx = F_2d[0, 0] * agx + F_2d[0, 1] * agy
-            ady = F_2d[1, 0] * agx + F_2d[1, 1] * agy
-
-            mag = np.sqrt(adx**2 + ady**2)
-            mag_max = mag.max() if mag.max() > 1e-10 else 1.0
-
-            a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
-            a_radial_asinh = np.arcsinh(a_radial * 3.0)
-            a_rc_max = max(np.abs(a_radial_asinh).max(), 1e-10)
-            arrow_colors = (a_radial_asinh / a_rc_max).ravel()
-
-            sub_ax.quiver(
-                agx, agy, adx, ady,
-                arrow_colors,
-                cmap='RdBu_r',
-                clim=(-1, 1),
-                scale=mag_max * arrow_n * 0.9,
-                width=0.015,
-                headwidth=3.5,
-                headlength=4,
                 alpha=0.9,
-                zorder=2,
             )
 
-            sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
-            sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
+            # ═══════════════════════════════════════════════════════════
+            # 2. STREAMLINES: trace the displacement field
+            # ═══════════════════════════════════════════════════════════
+            gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
+            gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
+            
+            try:
+                speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+                lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
+                
+                sub_ax.streamplot(
+                    gx_1d, gy_1d, grid_disp_x, grid_disp_y,
+                    color='white',
+                    linewidth=lw,
+                    density=0.7,
+                    arrowsize=0.6,
+                    arrowstyle='->',
+                    zorder=2,
+                    minlength=0.2,
+                )
+            except Exception:
+                pass  # streamplot can fail with degenerate fields
 
-            layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
-            div_val = f['divergence']
-            curl_val = f['curl']
-            shear_val = f['shear']
+            # ═══════════════════════════════════════════════════════════
+            # 3. STRETCH WHISKERS at sparse grid points
+            # ═══════════════════════════════════════════════════════════
+            # Short line segments showing direction of maximum stretch
+            whisker_step = max(1, grid_n // 8)
+            x_span = x_lim[1] - x_lim[0]
+            y_span = y_lim[1] - y_lim[0]
+            whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
+            
+            for gi in range(whisker_step // 2, grid_n, whisker_step):
+                for gj in range(whisker_step // 2, grid_n, whisker_step):
+                    cx = grid_x[gi, gj]
+                    cy = grid_y[gi, gj]
+                    d = grid_max_stretch_dir[gi, gj]
+                    s_max = grid_max_stretch_val[gi, gj]
+                    s_min = grid_min_stretch_val[gi, gj]
+                    
+                    ratio = s_max / max(s_min, 1e-10)
+                    if ratio < 1.05:
+                        continue  # nearly isotropic, skip
+                    
+                    # Length proportional to stretch magnitude
+                    length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
+                    
+                    # Color: yellow for moderate, red for extreme anisotropy
+                    if ratio < 1.5:
+                        wcolor = '#ffff44'
+                        walpha = 0.4
+                    elif ratio < 3.0:
+                        wcolor = '#ff8800'
+                        walpha = 0.6
+                    else:
+                        wcolor = '#ff2222'
+                        walpha = 0.8
+                    
+                    x0 = cx - length * d[0]
+                    y0 = cy - length * d[1]
+                    x1 = cx + length * d[0]
+                    y1 = cy + length * d[1]
+                    
+                    sub_ax.plot(
+                        [x0, x1], [y0, y1],
+                        color=wcolor, linewidth=1.0, alpha=walpha,
+                        zorder=4, solid_capstyle='round',
+                    )
+
+            # ═══════════════════════════════════════════════════════════
+            # 4. TOKEN MARKERS as fixed observers
+            # ═══════════════════════════════════════════════════════════
+            # Inner dot colored by shear, outer ring by volume change
+            shear_max = max(per_token_shear.max(), 1e-6)
+            shear_norm = per_token_shear / shear_max
+            
+            sub_ax.scatter(
+                h_in_2d[:, 0], h_in_2d[:, 1],
+                s=10, c=shear_norm, cmap='magma',
+                vmin=0, vmax=1,
+                edgecolors='none',
+                zorder=6, alpha=0.9,
+            )
+            
+            # Volume rings
+            vol_threshold_high = np.percentile(per_token_volume, 85)
+            vol_threshold_low = np.percentile(per_token_volume, 15)
+            expanding = per_token_volume > vol_threshold_high
+            contracting = per_token_volume < vol_threshold_low
+            
+            if expanding.any():
+                sub_ax.scatter(
+                    h_in_2d[expanding, 0], h_in_2d[expanding, 1],
+                    s=28, facecolors='none', edgecolors='#ff4444',
+                    linewidths=0.8, zorder=7,
+                )
+            if contracting.any():
+                sub_ax.scatter(
+                    h_in_2d[contracting, 0], h_in_2d[contracting, 1],
+                    s=28, facecolors='none', edgecolors='#4488ff',
+                    linewidths=0.8, zorder=7,
+                )
+
+            # ═══════════════════════════════════════════════════════════
+            # 5. LABELS AND METRICS
+            # ═══════════════════════════════════════════════════════════
+            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            mean_vol = per_token_volume.mean()
+            mean_shear = per_token_shear.mean()
+            mean_rot = np.abs(per_token_rotation).mean()
             aniso_val = f['anisotropy']
 
             sub_ax.set_title(
@@ -586,44 +844,38 @@ class LivePlotter:
 
             sub_ax.text(
                 0.03, 0.03,
-                f"div={div_val:.1f} curl={curl_val:.2f}\n"
-                f"shear={shear_val:.2f} \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}",
-                fontsize=4, color="#6a9ab8", alpha=0.8,
+                f"⟨det J⟩={mean_vol:.3f} ⟨shear⟩={mean_shear:.3f}\n"
+                f"⟨|rot|⟩={mean_rot:.3f} σ₁/σₙ={aniso_val:.1f}",
+                fontsize=3.5, color="white", alpha=0.85,
                 ha="left", va="bottom", transform=sub_ax.transAxes,
                 fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
-                          edgecolor="none", alpha=0.7),
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="black",
+                          edgecolor="none", alpha=0.6),
             )
 
-            top_svs = S[:3]
-            sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
-            sub_ax.text(
-                0.97, 0.97,
-                f"\u03c3=[{sv_str}]",
-                fontsize=4, color="#4fc3f7", alpha=0.8,
-                ha="right", va="top", transform=sub_ax.transAxes,
-                fontfamily="monospace",
-            )
+            # Show the center 2×2 Jacobian
+            center_gi = grid_n // 2
+            center_gj = grid_n // 2
+            J_center = grid_J[center_gi, center_gj]
 
             sub_ax.text(
-                0.03, 0.97,
-                f"J\u2082=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
-                f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
-                fontsize=3.5, color="#9ab8d8", alpha=0.6,
-                ha="left", va="top", transform=sub_ax.transAxes,
+                0.97, 0.03,
+                f"J=[{J_center[0,0]:.2f} {J_center[0,1]:.2f}]\n"
+                f"  [{J_center[1,0]:.2f} {J_center[1,1]:.2f}]",
+                fontsize=3.5, color="white", alpha=0.7,
+                ha="right", va="bottom", transform=sub_ax.transAxes,
                 fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.1", facecolor="#0d1117",
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="black",
                           edgecolor="none", alpha=0.5),
             )
 
-            sub_ax.set_xlim(-1.1, 1.1)
-            sub_ax.set_ylim(-1.1, 1.1)
-            sub_ax.set_aspect('equal')
+            sub_ax.set_xlim(*x_lim)
+            sub_ax.set_ylim(*y_lim)
+            sub_ax.set_aspect('auto')
             sub_ax.tick_params(labelsize=0, length=0)
             for spine in sub_ax.spines.values():
                 spine.set_color('#2a3a4a')
                 spine.set_linewidth(0.5)
-
 
     def _redraw_jacobi(self):
         """
