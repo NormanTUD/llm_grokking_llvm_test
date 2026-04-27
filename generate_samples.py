@@ -46,9 +46,28 @@ def generate_example_samples(
 
         expected_str = str(expected_result)
 
-        # ir_code already ends with "= ", so it IS the prompt
-        prompt_text = ir_code
-        prompt_ids = [bos_id] + tokenizer.encode(prompt_text)
+        # ── FIX: Encode the FULL text jointly, then truncate to prompt ──
+        # This matches exactly how generate_single_sample() in train.py
+        # constructs training samples. Encoding the prompt alone can
+        # produce different BPE token boundaries, causing the model to
+        # see a token sequence it was never trained on → immediate EOS.
+        full_text = f"{ir_code}{expected_str}"
+        full_ids = tokenizer.encode(full_text)
+        prompt_only_ids = tokenizer.encode(ir_code)
+
+        # Find the longest common prefix between prompt_only_ids and full_ids.
+        # The prompt portion in the joint encoding is full_ids[:common_len].
+        common_len = 0
+        for a, b in zip(prompt_only_ids, full_ids):
+            if a == b:
+                common_len += 1
+            else:
+                break
+        else:
+            common_len = len(prompt_only_ids)
+
+        # Build prompt_ids the same way training does: [bos] + joint_prefix
+        prompt_ids = [bos_id] + full_ids[:common_len]
 
         # Greedy decode
         input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
@@ -80,7 +99,6 @@ def generate_example_samples(
             predicted_str = predicted_str.replace(special_tok, "")
         predicted_str = predicted_str.strip()
 
-        # ── FIX: ensure predicted_str is never empty ────────────────
         if not predicted_str:
             predicted_str = "(empty)"
 
@@ -90,7 +108,7 @@ def generate_example_samples(
             "expected": expected_str,
             "predicted": predicted_str,
             "correct": str(predicted_str == expected_str),
-            "full_prompt": prompt_text,
+            "full_prompt": ir_code,
         })
 
     return samples
