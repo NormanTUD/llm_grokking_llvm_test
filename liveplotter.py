@@ -319,16 +319,6 @@ class LivePlotter:
         finally:
             _restore_c_stderr()
 
-        # ── Title for the parent axis ──────────────────────────────────
-        ax.set_title(
-            f"Jacobi Fields — Per-Layer Space Deformation  "
-            f"(step {step})\n"
-            f"[Background = divergence (red=expanding, blue=contracting) · "
-            f"Arrows = displacement field]",
-            fontsize=9, fontweight="bold", color="#c0d8e8",
-        )
-
-
 
     def _remove_jacobi_subaxes(self):
         """Safely remove all Jacobi inset sub-axes from the figure."""
@@ -370,10 +360,6 @@ class LivePlotter:
             if not fields:
                 return
 
-            # Use a monotonically increasing draw key that is NEVER reused.
-            # _global_batch is incremented once per batch in update_batch(),
-            # but update_jacobi_fields is only called every kelp_every batches,
-            # so the draw_key is always different between qualifying calls.
             draw_key = self._global_batch
 
             self._jacobi_data = {
@@ -393,22 +379,14 @@ class LivePlotter:
                 self.ax_kelp, self._jacobi_data, draw_key
             )
 
-            # Force the canvas to actually display the new sub-axes.
-            # fig.canvas.draw() alone is NOT sufficient on TkAgg —
-            # we must pump the GUI event loop via plt.pause().
-            _suppress_c_stderr()
-            try:
-                if not self.suppress_window and self._is_window_alive():
-                    self.fig.canvas.draw_idle()
-                    self.plt.pause(0.001)
-                else:
-                    self.fig.canvas.draw()
-            finally:
-                _restore_c_stderr()
+            # Force a synchronous repaint so the new sub-axes actually appear.
+            # _flush_canvas does draw() + flush_events(), which is required
+            # for dynamically added axes on TkAgg.
+            self._flush_canvas()
 
         except Exception as e:
             import traceback
-            console.print(f"[yellow]⚠ Jacobi field error at step {self._kelp_step}: {e}[/]")
+            console.print(f"[yellow]\u26a0 Jacobi field error at step {self._kelp_step}: {e}[/]")
             traceback.print_exc()
         finally:
             if was_training:
@@ -444,6 +422,15 @@ class LivePlotter:
         ax.set_ylim(0, 1)
         for spine in ax.spines.values():
             spine.set_visible(False)
+
+        # ── Title (must be set AFTER ax.clear()) ───────────────────────
+        ax.set_title(
+            f"Jacobi Fields \u2014 Per-Layer Space Deformation  "
+            f"(step {step})\n"
+            f"[Background = divergence (red=expanding, blue=contracting) \u00b7 "
+            f"Arrows = displacement field]",
+            fontsize=9, fontweight="bold", color="#c0d8e8",
+        )
 
         if n_layers == 0:
             ax.text(0.5, 0.5, "Waiting for hidden states...",
@@ -563,7 +550,7 @@ class LivePlotter:
             sub_ax.axhline(0, color='white', linewidth=0.3, alpha=0.25)
             sub_ax.axvline(0, color='white', linewidth=0.3, alpha=0.25)
 
-            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
             div_val = f['divergence']
             curl_val = f['curl']
             shear_val = f['shear']
@@ -577,7 +564,7 @@ class LivePlotter:
             sub_ax.text(
                 0.03, 0.03,
                 f"div={div_val:.1f} curl={curl_val:.2f}\n"
-                f"shear={shear_val:.2f} σ₁/σₙ={aniso_val:.1f}",
+                f"shear={shear_val:.2f} \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}",
                 fontsize=4, color="#6a9ab8", alpha=0.8,
                 ha="left", va="bottom", transform=sub_ax.transAxes,
                 fontfamily="monospace",
@@ -589,7 +576,7 @@ class LivePlotter:
             sv_str = ", ".join(f"{s:.2f}" for s in top_svs)
             sub_ax.text(
                 0.97, 0.97,
-                f"σ=[{sv_str}]",
+                f"\u03c3=[{sv_str}]",
                 fontsize=4, color="#4fc3f7", alpha=0.8,
                 ha="right", va="top", transform=sub_ax.transAxes,
                 fontfamily="monospace",
@@ -597,7 +584,7 @@ class LivePlotter:
 
             sub_ax.text(
                 0.03, 0.97,
-                f"J₂=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
+                f"J\u2082=[{J_2d[0,0]:.2f} {J_2d[0,1]:.2f}]\n"
                 f"   [{J_2d[1,0]:.2f} {J_2d[1,1]:.2f}]",
                 fontsize=3.5, color="#9ab8d8", alpha=0.6,
                 ha="left", va="top", transform=sub_ax.transAxes,
@@ -613,7 +600,6 @@ class LivePlotter:
             for spine in sub_ax.spines.values():
                 spine.set_color('#2a3a4a')
                 spine.set_linewidth(0.5)
-
 
 
     def _redraw_jacobi(self):
