@@ -824,21 +824,52 @@ class ReplayBuffer:
     """
 
     def __init__(self, save_rate: float = 0.10, sprinkle_rate: float = 0.10,
-                 max_size: int = 5000):
+                 max_size: int = 5000, decay_rate: float = 0.001):
         self.save_rate = save_rate
         self.sprinkle_rate = sprinkle_rate
         self.max_size = max_size
-        self._buffer: deque = deque(maxlen=max_size)  # ← O(1) eviction
+        self.decay_rate = decay_rate  # fraction of buffer to randomly delete
+        self._buffer: deque = deque(maxlen=max_size)
         self._lock = threading.Lock()
         self._total_saved = 0
         self._total_sprinkled = 0
+        self._total_decayed = 0
 
     def maybe_save(self, samples: List[Tuple[List[int], int]]):
         with self._lock:
             for sample in samples:
                 if random.random() < self.save_rate:
-                    self._buffer.append(sample)  # deque auto-evicts oldest
+                    self._buffer.append(sample)
                     self._total_saved += 1
+            # After saving new samples, randomly purge 0.1% of the buffer
+            self._random_decay()
+
+    def _random_decay(self):
+        """
+        Randomly delete `decay_rate` (default 0.1%) of the buffer entries.
+        This forces those slots to be re-filled by fresh randomly generated
+        samples, preventing the buffer from going stale.
+
+        Must be called while self._lock is held.
+        """
+        if not self._buffer or self.decay_rate <= 0:
+            return
+
+        n_to_delete = max(1, int(len(self._buffer) * self.decay_rate))
+
+        # Only bother if the buffer is large enough that deletion is meaningful
+        if n_to_delete < 1 or len(self._buffer) <= n_to_delete:
+            return
+
+        # Pick random indices to remove (without replacement)
+        indices_to_remove = set(random.sample(range(len(self._buffer)), n_to_delete))
+
+        # Rebuild the deque without the selected indices
+        self._buffer = deque(
+            (item for i, item in enumerate(self._buffer) if i not in indices_to_remove),
+            maxlen=self.max_size,
+        )
+        self._total_decayed += n_to_delete
 
     def sprinkle(self, batch_size: int) -> List[Tuple[List[int], int]]:
         n_sprinkle = int(batch_size * self.sprinkle_rate)
@@ -847,7 +878,6 @@ class ReplayBuffer:
 
         with self._lock:
             n_sprinkle = min(n_sprinkle, len(self._buffer))
-            # random.sample doesn't work on deque directly in all Python versions
             buffer_list = list(self._buffer)
             chosen = random.sample(buffer_list, n_sprinkle)
             self._total_sprinkled += n_sprinkle
@@ -859,6 +889,7 @@ class ReplayBuffer:
                 "buffer": list(self._buffer),
                 "total_saved": self._total_saved,
                 "total_sprinkled": self._total_sprinkled,
+                "total_decayed": self._total_decayed,
             }
 
     def restore_state(self, state: dict):
@@ -868,6 +899,7 @@ class ReplayBuffer:
             self._buffer = deque(state.get("buffer", []), maxlen=self.max_size)
             self._total_saved = state.get("total_saved", 0)
             self._total_sprinkled = state.get("total_sprinkled", 0)
+            self._total_decayed = state.get("total_decayed", 0)
         console.print(
             f"  [green]✓ Replay buffer restored: {len(self._buffer)} samples[/]"
         )
@@ -884,6 +916,7 @@ class ReplayBuffer:
                 "buffer_size": len(self._buffer),
                 "total_saved": self._total_saved,
                 "total_sprinkled": self._total_sprinkled,
+                "total_decayed": self._total_decayed,
             }
 
 args = parse_args()
