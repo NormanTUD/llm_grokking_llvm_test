@@ -37,6 +37,22 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# -------------------------------------------------------
+# Locate the directory where this script lives, so we can
+# find the viz_*.py files relative to it.
+# -------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# -------------------------------------------------------
+# List of visualization scripts to run each cycle.
+# Each produces a .png inside the run folder automatically.
+# -------------------------------------------------------
+VIZ_SCRIPTS=(
+    "viz_fibre_bundle.py"
+    "viz_persistent_homology.py"
+    "viz_kelp_forest.py"
+)
+
 parse_remote() {
     REMOTE_USERHOST="${COPY_TO%%:*}"
     REMOTE_PATH="${COPY_TO#*:}"
@@ -49,6 +65,48 @@ ensure_remote_dir() {
         echo "Stelle sicher, dass Remote-Verzeichnis existiert: $REMOTE_PATH"
         ssh "$REMOTE_USERHOST" "mkdir -p '$REMOTE_PATH'"
     fi
+}
+
+# -------------------------------------------------------
+# Run all visualization scripts against the run folder
+# and copy the .py source files into the run folder so
+# they are included in the rsync / HTML dashboard.
+# -------------------------------------------------------
+run_visualizations() {
+    local DIR="$1"
+
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║  Running Python visualization scripts                   ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+
+    for viz in "${VIZ_SCRIPTS[@]}"; do
+        local VIZ_PATH="${SCRIPT_DIR}/${viz}"
+
+        if [ ! -f "$VIZ_PATH" ]; then
+            echo "  ⚠ Visualization script not found: $VIZ_PATH — skipping."
+            continue
+        fi
+
+        # --- Copy the .py source into the run folder so it gets synced ---
+        local DEST_PY="${DIR}${viz}"
+        if [ "$VIZ_PATH" != "$(realpath "$DEST_PY" 2>/dev/null)" ]; then
+            cp -f "$VIZ_PATH" "$DEST_PY"
+            echo "  📄 Copied ${viz} → ${DEST_PY}"
+        fi
+
+        # --- Execute the visualization script ---
+        echo "  🔬 Running: python3 ${viz} ${DIR}"
+        python3 "$VIZ_PATH" "${DIR}" 2>&1 | sed 's/^/     /'
+        local EXIT_CODE=${PIPESTATUS[0]}
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "  ✅ ${viz} completed successfully."
+        else
+            echo "  ❌ ${viz} exited with code ${EXIT_CODE} — continuing."
+        fi
+        echo ""
+    done
 }
 
 # -------------------------------------------------------
@@ -114,10 +172,10 @@ generate_epoch_html() {
             if (is_correct == "True") {
                 correct_count++
                 cls = "row-correct"
-                icon = "✅"
+                icon = "✔"
             } else {
                 cls = "row-wrong"
-                icon = "❌"
+                icon = "✗"
             }
             detail_rows[epoch] = detail_rows[epoch] \
                 "<tr class=\"" cls "\"><td>" sample "</td><td>" params "</td><td>" expected "</td><td>" predicted "</td><td>" icon "</td></tr>\n"
@@ -186,8 +244,6 @@ generate_html() {
     local ELAPSED_STR=""
     if [ -f "${DIR}started_at.txt" ]; then
         STARTED_AT=$(cat "${DIR}started_at.txt" | head -1 | xargs)
-        # Try to compute elapsed time
-        # Convert started_at to epoch seconds (handle CEST/CET by stripping timezone name)
         local started_clean
         started_clean=$(echo "$STARTED_AT" | sed 's/ CEST$/+0200/' | sed 's/ CET$/+0100/')
         local started_epoch
@@ -219,6 +275,7 @@ generate_html() {
     local EPOCH_CSV_REL=()
     local OTHER_TXT_REL=()
     local OTHER_CSV_REL=()
+    local PY_REL=()
 
     while IFS= read -r f; do
         [ -n "$f" ] && IMAGES_REL+=("$f")
@@ -241,7 +298,7 @@ generate_html() {
             local base
             base=$(basename "$f")
             if [[ "$base" == "started_at.txt" ]]; then
-                continue  # skip, already integrated
+                continue
             elif [[ "$base" =~ ^epoch_[0-9]+\.txt$ ]]; then
                 EPOCH_TXT_REL+=("$f")
             else
@@ -250,18 +307,21 @@ generate_html() {
         fi
     done < <(cd "$DIR" && find . -type f -iname "*.txt" | sort)
 
+    # Collect .py files (the viz scripts we copied in)
+    while IFS= read -r f; do
+        [ -n "$f" ] && PY_REL+=("$f")
+    done < <(cd "$DIR" && find . -type f -iname "*.py" | sort)
+
     local EPOCH_COUNT=${#EPOCH_TXT_REL[@]}
-    local TOTAL_FILES=$(( ${#IMAGES_REL[@]} + ${#EPOCH_TXT_REL[@]} + ${#EPOCH_CSV_REL[@]} + ${#OTHER_CSV_REL[@]} + ${#OTHER_TXT_REL[@]} ))
+    local TOTAL_FILES=$(( ${#IMAGES_REL[@]} + ${#EPOCH_TXT_REL[@]} + ${#EPOCH_CSV_REL[@]} + ${#OTHER_CSV_REL[@]} + ${#OTHER_TXT_REL[@]} + ${#PY_REL[@]} ))
 
     # Parse epochs with awk
     local OVERVIEW_TMP="/tmp/_epoch_overview.html"
     local DETAILS_TMP="/tmp/_epoch_details.html"
     generate_epoch_html "$DIR" "$OVERVIEW_TMP" "$DETAILS_TMP"
 
-    # Get latest epoch accuracy for the stats ribbon
     local LATEST_ACC=""
     if [ -f "$OVERVIEW_TMP" ]; then
-        # Extract last accuracy percentage from the overview
         LATEST_ACC=$(grep -oP '\d+%' "$OVERVIEW_TMP" | tail -1)
     fi
 
@@ -386,6 +446,10 @@ generate_html() {
     background: var(--accent2-dim); color: var(--accent2);
     border-color: rgba(0,212,170,0.2);
   }
+  .badge-orange {
+    background: rgba(240,192,64,0.12); color: var(--yellow);
+    border-color: rgba(240,192,64,0.2);
+  }
 
   /* Image grid */
   .image-grid {
@@ -485,7 +549,7 @@ generate_html() {
   .row-correct td { color: var(--green); }
   .row-wrong td { color: var(--red); }
 
-  /* File list (for epoch sample/csv links) */
+  /* File list */
   .file-link-grid {
     display: flex; flex-wrap: wrap; gap: 0.5rem;
   }
@@ -524,6 +588,7 @@ generate_html() {
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .dot-csv { background: var(--accent2); }
   .dot-txt { background: var(--accent); }
+  .dot-py  { background: var(--yellow); }
   .file-card pre {
     padding: 0.8rem 1rem; font-size: 0.72rem; line-height: 1.55;
     overflow-x: auto; max-height: 300px; overflow-y: auto;
@@ -574,7 +639,7 @@ HEADER
 EOF
 
     if [ -n "$STARTED_AT" ]; then
-        echo "    <div class=\"meta-pill\">🚀 Started <span class=\"val-warm\">${STARTED_AT}</span></div>" >> "$OUT"
+        echo "    <div class=\"meta-pill\">🕐 Started <span class=\"val-warm\">${STARTED_AT}</span></div>" >> "$OUT"
     fi
     if [ -n "$ELAPSED_STR" ]; then
         echo "    <div class=\"meta-pill\">⏱ Elapsed <span class=\"val-purple\">${ELAPSED_STR}</span></div>" >> "$OUT"
@@ -625,7 +690,6 @@ EOF
   </div>
 EOF
         done
-        echo '</div>'
         echo '</div>' >> "$OUT"
     else
         echo '<div class="empty-state">No images found yet.</div>' >> "$OUT"
@@ -665,7 +729,7 @@ EOF
     # --- OTHER CSV FILES (with preview) ---
     if [ ${#OTHER_CSV_REL[@]} -gt 0 ]; then
         cat >> "$OUT" <<EOF
-<div class="section-title">📄 CSV Data <span class="badge-green badge">${#OTHER_CSV_REL[@]}</span></div>
+<div class="section-title">📈 CSV Data <span class="badge-green badge">${#OTHER_CSV_REL[@]}</span></div>
 EOF
         echo '<div class="file-grid">' >> "$OUT"
         for csv in "${OTHER_CSV_REL[@]}"; do
@@ -676,7 +740,7 @@ EOF
   <div class="file-card">
     <div class="file-header"><span class="dot dot-csv"></span>${clean}</div>
     <pre>${preview}</pre>
-    <a class="file-open" href="${clean}" target="_blank">Open full file ↗</a>
+    <a class="file-open" href="${clean}" target="_blank">Open full file →</a>
   </div>
 EOF
         done
@@ -697,7 +761,28 @@ EOF
   <div class="file-card">
     <div class="file-header"><span class="dot dot-txt"></span>${clean}</div>
     <pre>${preview}</pre>
-    <a class="file-open" href="${clean}" target="_blank">Open full file ↗</a>
+    <a class="file-open" href="${clean}" target="_blank">Open full file →</a>
+  </div>
+EOF
+        done
+        echo '</div>' >> "$OUT"
+    fi
+
+    # --- PYTHON VISUALIZATION SCRIPTS (with preview) ---
+    if [ ${#PY_REL[@]} -gt 0 ]; then
+        cat >> "$OUT" <<EOF
+<div class="section-title">🐍 Visualization Scripts <span class="badge-orange badge">${#PY_REL[@]}</span></div>
+EOF
+        echo '<div class="file-grid">' >> "$OUT"
+        for py in "${PY_REL[@]}"; do
+            local clean="${py#./}"
+            local preview
+            preview=$(head -40 "${DIR}${clean}" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            cat >> "$OUT" <<EOF
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-py"></span>${clean}</div>
+    <pre>${preview}</pre>
+    <a class="file-open" href="${clean}" target="_blank">Open full file →</a>
   </div>
 EOF
         done
@@ -717,7 +802,57 @@ EOF
     echo "HTML Dashboard generiert: $OUT"
 }
 
-# --- Main ---
+# -------------------------------------------------------
+# Run all visualization scripts against the run folder
+# and copy the .py source files into the run folder so
+# they are included in the rsync / HTML dashboard.
+# -------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+VIZ_SCRIPTS=(
+    "viz_fibre_bundle.py"
+    "viz_persistent_homology.py"
+    "viz_kelp_forest.py"
+)
+
+run_visualizations() {
+    local DIR="$1"
+
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║  Running Python visualization scripts                   ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+
+    for viz in "${VIZ_SCRIPTS[@]}"; do
+        local VIZ_PATH="${SCRIPT_DIR}/${viz}"
+
+        if [ ! -f "$VIZ_PATH" ]; then
+            echo "  ⚠ Visualization script not found: $VIZ_PATH — skipping."
+            continue
+        fi
+
+        # --- Copy the .py source into the run folder so it gets synced ---
+        local DEST_PY="${DIR}${viz}"
+        if [ "$VIZ_PATH" != "$(realpath "$DEST_PY" 2>/dev/null)" ]; then
+            cp -f "$VIZ_PATH" "$DEST_PY"
+            echo "  📄 Copied ${viz} → ${DEST_PY}"
+        fi
+
+        # --- Execute the visualization script ---
+        echo "  🔬 Running: python3 ${viz} ${DIR}"
+        python3 "$VIZ_PATH" "${DIR}" 2>&1 | sed 's/^/     /'
+        local EXIT_CODE=${PIPESTATUS[0]}
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+            echo "  ✅ ${viz} completed successfully."
+        else
+            echo "  ❌ ${viz} exited with code ${EXIT_CODE} — continuing."
+        fi
+        echo ""
+    done
+}
+
+# --- Main Loop ---
 echo "Überwache: $RUN_DIR"
 echo "Intervall: ${INTERVAL}s"
 [ -n "$COPY_TO" ] && echo "Sync zu:   $COPY_TO"
@@ -728,13 +863,19 @@ if [ -n "$COPY_TO" ]; then
 fi
 
 while true; do
+    # 1) Generate error plots (existing)
     bash plot_errors.sh "$RUN_DIR"
 
+    # 2) Run Python visualization scripts & copy .py files into run folder
+    run_visualizations "$RUN_DIR"
+
+    # 3) Generate the HTML dashboard (now picks up .py files + new .png images)
     generate_html "$RUN_DIR"
 
+    # 4) Find all syncable files (now includes .py)
     FILES=$(find "$RUN_DIR" -type f \( \
         -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.svg" \
-        -o -iname "*.csv" -o -iname "*.txt" -o -iname "*.html" \
+        -o -iname "*.csv" -o -iname "*.txt" -o -iname "*.html" -o -iname "*.py" \
     \))
 
     if [ -n "$FILES" ]; then
@@ -743,12 +884,12 @@ while true; do
 
         if [ -n "$COPY_TO" ]; then
             echo "Synce nach $COPY_TO ..."
-		rsync -avz \
-		    --include='*/' \
-		    --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' \
-		    --include='*.csv' --include='*.txt' --include='*.html' \
-		    --exclude='*' \
-		    "${RUN_DIR}" "$COPY_TO"
+            rsync -avz \
+                --include='*/' \
+                --include='*.png' --include='*.jpg' --include='*.jpeg' --include='*.svg' \
+                --include='*.csv' --include='*.txt' --include='*.html' --include='*.py' \
+                --exclude='*' \
+                "${RUN_DIR}" "$COPY_TO"
             echo "Sync abgeschlossen."
         fi
     else
