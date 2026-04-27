@@ -49,7 +49,7 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 import matplotlib.cm as cm
 
 # ── Import your model code ──────────────────────────────────────────────
-from train import TinyGPT, LLVMGPTConfig, CharTokenizer
+from train import TinyGPT, LLVMGPTConfig, BPETokenizer
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -198,7 +198,7 @@ def discover_run_folder(run_dir: str) -> Dict:
     return discovered
 
 
-def extract_model_config(discovered: Dict, tokenizer: CharTokenizer) -> LLVMGPTConfig:
+def extract_model_config(discovered: Dict, tokenizer: BPETokenizer) -> LLVMGPTConfig:
     """
     Extract model hyperparameters from the discovered config or checkpoint.
     Falls back to inspecting the checkpoint's state_dict shapes.
@@ -645,7 +645,7 @@ def main():
 
     # ── Build tokenizer ─────────────────────────────────────────────
     print("\n[2/6] Building tokenizer...")
-    tokenizer = CharTokenizer()
+    tokenizer = BPETokenizer()
 
     # ── Extract config and load model ───────────────────────────────
     print("\n[3/6] Extracting model config...")
