@@ -2022,6 +2022,8 @@ class LivePlotter:
         os.makedirs(jacobi_img_dir, exist_ok=True)
 
         from matplotlib.colors import hsv_to_rgb
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
 
         for f in fields:
             layer = f['layer']
@@ -2043,7 +2045,9 @@ class LivePlotter:
             aniso_val = f['anisotropy']
             mean_vol = per_token_volume.mean()
 
-            fig_s, ax_s = plt.subplots(1, 1, figsize=(6, 6))
+            fig_s = Figure(figsize=(6, 6))
+            FigureCanvasAgg(fig_s)
+            ax_s = fig_s.add_subplot(1, 1, 1)
             ax_s.set_facecolor("#0d1117")
 
             # ── Background HSV ──────────────────────────────────────
@@ -2142,8 +2146,7 @@ class LivePlotter:
 
             fname = os.path.join(jacobi_img_dir, f"jacobi_step{step:06d}_layer{layer:02d}.png")
             fig_s.savefig(fname, dpi=120, bbox_inches='tight', facecolor='#0a0a1a', edgecolor='none')
-            plt.close(fig_s)
-
+            del fig_s
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
