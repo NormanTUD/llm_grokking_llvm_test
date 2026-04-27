@@ -561,6 +561,32 @@ class LivePlotter:
             # Force a synchronous repaint so the new sub-axes actually appear
             self._flush_canvas()
 
+            try:
+                if run_dir is not None:
+                    jacobi_dir = os.path.join(run_dir, "jacobi_data")
+                    os.makedirs(jacobi_dir, exist_ok=True)
+                    step = self._kelp_step
+
+                    for f in fields:
+                        layer = f['layer']
+                        save_dict = {}
+                        for key, val in f.items():
+                            if isinstance(val, np.ndarray):
+                                save_dict[key] = val
+                            elif isinstance(val, (int, float)):
+                                save_dict[key] = np.array(val)
+                            elif isinstance(val, tuple) and len(val) == 2:
+                                save_dict[key] = np.array(val)
+                        save_dict['step'] = np.array(step)
+                        save_dict['layer_idx'] = np.array(layer)
+
+                        np.savez_compressed(
+                            os.path.join(jacobi_dir, f"jacobi_step{step:06d}_layer{layer:02d}.npz"),
+                            **save_dict,
+                        )
+            except Exception as e:
+                console.print(f"[yellow]⚠ Could not save Jacobi data: {e}[/]")
+
         except Exception as e:
             import traceback
             console.print(f"[yellow]\u26a0 Jacobi field error at step {self._kelp_step}: {e}[/]")
