@@ -80,6 +80,10 @@ def generate_example_samples(
             predicted_str = predicted_str.replace(special_tok, "")
         predicted_str = predicted_str.strip()
 
+        # ── FIX: ensure predicted_str is never empty ────────────────
+        if not predicted_str:
+            predicted_str = "(empty)"
+
         samples.append({
             "ir_code": ir_code.strip(),
             "params": ", ".join(str(p) for p in params),
