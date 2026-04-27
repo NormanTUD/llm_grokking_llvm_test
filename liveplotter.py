@@ -272,6 +272,53 @@ class LivePlotter:
         self._refresh()
         console.print("  [green]✓ Plot state restored — graphs continue from where they left off[/]")
 
+
+    def _refresh(self):
+        """
+        Refresh all data axes and flush the canvas.
+        Uses plt.pause() which properly pumps the GUI event loop.
+        """
+        if not self.enabled:
+            return
+
+        if not self.suppress_window:
+            self._check_reopen()
+
+        _suppress_c_stderr()
+        try:
+            for ax in self._plot_axes:
+                if ax is self.ax_diffs:
+                    continue
+                ax.relim()
+                ax.autoscale_view()
+
+            if not self.suppress_window and self._is_window_alive():
+                self.plt.pause(0.001)
+            else:
+                self.fig.canvas.draw()
+        finally:
+            _restore_c_stderr()
+
+    def _flush_canvas(self):
+        """
+        Force a synchronous canvas repaint.
+        Uses draw() + flush_events() instead of draw_idle().
+        """
+        if not self.enabled:
+            return
+
+        _suppress_c_stderr()
+        try:
+            if not self.suppress_window and self._is_window_alive():
+                self.fig.canvas.draw()
+                self.fig.canvas.flush_events()
+            else:
+                self.fig.canvas.draw()
+        except Exception:
+            pass
+        finally:
+            _restore_c_stderr()
+
     @torch.no_grad()
     def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
         """
@@ -298,37 +345,27 @@ class LivePlotter:
             if not fields:
                 return
 
+            # Use _global_batch as the unique draw key — it increments every
+            # single batch, so it is NEVER the same across two calls.
+            # _kelp_step is displayed in the title for readability.
             self._jacobi_data = {
                 'fields': fields,
-                'step': self._kelp_step,
+                'step': self._kelp_step,          # for display in title
+                'draw_key': self._global_batch,   # unique key for redraw guard
             }
 
             # Force redraw by invalidating the guard
             self._jacobi_drawn_step = -1
 
-            # Remove old inset axes FIRST
-            old_axes = list(self._jacobi_subaxes)
-            self._jacobi_subaxes = []
-            for old_ax in old_axes:
-                try:
-                    old_ax.remove()
-                except Exception:
-                    try:
-                        self.fig.delaxes(old_ax)
-                    except Exception:
-                        pass
+            # Remove old inset axes
+            self._remove_jacobi_subaxes()
 
             # Draw the new fields
             self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
+                self.ax_kelp, self._jacobi_data, self._jacobi_data['draw_key']
             )
 
-            # FIX: Force a synchronous canvas flush.
-            # The sub-axes created by _draw_jacobi_fields are new
-            # figure-level artists that draw_idle() (used by
-            # plt.pause in _refresh) may not pick up reliably.
-            # A synchronous draw() + flush_events() ensures the
-            # updated title and new sub-axes actually render.
+            # Force a synchronous canvas flush so the new sub-axes render.
             self._flush_canvas()
 
         except Exception as e:
@@ -339,22 +376,9 @@ class LivePlotter:
             if was_training:
                 model.train()
 
-    def _draw_jacobi_fields(self, ax, jacobi_data, step):
-        """
-        Render N subplots (one per layer), each showing the Jacobi field.
-        """
-        if ax is None or jacobi_data is None:
-            return
 
-        # Skip redundant redraws — only recreate when step changes
-        if self._jacobi_drawn_step == step:
-            return
-        self._jacobi_drawn_step = step
-
-        fields = jacobi_data['fields']
-        n_layers = len(fields)
-
-        # ── Remove old inset axes (robust cleanup) ─────────────────────
+    def _remove_jacobi_subaxes(self):
+        """Safely remove all Jacobi inset sub-axes from the figure."""
         old_axes = list(self._jacobi_subaxes)
         self._jacobi_subaxes = []
         for old_ax in old_axes:
@@ -365,6 +389,32 @@ class LivePlotter:
                     self.fig.delaxes(old_ax)
                 except Exception:
                     pass
+
+
+    def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
+        """
+        Render N subplots (one per layer), each showing the Jacobi field.
+
+        Args:
+            ax:          The parent axis to draw into.
+            jacobi_data: Dict with 'fields', 'step', and 'draw_key'.
+            draw_key:    Unique key for the redraw guard. Must differ
+                         between calls that should produce a new frame.
+        """
+        if ax is None or jacobi_data is None:
+            return
+
+        # Skip redundant redraws — only recreate when draw_key changes
+        if self._jacobi_drawn_step == draw_key:
+            return
+        self._jacobi_drawn_step = draw_key
+
+        fields = jacobi_data['fields']
+        step = jacobi_data.get('step', draw_key)  # display step for title
+        n_layers = len(fields)
+
+        # ── Remove old inset axes (robust cleanup) ─────────────────────
+        self._remove_jacobi_subaxes()
 
         # ── Clear the parent axis ──────────────────────────────────────
         ax.clear()
@@ -415,47 +465,23 @@ class LivePlotter:
 
             J = f['jacobian']
             D_dim = J.shape[0]
+            S = f['singular_values']
 
             try:
-                U, S, Vh = np.linalg.svd(J)
+                U_svd, S_svd, Vh = np.linalg.svd(J)
             except Exception:
-                S = np.ones(D_dim)
+                S_svd = np.ones(D_dim)
                 Vh = np.eye(D_dim)
 
-            # ── FIX: Balanced 2D projection ────────────────────────────
-            # The old code used Vh[:2, :] (top-2 singular vectors),
-            # which are the directions of MAXIMUM stretch.  For a
-            # residual connection J = I + J_res, these directions
-            # almost always have singular values > 1 (expanding),
-            # so the projected field is purely expanding → only red.
-            #
-            # Instead, pick one expanding direction (top SV) and one
-            # contracting direction (bottom SV).  This gives a 2D
-            # slice that shows BOTH expansion and contraction, making
-            # blue regions visible when they exist.
-            #
-            # If all singular values > 1 (pure expansion), fall back
-            # to top-2 but use the residual F = J - I for coloring
-            # with asinh normalization to reveal subtle differences.
             F_residual = J - np.eye(D_dim)
-
-            # Find the most contracting direction via eigendecomposition
-            # of the symmetric part of F_residual
             F_sym = (F_residual + F_residual.T) / 2
             try:
                 eigvals, eigvecs = np.linalg.eigh(F_sym)
-                # eigvals are sorted ascending: eigvals[0] is most negative
-                # eigvecs[:, 0] is the most contracting direction
-                # eigvecs[:, -1] is the most expanding direction
-                v_contract = eigvecs[:, 0]   # most contracting (or least expanding)
-                v_expand = eigvecs[:, -1]     # most expanding
-
-                # Orthogonalize (they should already be orthogonal from eigh,
-                # but ensure numerical stability)
+                v_contract = eigvecs[:, 0]
+                v_expand = eigvecs[:, -1]
                 v_expand = v_expand - np.dot(v_expand, v_contract) * v_contract
                 v_expand = v_expand / (np.linalg.norm(v_expand) + 1e-10)
-
-                V2 = np.stack([v_expand, v_contract], axis=0)  # (2, D)
+                V2 = np.stack([v_expand, v_contract], axis=0)
             except Exception:
                 V2 = Vh[:2, :]
 
@@ -472,11 +498,6 @@ class LivePlotter:
             r_mag = np.sqrt(cgx**2 + cgy**2) + 1e-10
             radial = (cdx * cgx + cdy * cgy) / r_mag
 
-            # FIX: Use asinh normalization for better dynamic range.
-            # When the field is predominantly expanding, linear
-            # normalization maps everything to the red half of RdBu_r.
-            # asinh compresses large values while preserving sign,
-            # making small contracting regions visible as blue.
             radial_asinh = np.arcsinh(radial * 3.0)
             r_absmax = max(np.abs(radial_asinh).max(), 1e-10)
             div_color = radial_asinh / r_absmax
@@ -503,7 +524,6 @@ class LivePlotter:
             mag_max = mag.max() if mag.max() > 1e-10 else 1.0
 
             a_radial = (adx * agx + ady * agy) / (np.sqrt(agx**2 + agy**2) + 1e-10)
-            # FIX: Match asinh normalization for arrow colors
             a_radial_asinh = np.arcsinh(a_radial * 3.0)
             a_rc_max = max(np.abs(a_radial_asinh).max(), 1e-10)
             arrow_colors = (a_radial_asinh / a_rc_max).ravel()
@@ -588,56 +608,11 @@ class LivePlotter:
 
         ax.stale = True
 
-    def _refresh(self):
-        """
-        Refresh all data axes and flush the canvas.
-        Uses plt.pause() which properly pumps the GUI event loop.
-        """
-        if not self.enabled:
-            return
-
-        if not self.suppress_window:
-            self._check_reopen()
-
-        _suppress_c_stderr()
-        try:
-            for ax in self._plot_axes:
-                if ax is self.ax_diffs:
-                    continue
-                ax.relim()
-                ax.autoscale_view()
-
-            if not self.suppress_window and self._is_window_alive():
-                self.plt.pause(0.001)
-            else:
-                self.fig.canvas.draw()
-        finally:
-            _restore_c_stderr()
-
-    def _flush_canvas(self):
-        """
-        Force a synchronous canvas repaint.
-        Uses draw() + flush_events() instead of draw_idle().
-        """
-        if not self.enabled:
-            return
-
-        _suppress_c_stderr()
-        try:
-            if not self.suppress_window and self._is_window_alive():
-                self.fig.canvas.draw()
-                self.fig.canvas.flush_events()
-            else:
-                self.fig.canvas.draw()
-        except Exception:
-            pass
-        finally:
-            _restore_c_stderr()
-
 
     def _redraw_jacobi(self):
         """
         Redraw the Jacobi fields from cached data.
+        Called from _restore_data after figure recreation.
         """
         if self._jacobi_data is None:
             return
@@ -645,13 +620,16 @@ class LivePlotter:
             console.print("[yellow]⚠ Jacobi: ax_kelp is None, cannot draw[/]")
             return
         try:
+            # Invalidate the guard so the redraw actually happens
+            self._jacobi_drawn_step = -1
             self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, self._jacobi_data['step']
+                self.ax_kelp, self._jacobi_data, self._jacobi_data.get('draw_key', -1)
             )
         except Exception as e:
             import traceback
             console.print(f"[yellow]⚠ Jacobi redraw error: {e}[/]")
             traceback.print_exc()
+
 
     def accumulate_predictions(self, predictions: list):
         """Accumulate predictions across batches (call clear_predictions() at epoch start)."""
@@ -817,12 +795,7 @@ class LivePlotter:
     # ── The director ────────────────────────────────────────────────────
 
     def _create_figure(self):
-        """Create (or recreate) the matplotlib figure and all axes.
-
-        This method is a pure director — it delegates every piece of
-        setup to a focused helper and orchestrates the data flow between
-        them.
-        """
+        """Create (or recreate) the matplotlib figure and all axes."""
         # 1. Build the figure skeleton
         self.fig, named_axes = self._build_figure_and_gridspec()
 
@@ -830,11 +803,11 @@ class LivePlotter:
         self.ax_barcode = named_axes["barcode"]
         self.ax_bd = named_axes["bd"]
 
-        # 3. Configure each axis (order doesn't matter — no dependencies)
+        # 3. Configure each axis
         self._setup_diffs_axis(named_axes["diffs"])
         self._jacobi_subaxes = []
-        self._jacobi_data = None
-        self._jacobi_drawn_step = -1  # ← ADD THIS: reset the redraw guard
+        # Do NOT reset _jacobi_data here — preserve cached data for restore
+        self._jacobi_drawn_step = -1  # force redraw on next draw call
         self._setup_kelp_axis(named_axes["kelp"])
         self._setup_epoch_axis(named_axes["epoch"])
         self._setup_batch_axis(named_axes["batch"])
