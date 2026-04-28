@@ -2859,7 +2859,7 @@ class LivePlotter:
             fig_s.savefig(fname, dpi=120, bbox_inches='tight', facecolor='#0a0a1a', edgecolor='none')
             del fig_s
 
-    def _get_n_labels(n_tokens):
+    def _get_n_labels(self, n_tokens):
         min_nr = 3
         max_nr = 100
         every_nth = 5
