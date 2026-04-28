@@ -731,20 +731,65 @@ generate_jacobi_slideshow_html() {
     local DIR="$1"
     local JACOBI_DIR="${DIR}jacobi_images/"
     local OUT="${DIR}jacobi.html"
+    local MAX_STEPS=200  # max number of steps to show
 
     if [ ! -d "$JACOBI_DIR" ]; then
         return
     fi
 
-    # Collect all jacobi layer images in order
-    local IMAGES=()
+    # Collect all jacobi layer images — ONLY .png, skip .npz
+    local ALL_IMAGES=()
     while IFS= read -r f; do
-        [ -n "$f" ] && IMAGES+=("${f#./}")
-    done < <(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sort)
+        [ -n "$f" ] && ALL_IMAGES+=("${f#./}")
+    done < <(cd "$DIR" && find jacobi_images -maxdepth 1 -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sort)
 
-    if [ ${#IMAGES[@]} -eq 0 ]; then
+    if [ ${#ALL_IMAGES[@]} -eq 0 ]; then
         return
     fi
+
+    # Extract unique step numbers
+    local ALL_STEPS=()
+    local PREV_STEP=""
+    for img in "${ALL_IMAGES[@]}"; do
+        local step_num
+        step_num=$(echo "$img" | sed -n 's/.*jacobi_step\([0-9]*\)_.*/\1/p')
+        if [ "$step_num" != "$PREV_STEP" ]; then
+            ALL_STEPS+=("$step_num")
+            PREV_STEP="$step_num"
+        fi
+    done
+
+    # Subsample steps if too many
+    local SELECTED_STEPS=()
+    local TOTAL_STEPS=${#ALL_STEPS[@]}
+    if [ "$TOTAL_STEPS" -le "$MAX_STEPS" ]; then
+        SELECTED_STEPS=("${ALL_STEPS[@]}")
+    else
+        local STEP_INTERVAL=$(( TOTAL_STEPS / MAX_STEPS ))
+        [ "$STEP_INTERVAL" -lt 2 ] && STEP_INTERVAL=2
+        SELECTED_STEPS+=("${ALL_STEPS[0]}")
+        for (( i=STEP_INTERVAL; i<TOTAL_STEPS-1; i+=STEP_INTERVAL )); do
+            SELECTED_STEPS+=("${ALL_STEPS[$i]}")
+        done
+        SELECTED_STEPS+=("${ALL_STEPS[$((TOTAL_STEPS-1))]}")
+        echo "  Jacobi slideshow: subsampled ${TOTAL_STEPS} → ${#SELECTED_STEPS[@]} steps (every ${STEP_INTERVAL}th)"
+    fi
+
+    # Build a lookup set for fast membership test
+    local -A STEP_SET
+    for s in "${SELECTED_STEPS[@]}"; do
+        STEP_SET["$s"]=1
+    done
+
+    # Filter images to only selected steps
+    local IMAGES=()
+    for img in "${ALL_IMAGES[@]}"; do
+        local step_num
+        step_num=$(echo "$img" | sed -n 's/.*jacobi_step\([0-9]*\)_.*/\1/p')
+        if [ -n "${STEP_SET[$step_num]+x}" ]; then
+            IMAGES+=("$img")
+        fi
+    done
 
     # --- Write HTML ---
     cat > "$OUT" <<HEADER
@@ -796,6 +841,31 @@ $(_slideshow_common_css)
     z-index: 5;
     font-family: 'JetBrains Mono', monospace;
   }
+  /* === SCRUBBER / SLIDER === */
+  .scrubber-container {
+    flex-shrink: 0; height: 28px; background: #0d0f16;
+    cursor: pointer; position: relative; display: flex;
+    align-items: center; border-bottom: 1px solid #1e2340;
+  }
+  .scrubber-track {
+    position: absolute; left: 12px; right: 12px; height: 6px;
+    background: #1e2340; border-radius: 3px; overflow: hidden;
+  }
+  .scrubber-track:hover, .scrubber-container.dragging .scrubber-track { height: 10px; }
+  .scrubber-fill {
+    height: 100%; background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    border-radius: 3px; pointer-events: none; will-change: width;
+  }
+  .scrubber-thumb {
+    position: absolute; width: 16px; height: 16px;
+    background: #e8eaf6; border: 2px solid #7c5cfc;
+    border-radius: 50%; top: 50%; transform: translate(-50%, -50%);
+    pointer-events: none; will-change: left;
+    box-shadow: 0 0 8px rgba(124,92,252,0.4); transition: transform 0.1s;
+  }
+  .scrubber-container.dragging .scrubber-thumb {
+    transform: translate(-50%, -50%) scale(1.3); background: #7c5cfc;
+  }
 </style>
 </head>
 <body>
@@ -808,9 +878,15 @@ HEADER
         >> "$OUT"
 
     cat >> "$OUT" <<'CONTAINER'
+<div class="scrubber-container" id="scrubber">
+  <div class="scrubber-track" id="scrubber-track">
+    <div class="scrubber-fill" id="scrubber-fill" style="width:0%"></div>
+  </div>
+  <div class="scrubber-thumb" id="scrubber-thumb" style="left:12px"></div>
+</div>
 <div class="slide-container" id="slide-container">
   <div class="step-label" id="step-label">Step ?</div>
-  <div class="hint">↑ ↓ ← → navigate · Space play/pause · Home/End jump · +/− speed</div>
+  <div class="hint">← → navigate · Drag slider · Scroll wheel · Space play/pause · Home/End jump · +/− speed</div>
 </div>
 <script>
 CONTAINER
@@ -818,8 +894,7 @@ CONTAINER
     # Build the JS image array
     echo 'const allImages = [' >> "$OUT"
     for img in "${IMAGES[@]}"; do
-        local cb="?t=$(date +%s)"
-        echo "  \"${img}${cb}\"," >> "$OUT"
+        echo "  \"${img}\"," >> "$OUT"
     done
     echo '];' >> "$OUT"
 
@@ -844,17 +919,49 @@ allImages.forEach(path => {
 stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
 const steps = [...stepMap.keys()].sort((a, b) => a - b);
 
-let idx = 0;  // start at the first step
+let idx = 0;
 
 const container = document.getElementById('slide-container');
 const stepNum = document.getElementById('step-num');
 const stepPos = document.getElementById('step-pos');
 const stepTotal = document.getElementById('step-total');
 const stepLabel = document.getElementById('step-label');
+const scrubber = document.getElementById('scrubber');
+const scrubberTrack = document.getElementById('scrubber-track');
+const scrubberFill = document.getElementById('scrubber-fill');
+const scrubberThumb = document.getElementById('scrubber-thumb');
 
 stepTotal.textContent = steps.length;
 
 function getTotal() { return steps.length; }
+
+// === PRELOAD CACHE (sliding window) ===
+const cache = new Map();
+const PRELOAD_AHEAD = 5;
+const PRELOAD_BEHIND = 2;
+const MAX_CACHE = 40;
+
+function preloadAround(center) {
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(steps.length - 1, center + PRELOAD_AHEAD);
+  for (let i = lo; i <= hi; i++) {
+    const layers = stepMap.get(steps[i]);
+    layers.forEach(l => {
+      if (!cache.has(l.path)) {
+        const img = new Image();
+        img.src = l.path;
+        cache.set(l.path, img);
+      }
+    });
+  }
+  // Evict far-away entries
+  if (cache.size > MAX_CACHE * 4) {
+    for (const [url] of cache) {
+      if (cache.size <= MAX_CACHE * 4) break;
+      cache.delete(url);
+    }
+  }
+}
 
 function show(i) {
   if (steps.length === 0) return;
@@ -864,26 +971,56 @@ function show(i) {
 
   stepNum.textContent = step;
   stepPos.textContent = idx + 1;
-  progressFill.style.width = ((idx + 1) / steps.length * 100) + '%';
   stepLabel.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
 
   // Remove old images (keep the label and hint)
   container.querySelectorAll('.layer-img').forEach(el => el.remove());
-
-  // Adjust class for layout
   container.classList.toggle('single-layer', layers.length === 1);
 
-  // Add layer images
   layers.forEach(l => {
     const img = document.createElement('img');
     img.className = 'layer-img';
     img.src = l.path;
     img.alt = 'Layer ' + l.layer;
     img.title = 'Step ' + step + ', Layer ' + l.layer;
-    img.loading = 'eager';
     container.appendChild(img);
   });
+
+  updateScrubber();
+  preloadAround(idx);
 }
+
+// === SCRUBBER ===
+function updateScrubber() {
+  const pct = steps.length > 1 ? idx / (steps.length - 1) : 0;
+  scrubberFill.style.width = (pct * 100) + '%';
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  const left = trackRect.left - scrubber.getBoundingClientRect().left + pct * trackRect.width;
+  scrubberThumb.style.left = left + 'px';
+}
+
+let dragging = false;
+function scrubFromEvent(e) {
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  let pct = (e.clientX - trackRect.left) / trackRect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  show(Math.round(pct * (steps.length - 1)));
+}
+scrubber.addEventListener('pointerdown', (e) => {
+  dragging = true; scrubber.classList.add('dragging');
+  scrubber.setPointerCapture(e.pointerId); scrubFromEvent(e);
+});
+scrubber.addEventListener('pointermove', (e) => { if (dragging) scrubFromEvent(e); });
+scrubber.addEventListener('pointerup', () => { dragging = false; scrubber.classList.remove('dragging'); });
+scrubber.addEventListener('pointercancel', () => { dragging = false; scrubber.classList.remove('dragging'); });
+
+// Mouse wheel on slide area
+document.getElementById('slide-container').addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY > 0 || e.deltaX > 0) next(); else prev();
+}, { passive: false });
+
+window.addEventListener('resize', () => updateScrubber());
 
 function next() { show(idx + 1); if (idx >= steps.length - 1 && playing) togglePlay(); }
 function prev() { show(idx - 1); }
@@ -893,28 +1030,22 @@ JACOBI_LOGIC
 
     _slideshow_common_controls_js "200" "1000" "100" "10000" >> "$OUT"
 
-    cat >> "$OUT" <<'PRELOAD_AND_INIT'
+    cat >> "$OUT" <<'INIT'
 
-// Preload ALL step images on page load for smooth navigation
-(function preloadAll() {
-  steps.forEach(step => {
-    stepMap.get(step).forEach(l => {
-      const img = new Image();
-      img.src = l.path;
-    });
-  });
-})();
+// Keyboard extras
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'PageDown') { e.preventDefault(); show(idx + 20); }
+  if (e.key === 'PageUp')   { e.preventDefault(); show(idx - 20); }
+});
 
+preloadAround(0);
 show(idx);
 </script>
 </body>
 </html>
-PRELOAD_AND_INIT
+INIT
 
-    # Count unique steps for the log message
-    local UNIQUE_STEPS
-    UNIQUE_STEPS=$(cd "$DIR" && find jacobi_images -type f -name 'jacobi_step*_layer*.png' 2>/dev/null | sed 's/.*jacobi_step\([0-9]*\)_.*/\1/' | sort -u | wc -l)
-    echo "Jacobi slideshow generated: $OUT (${#IMAGES[@]} images across ${UNIQUE_STEPS} steps, grouped by step)"
+    echo "Jacobi slideshow generated: $OUT (${#IMAGES[@]} images across ${#SELECTED_STEPS[@]} steps)"
 }
 
 # -------------------------------------------------------
@@ -1685,7 +1816,7 @@ while true; do
     FILES=$(find "$RUN_DIR" -type f \( \
         -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.svg" \
         -o -iname "*.csv" -o -iname "*.txt" -o -iname "*.html" -o -iname "*.py" \
-    \))
+    \) ! -iname "*.npz")
 
     if [ -n "$FILES" ]; then
         COUNT=$(echo "$FILES" | wc -l)
