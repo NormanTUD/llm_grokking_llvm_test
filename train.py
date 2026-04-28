@@ -1278,7 +1278,9 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                  task_type="infix") -> BPETokenizer:
     """
     Generate n_programs random functions to build a tokenizer.
-    For turnstile task: skip BPE merges entirely, use byte-level only.
+    For turnstile task: build a character-level tokenizer with only the
+    characters that actually appear in the data (no BPE, no byte-level).
+    For infix task: standard BPE with byte-level pre-tokenization.
     """
     if allowed_ops is None:
         allowed_ops = ["add", "sub"]
@@ -1336,45 +1338,56 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
             )
 
     # ── Step 2: Build tokenizer ─────────────────────────────────────────
-    # For turnstile task, the output is just "0" or "1" and the input is
-    # a small set of characters (⊢, =, digits, space). BPE merges on this
-    # low-entropy data produce useless merged tokens that bloat the vocab
-    # and hurt training. So we skip BPE training entirely and use only
-    # the byte-level initial alphabet + special tokens.
-
-    hf_tokenizer = HFTokenizer(models.BPE())
-    hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
-    hf_tokenizer.decoder = decoders.ByteLevel()
 
     special_tokens = ["<pad>", "<bos>", "<eos>"]
 
     if task_type == "turnstile":
-        # ── Byte-level only: no BPE merges ──────────────────────────────
-        # Set vocab_size = len(special_tokens) + len(byte_alphabet) so the
-        # BPE trainer has zero room to learn any merges beyond the initial
-        # alphabet. The ByteLevel alphabet has 256 entries.
-        initial_alphabet = pre_tokenizers.ByteLevel.alphabet()
-        no_merge_vocab_size = len(special_tokens) + len(initial_alphabet)
+        # ── Character-level tokenizer: only the chars that appear ────────
+        charset = set()
+        for text in corpus:
+            charset.update(text)
+        alphabet = sorted(charset)
 
         console.print(
-                f"  [cyan]Turnstile task: building byte-level-only tokenizer "
-                f"(vocab_size={no_merge_vocab_size}, no BPE merges)...[/]"
-                )
+            f"  [cyan]Turnstile task: building character-level tokenizer "
+            f"(alphabet={len(alphabet)} unique chars, no BPE merges)...[/]"
+        )
 
-        trainer_obj = trainers.BpeTrainer(
-                vocab_size=no_merge_vocab_size,
-                special_tokens=special_tokens,
-                min_frequency=999999999,  # impossibly high → no merges learned
-                show_progress=False,
-                initial_alphabet=initial_alphabet,
-                )
+        # Build vocab: special tokens first, then each character
+        vocab = {}
+        for i, tok in enumerate(special_tokens):
+            vocab[tok] = i
+        for ch in alphabet:
+            if ch not in vocab:
+                vocab[ch] = len(vocab)
 
-        # We still need to call train_from_iterator so the vocab gets built,
-        # but min_frequency=999999999 ensures zero merges are created.
-        hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
+        # Construct a BPE model with an explicit vocab and NO merges
+        hf_tokenizer = HFTokenizer(models.BPE(vocab=vocab, merges=[]))
+
+        # Split into individual characters using a pattern compatible
+        # with Oniguruma (the regex engine used by the tokenizers library).
+        # [\s\S] matches any character including newlines (Oniguruma-safe
+        # alternative to (?s).)
+        from tokenizers import Regex, AddedToken
+        hf_tokenizer.pre_tokenizer = pre_tokenizers.Split(
+            pattern=Regex(r"[\s\S]"),
+            behavior="isolated",
+        )
+
+        # Decoder: just fuse tokens back together
+        hf_tokenizer.decoder = decoders.Fuse()
+
+        # Register special tokens
+        hf_tokenizer.add_special_tokens([
+            AddedToken(tok, special=True) for tok in special_tokens
+        ])
 
     else:
         # ── Standard BPE for infix task ─────────────────────────────────
+        hf_tokenizer = HFTokenizer(models.BPE())
+        hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+        hf_tokenizer.decoder = decoders.ByteLevel()
+
         console.print(
                 f"  [cyan]Training BPE tokenizer "
                 f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
@@ -1411,9 +1424,12 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
     if corpus:
         sample = corpus[0][:80]
         encoded = tokenizer.encode(sample)
+        decoded = tokenizer.decode(encoded)
         console.print(
                 f"  [dim]Sample: \"{sample}...\"[/]\n"
-                f"  [dim]→ {len(encoded)} tokens (vs {len(sample)} chars)[/]"
+                f"  [dim]→ {len(encoded)} tokens (vs {len(sample)} chars)[/]\n"
+                f"  [dim]→ IDs: {encoded[:20]}{'...' if len(encoded) > 20 else ''}[/]\n"
+                f"  [dim]→ Decoded: \"{decoded[:80]}\"[/]"
                 )
 
     return tokenizer
