@@ -1278,6 +1278,7 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                  task_type="infix") -> BPETokenizer:
     """
     Generate n_programs random functions to build a tokenizer.
+    For turnstile task: skip BPE merges entirely, use byte-level only.
     """
     if allowed_ops is None:
         allowed_ops = ["add", "sub"]
@@ -1334,11 +1335,12 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
             f"([dim]{fail} generation failures skipped[/])"
             )
 
-    # ── Step 2: Train BPE tokenizer ─────────────────────────────────────
-    console.print(
-            f"  [cyan]Training BPE tokenizer "
-            f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
-            )
+    # ── Step 2: Build tokenizer ─────────────────────────────────────────
+    # For turnstile task, the output is just "0" or "1" and the input is
+    # a small set of characters (⊢, =, digits, space). BPE merges on this
+    # low-entropy data produce useless merged tokens that bloat the vocab
+    # and hurt training. So we skip BPE training entirely and use only
+    # the byte-level initial alphabet + special tokens.
 
     hf_tokenizer = HFTokenizer(models.BPE())
     hf_tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -1346,30 +1348,62 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
 
     special_tokens = ["<pad>", "<bos>", "<eos>"]
 
-    trainer_obj = trainers.BpeTrainer(
-            vocab_size=bpe_vocab_size,
-            special_tokens=special_tokens,
-            min_frequency=2,
-            show_progress=True,
-            initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
-            )
+    if task_type == "turnstile":
+        # ── Byte-level only: no BPE merges ──────────────────────────────
+        # Set vocab_size = len(special_tokens) + len(byte_alphabet) so the
+        # BPE trainer has zero room to learn any merges beyond the initial
+        # alphabet. The ByteLevel alphabet has 256 entries.
+        initial_alphabet = pre_tokenizers.ByteLevel.alphabet()
+        no_merge_vocab_size = len(special_tokens) + len(initial_alphabet)
 
-    with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold magenta]Training BPE merges..."),
-            TextColumn("(this may take a moment)"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
-            ) as progress:
-        ptask2 = progress.add_task("bpe_train", total=None)
+        console.print(
+                f"  [cyan]Turnstile task: building byte-level-only tokenizer "
+                f"(vocab_size={no_merge_vocab_size}, no BPE merges)...[/]"
+                )
+
+        trainer_obj = trainers.BpeTrainer(
+                vocab_size=no_merge_vocab_size,
+                special_tokens=special_tokens,
+                min_frequency=999999999,  # impossibly high → no merges learned
+                show_progress=False,
+                initial_alphabet=initial_alphabet,
+                )
+
+        # We still need to call train_from_iterator so the vocab gets built,
+        # but min_frequency=999999999 ensures zero merges are created.
         hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
-        progress.update(ptask2, completed=True)
+
+    else:
+        # ── Standard BPE for infix task ─────────────────────────────────
+        console.print(
+                f"  [cyan]Training BPE tokenizer "
+                f"(vocab_size={bpe_vocab_size}, corpus={len(corpus)} programs)...[/]"
+                )
+
+        trainer_obj = trainers.BpeTrainer(
+                vocab_size=bpe_vocab_size,
+                special_tokens=special_tokens,
+                min_frequency=2,
+                show_progress=True,
+                initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
+                )
+
+        with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold magenta]Training BPE merges..."),
+                TextColumn("(this may take a moment)"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+                ) as progress:
+            ptask2 = progress.add_task("bpe_train", total=None)
+            hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
+            progress.update(ptask2, completed=True)
 
     tokenizer = BPETokenizer(hf_tokenizer=hf_tokenizer)
 
     console.print(
-            f"  [green]✓[/] BPE tokenizer trained — "
+            f"  [green]✓[/] Tokenizer ready — "
             f"vocab_size=[bold]{tokenizer.vocab_size}[/]"
             )
 
