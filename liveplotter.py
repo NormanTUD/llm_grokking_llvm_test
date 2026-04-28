@@ -2795,7 +2795,7 @@ class LivePlotter:
             token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
             label_fontsize = max(7.0, min(18.0, base_font * token_scale))
 
-            n_labels = self._get_n_labels()
+            n_labels = self._get_n_labels(n_tokens)
 
             rng = np.random.RandomState(
                 seed=(step * 7 + layer * 31) & 0xFFFFFFFF
