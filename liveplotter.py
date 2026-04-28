@@ -992,7 +992,7 @@ class LivePlotter:
         token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
         label_fontsize = max(7.0, min(18.0, base_font * token_scale))
 
-        n_labels = min(max(n_tokens // 8, 3), 25)
+        n_labels = _get_n_labels(n_tokens)
         if panel_diag_px < 200:
             n_labels = min(n_labels, 6)
 
@@ -1130,7 +1130,7 @@ class LivePlotter:
 
         # ── Sparse token labels ─────────────────────────────────────────
         token_strings_f = f.get('token_strings', None)
-        n_labels = min(max(n_tokens // 10, 2), 15)
+        n_labels = _get_n_labels(n_tokens)
 
         rng = np.random.RandomState(seed=(ell * 17 + 42) & 0xFFFFFFFF)
         label_idx = rng.choice(n_tokens, size=min(n_labels, n_tokens), replace=False)
@@ -1317,7 +1317,7 @@ class LivePlotter:
         label_fontsize = max(7.0, min(18.0, base_font * token_scale))
 
         # ── How many labels ───────────────────────────────────
-        n_labels = min(max(n_tokens // 8, 3), 25)
+        n_labels = _get_n_labels(n_tokens)
         if panel_diag_px < 200:
             n_labels = min(n_labels, 6)
 
@@ -1457,7 +1457,7 @@ class LivePlotter:
 
         # ── Sparse token labels ─────────────────────────────────────────
         token_strings_f = f.get('token_strings', None)
-        n_labels = min(max(n_tokens // 10, 2), 15)
+        n_labels = _get_n_labels(n_tokens)
 
         rng = np.random.RandomState(seed=(ell * 17 + 42) & 0xFFFFFFFF)
         label_idx = rng.choice(n_tokens, size=min(n_labels, n_tokens), replace=False)
@@ -2795,7 +2795,7 @@ class LivePlotter:
             token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
             label_fontsize = max(7.0, min(18.0, base_font * token_scale))
 
-            n_labels = min(max(n_tokens // 8, 3), 25)
+            n_labels = _get_n_labels()
 
             rng = np.random.RandomState(
                 seed=(step * 7 + layer * 31) & 0xFFFFFFFF
@@ -2858,6 +2858,9 @@ class LivePlotter:
             fname = os.path.join(jacobi_img_dir, f"jacobi_step{step:06d}_layer{layer:02d}.png")
             fig_s.savefig(fname, dpi=120, bbox_inches='tight', facecolor='#0a0a1a', edgecolor='none')
             del fig_s
+
+    def _get_n_labels(n_tokens):
+        return min(max(n_tokens // 8, 3), 25)
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
