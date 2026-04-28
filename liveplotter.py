@@ -25,7 +25,7 @@ _HAS_RIPSER = False
 _HAS_GUDHI = False
 
 @torch.no_grad()
-def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
+def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, tokenizer=None):
     """
     Compute the Jacobi field of the space deformation itself at each layer.
     
@@ -51,6 +51,16 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
 
     if hidden_states is None or len(hidden_states) < 2:
         return []
+
+    # ── Decode human-readable token strings ─────────────────────────
+    token_strings = None
+    if tokenizer is not None:
+        try:
+            flat_ids = input_ids.reshape(-1).tolist()
+            token_strings = [tokenizer.decode([tid]).strip() or f"<{tid}>"
+                             for tid in flat_ids]
+        except Exception:
+            token_strings = None
 
     fields = []
 
@@ -85,7 +95,14 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
             idx = torch.linspace(0, T - 1, max_tokens).long()
             h_in = h_in[idx]
             h_out = h_out[idx]
+            # ── Keep token strings in sync with downsampling ────────
+            if token_strings is not None:
+                token_strings_layer = [token_strings[i] for i in idx.tolist()]
+            else:
+                token_strings_layer = None
             T = max_tokens
+        else:
+            token_strings_layer = token_strings
 
         delta = h_out - h_in
 
@@ -286,6 +303,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024):
             'per_token_curl': per_token_rotation,
             'per_token_shear': per_token_shear_mag,
             'principal_directions': pca_basis.numpy(),
+            'token_strings': token_strings_layer
         })
 
     return fields
@@ -515,7 +533,7 @@ class LivePlotter:
 
 
     @torch.no_grad()
-    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor):
+    def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor, tokenizer=None):
         """
         Extract Jacobi fields from the residual stream and render them.
         Called every batch; only recomputes every kelp_every batches.
@@ -534,7 +552,8 @@ class LivePlotter:
 
         try:
             fields = compute_layer_jacobi_fields(
-                model, input_ids, input_ids.device, max_tokens=1024
+                model, input_ids, input_ids.device, max_tokens=1024,
+                tokenizer=tokenizer
             )
 
             if not fields:
@@ -823,22 +842,73 @@ class LivePlotter:
                 zorder=6, alpha=0.9,
             )
 
-            vol_threshold_high = np.percentile(per_token_volume, 85)
-            vol_threshold_low = np.percentile(per_token_volume, 15)
-            expanding = per_token_volume > vol_threshold_high
-            contracting = per_token_volume < vol_threshold_low
+            # ═══════════════════════════════════════════════════════
+            # 4b. SPARSE HUMAN-READABLE TOKEN LABELS
+            # ═══════════════════════════════════════════════════════
+            token_strings_f = f.get('token_strings', None)
+            n_tokens = h_in_2d.shape[0]
 
-            if expanding.any():
-                sub_ax.scatter(
-                    h_in_2d[expanding, 0], h_in_2d[expanding, 1],
-                    s=28, facecolors='none', edgecolors='#ff4444',
-                    linewidths=0.8, zorder=7,
-                )
-            if contracting.any():
-                sub_ax.scatter(
-                    h_in_2d[contracting, 0], h_in_2d[contracting, 1],
-                    s=28, facecolors='none', edgecolors='#4488ff',
-                    linewidths=0.8, zorder=7,
+            # ── Dynamic font size from subplot pixel dimensions ───
+            fig_dpi = self.fig.dpi
+            fig_w_in, fig_h_in = self.fig.get_size_inches()
+            panel_w_px = fw * fig_w_in * fig_dpi
+            panel_h_px = fh * fig_h_in * fig_dpi
+            panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
+
+            # ~2% of diagonal, scaled inversely with token count
+            base_font = panel_diag_px * 0.020
+            token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
+            label_fontsize = max(7.0, min(18.0, base_font * token_scale))
+
+            # ── How many labels ───────────────────────────────────
+            n_labels = min(max(n_tokens // 8, 3), 25)
+            if panel_diag_px < 200:
+                n_labels = min(n_labels, 6)
+
+            # ── Seed: shifts each render, but stable within a layer
+            draw_key = jacobi_data.get('draw_key', 0)
+            rng = np.random.RandomState(
+                seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
+            )
+            label_idx = rng.choice(
+                n_tokens, size=min(n_labels, n_tokens), replace=False
+            )
+
+            offset_px = max(3.0, label_fontsize * 0.7)
+
+            for li in label_idx:
+                tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
+
+                # ── Human-readable label ──────────────────────────
+                if token_strings_f is not None and li < len(token_strings_f):
+                    label_text = token_strings_f[li]
+                    if len(label_text) > 14:
+                        label_text = label_text[:13] + "…"
+                else:
+                    label_text = f"t{li}"
+
+                # Whitespace-only → visible placeholder
+                if not label_text.strip():
+                    label_text = "␣"
+
+                sub_ax.annotate(
+                    label_text,
+                    (tx, ty),
+                    fontsize=label_fontsize,
+                    color='#f0f0f0',
+                    alpha=0.92,
+                    fontweight='bold',
+                    fontfamily='monospace',
+                    xytext=(offset_px, offset_px),
+                    textcoords='offset points',
+                    zorder=8,
+                    bbox=dict(
+                        boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                        facecolor='#0d1117',
+                        edgecolor='#3a5a7a',
+                        alpha=0.75,
+                        linewidth=0.4,
+                    ),
                 )
 
             # ═══════════════════════════════════════════════════════
