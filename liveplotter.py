@@ -632,11 +632,8 @@ class LivePlotter:
         """
         Render the Jacobi field as a colorful vector field image per layer.
 
-        Each layer gets TWO panels stacked vertically:
-          TOP:    Full Jacobi field visualization (per-layer deformation)
-          BOTTOM: Cumulative space movements — tokens are FIXED points,
-                  arrows show accumulated displacement from layer 0 through
-                  the current layer.
+        Each layer gets a SINGLE full-height panel showing the Jacobi field
+        visualization (per-layer deformation).
 
         For 2D hidden states: raw coordinates (no PCA).
         For 3+D hidden states: PCA projection.
@@ -686,7 +683,7 @@ class LivePlotter:
         from matplotlib.colors import hsv_to_rgb
 
         # ═══════════════════════════════════════════════════════════════
-        # Layout: two rows (top = jacobi, bottom = cumulative),
+        # Layout: single row (full height for Jacobi panels),
         # reserve right edge for the color wheel legend
         # ═══════════════════════════════════════════════════════════════
         legend_width_frac = 0.12
@@ -697,10 +694,9 @@ class LivePlotter:
         pad_x = 0.02
         pad_y = 0.10
         pad_bottom = 0.03
-        row_gap = 0.04
 
         total_h = 1.0 - pad_y - pad_bottom
-        row_h = (total_h - row_gap) / 2.0
+        row_h = total_h  # full height — no cumulative row
 
         cell_w = (field_width_frac - 2 * pad_x) / n_cols
         inset_margin = 0.005
@@ -709,19 +705,14 @@ class LivePlotter:
         px0, py0 = parent_bbox.x0, parent_bbox.y0
         pw, ph = parent_bbox.width, parent_bbox.height
 
-        # ── Precompute cumulative displacements ─────────────────────
-        # Use the FIRST layer's token positions as the fixed reference
-        ref_h_in_2d = fields[0]['h_in_2d']  # (T, 2) — FIXED positions
-        cumulative_delta = np.zeros_like(ref_h_in_2d)  # (T, 2)
-
         for ell, f in enumerate(fields):
             col = ell % n_cols
 
             # ═══════════════════════════════════════════════════════
-            # TOP ROW: Jacobi field (existing visualization)
+            # FULL-HEIGHT Jacobi field panel
             # ═══════════════════════════════════════════════════════
             fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
-            fy_top = py0 + ph * (pad_bottom + row_h + row_gap + inset_margin)
+            fy_top = py0 + ph * (pad_bottom + inset_margin)
             fw = pw * (cell_w - 2 * inset_margin)
             fh = ph * (row_h - 2 * inset_margin)
 
@@ -731,25 +722,6 @@ class LivePlotter:
             self._jacobi_subaxes.append(sub_ax)
 
             self._draw_single_jacobi_panel(sub_ax, f, ell, jacobi_data, hsv_to_rgb)
-
-            # ═══════════════════════════════════════════════════════
-            # BOTTOM ROW: Cumulative space movements
-            # Tokens are FIXED at their layer-0 positions.
-            # Arrows show cumulative displacement through this layer.
-            # ═══════════════════════════════════════════════════════
-            cumulative_delta += f['per_token_delta_2d']
-
-            fy_bot = py0 + ph * (pad_bottom + inset_margin)
-
-            cum_ax = self.fig.add_axes([fx, fy_bot, fw, fh])
-            cum_ax.set_facecolor("#0d1117")
-            cum_ax.set_in_layout(False)
-            self._jacobi_subaxes.append(cum_ax)
-
-            self._draw_cumulative_panel(
-                cum_ax, ref_h_in_2d, cumulative_delta.copy(),
-                f, ell, step
-            )
 
         # ═══════════════════════════════════════════════════════════════
         # COLOR WHEEL LEGEND (right side)
@@ -842,7 +814,7 @@ class LivePlotter:
         self._jacobi_subaxes.append(legend_text_ax)
 
         legend_items = [
-            ("TOP ROW", "", "#c0d8e8", True),
+            ("JACOBI FIELD", "", "#c0d8e8", True),
             ("\u2588\u2588 Hue", "deformation direction", "#ffffff", False),
             ("\u2588\u2588 Bright", "strong deformation", "#dddddd", False),
             ("\u2588\u2588 Dark", "weak / no deformation", "#555555", False),
@@ -855,14 +827,11 @@ class LivePlotter:
             ("\u2500\u2500 orange", "moderate stretch", "#ff8800", False),
             ("\u2500\u2500 red", "extreme stretch", "#ff2222", False),
             ("", "", "#000000", False),
-            ("BOTTOM ROW", "", "#88ccaa", True),
-            ("\u2192 arrows", "cumulative displacement", "#88ccaa", False),
-            ("\u25cf white", "fixed token positions", "#ffffff", False),
-            ("hue", "direction of movement", "#aaddcc", False),
-            ("length", "magnitude of movement", "#aaddcc", False),
-            ("", "", "#000000", False),
             ("TOKENS", "", "#c0d8e8", True),
             ("\u25cf dot", "shear magnitude (magma)", "#dd6644", False),
+            ("\u25cb red ring", "expanding (det J high)", "#ff4444", False),
+            ("\u25cb blue ring", "contracting (det J low)", "#4488ff", False),
+            ("label", "token text (sparse)", "#f0f0f0", False),
         ]
 
         n_items = len(legend_items)
@@ -2689,7 +2658,7 @@ class LivePlotter:
         ax.set_ylabel("Layer", fontsize=8)
 
     def _save_jacobi_layer_images(self, jacobi_data):
-        """Save each Jacobi field layer as a standalone PNG without surrounding chrome."""
+        """Save each Jacobi field layer as a standalone PNG with token labels."""
         import liveplotter as _lp_self
         _run_dir = getattr(_lp_self, 'run_dir', None)
         if _run_dir is None:
@@ -2724,6 +2693,7 @@ class LivePlotter:
             per_token_shear = f['per_token_shear_mag']
             grid_n = grid_x.shape[0]
             var_exp = f.get('var_explained', 0)
+            use_pca = f.get('use_pca', True)
             aniso_val = f['anisotropy']
             mean_vol = per_token_volume.mean()
 
@@ -2801,6 +2771,7 @@ class LivePlotter:
             ax_s.scatter(h_in_2d[:, 0], h_in_2d[:, 1], s=10, c=shear_norm,
                          cmap='magma', vmin=0, vmax=1, edgecolors='none', zorder=6, alpha=0.9)
 
+            # ── Expanding / contracting rings ───────────────────────
             vol_hi = np.percentile(per_token_volume, 85)
             vol_lo = np.percentile(per_token_volume, 15)
             expanding = per_token_volume > vol_hi
@@ -2812,10 +2783,68 @@ class LivePlotter:
                 ax_s.scatter(h_in_2d[contracting, 0], h_in_2d[contracting, 1],
                              s=28, facecolors='none', edgecolors='#4488ff', linewidths=0.8, zorder=7)
 
-            layer_label = "Emb→L1" if layer == 0 else f"L{layer}→{layer+1}"
+            # ── Token labels (matching the matplotlib window) ───────
+            token_strings_f = f.get('token_strings', None)
+            n_tokens = h_in_2d.shape[0]
+
+            # For standalone images, use a fixed panel size estimate
+            # 6x6 inch figure at 120 dpi ≈ 720x720 px
+            panel_diag_px = math.sqrt(720**2 + 720**2)
+
+            base_font = panel_diag_px * 0.020
+            token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
+            label_fontsize = max(7.0, min(18.0, base_font * token_scale))
+
+            n_labels = min(max(n_tokens // 8, 3), 25)
+
+            rng = np.random.RandomState(
+                seed=(step * 7 + layer * 31) & 0xFFFFFFFF
+            )
+            label_idx = rng.choice(
+                n_tokens, size=min(n_labels, n_tokens), replace=False
+            )
+
+            offset_px = max(3.0, label_fontsize * 0.7)
+
+            for li in label_idx:
+                tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
+
+                if token_strings_f is not None and li < len(token_strings_f):
+                    label_text = token_strings_f[li]
+                    if len(label_text) > 14:
+                        label_text = label_text[:13] + "\u2026"
+                else:
+                    label_text = f"t{li}"
+
+                if not label_text.strip():
+                    label_text = "\u2423"
+
+                ax_s.annotate(
+                    label_text,
+                    (tx, ty),
+                    fontsize=label_fontsize,
+                    color='#f0f0f0',
+                    alpha=0.92,
+                    fontweight='bold',
+                    fontfamily='monospace',
+                    xytext=(offset_px, offset_px),
+                    textcoords='offset points',
+                    zorder=8,
+                    bbox=dict(
+                        boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                        facecolor='#0d1117',
+                        edgecolor='#3a5a7a',
+                        alpha=0.75,
+                        linewidth=0.4,
+                    ),
+                )
+
+            # ── Title ───────────────────────────────────────────────
+            layer_label = "Emb\u2192L1" if layer == 0 else f"L{layer}\u2192{layer+1}"
+            proj_label = f"PCA var={var_exp:.0%}" if use_pca else "raw 2D"
             ax_s.set_title(
-                f"{layer_label}  det={mean_vol:.2f}  σ₁/σₙ={aniso_val:.1f}  "
-                f"(step {step}, PCA var={var_exp:.0%})",
+                f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}  "
+                f"(step {step}, {proj_label})",
                 fontsize=9, fontweight="bold", color="#aaccee", pad=4)
 
             ax_s.set_xlim(*x_lim)
