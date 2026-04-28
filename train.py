@@ -125,6 +125,7 @@ from rich.text import Text
 from rich import box
 
 from random_infix_gen import generate_random_function, list_supported_ops
+from turnstile_gen import generate_turnstile_function
 from generate_samples import generate_example_samples
 import subprocess
 from run_logger import RunLogger
@@ -705,6 +706,12 @@ def parse_args() -> argparse.Namespace:
                    help="Min random parameter value")
     g.add_argument("--param-max", type=int, default=50,
                    help="Max random parameter value")
+    g.add_argument("--task", type=str, default="infix",
+                   choices=["infix", "turnstile"],
+                   help="Task type: 'infix' = current math expressions, "
+                        "'turnstile' = ⊢-counting equality evaluation (0/1)")
+    g.add_argument("--max-turnstiles", type=int, default=10,
+                   help="Max ⊢ symbols on each side (turnstile task only)")
 
     g = p.add_argument_group("Model Architecture")
     g.add_argument("--target-params", type=int, default=1_000,
@@ -1174,22 +1181,34 @@ def generate_single_sample(
     return ids, prompt_len
 
 def generate_batch(
-        tokenizer: BPETokenizer,
-        batch_size: int,
-        max_params: int = 3,
-        max_ops: int = 4,
-        allowed_ops: Optional[List[str]] = None,
-        param_range: Tuple[int, int] = (-20, 20),
-        max_seq_len: int = 2048,
-        ) -> List[List[int]]:
+    tokenizer: BPETokenizer,
+    batch_size: int,
+    max_params: int = 3,
+    max_ops: int = 4,
+    allowed_ops: Optional[List[str]] = None,
+    param_range: Tuple[int, int] = (-20, 20),
+    max_seq_len: int = 2048,
+    task: str = "infix",              # ← NEW
+    max_turnstiles: int = 10,         # ← NEW
+) -> List[List[int]]:
     samples = []
     attempts = 0
     max_attempts = batch_size * 5
+
     while len(samples) < batch_size and attempts < max_attempts:
         attempts += 1
-        s = generate_single_sample(
-                tokenizer, max_params, max_ops, allowed_ops, param_range, max_seq_len
-                )
+
+        if task == "turnstile":
+            s = generate_single_sample_turnstile(
+                tokenizer, max_turnstiles=max_turnstiles,
+                max_seq_len=max_seq_len,
+            )
+        else:  # "infix"
+            s = generate_single_sample(
+                tokenizer, max_params, max_ops, allowed_ops,
+                param_range, max_seq_len,
+            )
+
         if s is not None:
             samples.append(s)
 
@@ -1255,7 +1274,8 @@ def collate_batch(batch, pad_id=0, tokenizer=None):
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
                                  max_params=4, max_ops=6,
                                  param_range=(-50, 50),
-                                 bpe_vocab_size=512) -> BPETokenizer:
+                                 bpe_vocab_size=512,
+                                 task_type="infix") -> BPETokenizer:
     """
     Generate n_programs random functions to build a tokenizer.
     """
@@ -1275,32 +1295,37 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
             console=console,
             transient=False,
             ) as progress:
-        task = progress.add_task(
+        ptask = progress.add_task(
                 "gen_corpus", total=n_programs, status="starting..."
                 )
         success = 0
         fail = 0
 
         for i in range(n_programs):
-            num_p = random.randint(2, max(2, max_params))
-            num_o = random.randint(1, max(1, max_ops))
-            params = [random.randint(*param_range) for _ in range(num_p)]
             try:
-                ir_code, result = generate_random_function(
-                        num_params=num_p, params=params,
-                        allowed_ops=allowed_ops, num_operations=num_o,
-                        func_name="f",
-                        )
-                # ir_code already contains "f(x, y) = expr, f(1, 2) = "
-                # so the full text is "f(x, y) = expr, f(1, 2) = -1"
-                text = f"{ir_code}{result}"
-                corpus.append(text)
-                success += 1
+                if task_type == "turnstile":
+                    from turnstile_gen import generate_turnstile_function
+                    prompt, result = generate_turnstile_function(max_turnstiles=10)
+                    text = f"{prompt}{result}"
+                    corpus.append(text)
+                    success += 1
+                else:
+                    num_p = random.randint(2, max(2, max_params))
+                    num_o = random.randint(1, max(1, max_ops))
+                    params = [random.randint(*param_range) for _ in range(num_p)]
+                    ir_code, result = generate_random_function(
+                            num_params=num_p, params=params,
+                            allowed_ops=allowed_ops, num_operations=num_o,
+                            func_name="f",
+                            )
+                    text = f"{ir_code}{result}"
+                    corpus.append(text)
+                    success += 1
             except Exception:
                 fail += 1
 
             progress.update(
-                    task, advance=1,
+                    ptask, advance=1,
                     status=f"{success} ok, {fail} failed"
                     )
 
@@ -1337,9 +1362,9 @@ def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
             console=console,
             transient=True,
             ) as progress:
-        task = progress.add_task("bpe_train", total=None)  # indeterminate
+        ptask2 = progress.add_task("bpe_train", total=None)
         hf_tokenizer.train_from_iterator(corpus, trainer=trainer_obj)
-        progress.update(task, completed=True)
+        progress.update(ptask2, completed=True)
 
     tokenizer = BPETokenizer(hf_tokenizer=hf_tokenizer)
 
@@ -2741,7 +2766,7 @@ _lp_module._HAS_RIPSER = _HAS_RIPSER
 _lp_module._HAS_GUDHI = _HAS_GUDHI
 
 @torch.no_grad()
-def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
+def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20, task="infix"):
     model.eval()
     predictions = []
 
@@ -2771,11 +2796,7 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
         ).strip()
 
         # ── FIX: If still empty, recover from the full token sequence ──
-        # This handles the case where prompt_len still overshoots due to
-        # an edge-case BPE merge. We decode the entire sequence and
-        # extract the answer by finding the last "= " in the text.
         if not expected_answer:
-            # Decode everything between <bos> and <eos>
             all_content_ids = token_ids[1:answer_end]  # skip <bos>
             full_text = tokenizer.decode(all_content_ids).strip()
             for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
@@ -2784,16 +2805,19 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
                 c for c in full_text if c.isascii() and c.isprintable()
             ).strip()
 
-            # The format is: "f(x, y) = expr, f(1, 2) = ANSWER"
-            # Find the last "= " and take everything after it
-            last_eq_pos = full_text.rfind("= ")
-            if last_eq_pos != -1:
-                expected_answer = full_text[last_eq_pos + 2:].strip()
+            if task == "turnstile":
+                # Turnstile format: "⊢⊢x=⊢x 0" — answer is after the last space
+                last_space = full_text.rfind(" ")
+                if last_space != -1:
+                    expected_answer = full_text[last_space + 1:].strip()
+            else:
+                # Infix format: "f(x, y) = expr, f(1, 2) = ANSWER"
+                last_eq_pos = full_text.rfind("= ")
+                if last_eq_pos != -1:
+                    expected_answer = full_text[last_eq_pos + 2:].strip()
 
-            # If STILL empty, this sample is truly degenerate — skip it
             if not expected_answer:
-                continue  # Don't add to predictions at all
-        # ── END FIX ─────────────────────────────────────────────────
+                continue
 
         # ── Greedy decode ───────────────────────────────────────────
         prompt_ids = token_ids[:prompt_len]
@@ -2832,8 +2856,6 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20):
 
     model.train()
     return predictions
-
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 8.  TIME ESTIMATOR
@@ -2889,21 +2911,18 @@ class TimeEstimator:
 # ════════════════════════════════════════════════════════════════════════════
 
 def _prepare_batch(
-        tokenizer: BPETokenizer,
-        batch_size: int,
-        max_params: int,
-        max_ops: int,
-        allowed_ops: List[str],
-        param_range: Tuple[int, int],
-        max_seq_len: int,
-        device: str,
-        replay_buffer: Optional['ReplayBuffer'] = None,
-        ) -> Optional[Tuple]:
-    """
-    Generate a batch, optionally sprinkle in replay samples,
-    collate it, and move tensors to device.
-    """
-    # Determine how many fresh samples we need
+    tokenizer: BPETokenizer,
+    batch_size: int,
+    max_params: int,
+    max_ops: int,
+    allowed_ops: List[str],
+    param_range: Tuple[int, int],
+    max_seq_len: int,
+    device: str,
+    replay_buffer: Optional['ReplayBuffer'] = None,
+    task: str = "infix",               # ← NEW
+    max_turnstiles: int = 10,          # ← NEW
+) -> Optional[Tuple]:
     sprinkled = []
     if replay_buffer is not None:
         sprinkled = replay_buffer.sprinkle(batch_size)
@@ -2911,9 +2930,11 @@ def _prepare_batch(
     n_fresh = batch_size - len(sprinkled)
 
     batch = generate_batch(
-            tokenizer, n_fresh, max_params, max_ops,
-            allowed_ops, param_range, max_seq_len,
-            )
+        tokenizer, n_fresh, max_params, max_ops,
+        allowed_ops, param_range, max_seq_len,
+        task=task,                      # ← PASS THROUGH
+        max_turnstiles=max_turnstiles,  # ← PASS THROUGH
+    )
 
     if len(batch) < 2 and not sprinkled:
         return None
@@ -2962,6 +2983,7 @@ def _compute_batch_loss(
     Returns:
         (loss_tensor, ce_val, vloss_val, struct_val, parse_rate)
     """
+
     return compute_structured_loss(
             model, inp, tgt, val_pos, val_tgt, ans_parseable,
             tokenizer=tokenizer,
@@ -3138,8 +3160,8 @@ def _load_or_build_tokenizer(args, allowed_ops: List[str]) -> BPETokenizer:
             max_ops=args.max_ops,
             param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
             bpe_vocab_size=args.bpe_vocab_size,
+            task_type=args.task,
         )
-
 
 def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTConfig]:
     """Determine model architecture config from args, --continue, or auto-search."""
@@ -3649,7 +3671,7 @@ def _run_train_epoch(
                 ema_loss = 0.05 * bl + 0.95 * ema_loss
 
             current_lr = optimizer.param_groups[0]["lr"]
-            preds = get_batch_predictions(model, tokenizer, batch, device)
+            preds = get_batch_predictions(model, tokenizer, batch, device, task=args.task)
 
             csv_log.log_train_batch(
                 epoch=epoch, batch_idx=batch_idx,
@@ -3740,7 +3762,7 @@ def _run_val_epoch(
                 val_loss += vl
                 val_batches += 1
 
-                preds = get_batch_predictions(model, tokenizer, batch, device)
+                preds = get_batch_predictions(model, tokenizer, batch, device, task=args.task)
 
                 csv_log.log_val_batch(
                     epoch=epoch, batch_idx=val_batch_idx,
@@ -3753,7 +3775,7 @@ def _run_val_epoch(
                 plotter.update_val_batch(vl)
 
                 if val_batch_idx == 0 or val_batch_idx == args.val_batches - 1:
-                    preds = get_batch_predictions(model, tokenizer, batch, device)
+                    preds = get_batch_predictions(model, tokenizer, batch, device, task=args.task)
                     if preds:
                         plotter.update_predictions(preds)
                         plotter.update_prediction_diffs(preds)
@@ -3867,7 +3889,10 @@ def _log_epoch_to_run_logger(
         max_ops=args.max_ops,
         allowed_ops=allowed_ops,
         param_range=sample_param_range,
+        task=args.task,
+        max_turnstiles=args.max_turnstiles,
     )
+
     run_logger.log_samples(epoch, example_samples, n_samples=n_to_log)
     run_logger.flush_losses()
 
@@ -4080,6 +4105,8 @@ def train(args: argparse.Namespace):
         param_range=(args.param_min - current_epoch, args.param_max + current_epoch),
         max_seq_len=args.max_seq_len, device=device,
         replay_buffer=replay_buffer,
+        task=args.task,
+        max_turnstiles=args.max_turnstiles,
     )
     loss_kwargs = dict(
         tokenizer=tokenizer, device=device,
@@ -4087,6 +4114,12 @@ def train(args: argparse.Namespace):
         structure_loss_alpha=args.structure_loss_alpha,
         length_loss_alpha=args.length_loss_alpha,
     )
+
+    # ── Simplify loss for turnstile task (binary 0/1 output) ────────────
+    if args.task == "turnstile":
+        loss_kwargs["structure_loss_alpha"] = 0.0
+        loss_kwargs["length_loss_alpha"] = 0.0
+        loss_kwargs["value_loss_alpha"] = 0.0
 
     # ── State variables ─────────────────────────────────────────────────
     best_val_loss = resumed["best_val_loss"]
@@ -4273,6 +4306,67 @@ def compute_cka_matrix(hidden_states):
 # ════════════════════════════════════════════════════════════════════════════
 # REPLAY BUFFER — save & sprinkle back generated programs
 # ════════════════════════════════════════════════════════════════════════════
+
+def generate_single_sample_turnstile(
+    tokenizer: BPETokenizer,
+    max_turnstiles: int = 10,
+    max_seq_len: int = 2048,
+    bias_equal: float = 0.5,
+) -> Optional[Tuple[List[int], int]]:
+    """Generate a single turnstile task sample, tokenized and ready for training."""
+
+    try:
+        prompt, result = generate_turnstile_function(
+            max_turnstiles=max_turnstiles,
+            bias_equal=bias_equal,
+        )
+    except Exception:
+        return None
+
+    result_str = str(result)  # "0" or "1"
+    text = f"{prompt}{result_str}"
+
+    # Same encoding logic as generate_single_sample for infix
+    full_ids = tokenizer.encode(text)
+    prompt_only_ids = tokenizer.encode(prompt)
+
+    # Find longest common prefix
+    common_len = 0
+    for a, b in zip(prompt_only_ids, full_ids):
+        if a == b:
+            common_len += 1
+        else:
+            break
+    else:
+        common_len = len(prompt_only_ids)
+
+    prompt_len = 1 + common_len  # +1 for <bos>
+
+    answer_ids = full_ids[common_len:]
+    if not answer_ids:
+        # Fallback: same as infix version
+        accumulated = ""
+        prompt_len_fallback = 1
+        for i, tid in enumerate(full_ids):
+            accumulated = tokenizer.decode(full_ids[:i + 1])
+            if accumulated.rstrip().endswith(" "):
+                remaining = tokenizer.decode(full_ids[i + 1:]).strip()
+                if remaining == result_str or remaining.startswith(result_str):
+                    prompt_len_fallback = 1 + (i + 1)
+                    break
+        prompt_len = prompt_len_fallback
+
+        total_len = 1 + len(full_ids) + 1
+        if prompt_len >= total_len - 1:
+            return None
+
+    ids = (
+        [tokenizer.bos_token_id]
+        + full_ids
+        + [tokenizer.eos_token_id]
+    )
+
+    return ids, prompt_len
 
 if __name__ == "__main__":
     args = parse_args()

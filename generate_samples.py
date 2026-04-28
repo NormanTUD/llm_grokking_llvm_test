@@ -14,6 +14,8 @@ def generate_example_samples(
     model, tokenizer, device, num_samples,
     max_params=3, max_ops=4, allowed_ops=None,
     param_range=(-20, 20), max_gen_len=64,
+    task="infix",
+    max_turnstiles=10,
 ):
     import random
 
@@ -31,32 +33,38 @@ def generate_example_samples(
     while len(samples) < num_samples and attempts < num_samples * 10:
         attempts += 1
 
-        num_p = random.randint(2, max(2, max_params))
-        num_o = random.randint(1, max(1, max_ops))
-        params = [random.randint(*param_range) for _ in range(num_p)]
+        # ── Generate the prompt + expected answer ───────────────────
+        if task == "turnstile":
+            from turnstile_gen import generate_turnstile_function
+            try:
+                ir_code, expected_result = generate_turnstile_function(
+                    max_turnstiles=max_turnstiles,
+                )
+            except Exception:
+                continue
+            expected_str = str(expected_result)
+            params_str = ""  # no params for turnstile
+        else:
+            num_p = random.randint(2, max(2, max_params))
+            num_o = random.randint(1, max(1, max_ops))
+            params = [random.randint(*param_range) for _ in range(num_p)]
 
-        try:
-            ir_code, expected_result = generate_random_function(
-                num_params=num_p, params=params,
-                allowed_ops=allowed_ops, num_operations=num_o,
-                func_name="f",
-            )
-        except Exception:
-            continue
+            try:
+                ir_code, expected_result = generate_random_function(
+                    num_params=num_p, params=params,
+                    allowed_ops=allowed_ops, num_operations=num_o,
+                    func_name="f",
+                )
+            except Exception:
+                continue
+            expected_str = str(expected_result)
+            params_str = ", ".join(str(p) for p in params)
 
-        expected_str = str(expected_result)
-
-        # ── FIX: Encode the FULL text jointly, then truncate to prompt ──
-        # This matches exactly how generate_single_sample() in train.py
-        # constructs training samples. Encoding the prompt alone can
-        # produce different BPE token boundaries, causing the model to
-        # see a token sequence it was never trained on → immediate EOS.
+        # ── Encode prompt using joint BPE (same as training) ────────
         full_text = f"{ir_code}{expected_str}"
         full_ids = tokenizer.encode(full_text)
         prompt_only_ids = tokenizer.encode(ir_code)
 
-        # Find the longest common prefix between prompt_only_ids and full_ids.
-        # The prompt portion in the joint encoding is full_ids[:common_len].
         common_len = 0
         for a, b in zip(prompt_only_ids, full_ids):
             if a == b:
@@ -66,10 +74,9 @@ def generate_example_samples(
         else:
             common_len = len(prompt_only_ids)
 
-        # Build prompt_ids the same way training does: [bos] + joint_prefix
         prompt_ids = [bos_id] + full_ids[:common_len]
 
-        # Greedy decode
+        # ── Greedy decode ───────────────────────────────────────────
         input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
 
         generated_ids = []
@@ -90,6 +97,7 @@ def generate_example_samples(
                     dim=1,
                 )
 
+        # ── Decode and clean ────────────────────────────────────────
         if generated_ids:
             predicted_str = tokenizer.decode(generated_ids).strip()
         else:
@@ -104,7 +112,7 @@ def generate_example_samples(
 
         samples.append({
             "ir_code": ir_code.strip(),
-            "params": ", ".join(str(p) for p in params),
+            "params": params_str,
             "expected": expected_str,
             "predicted": predicted_str,
             "correct": str(predicted_str == expected_str),
