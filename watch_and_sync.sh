@@ -1805,12 +1805,9 @@ while true; do
     run_visualizations "$RUN_DIR"
 
     # 3) Generate the HTML dashboard (now picks up .py files + new .png images)
-    generate_html "$RUN_DIR"
 
-	generate_slideshow_html "$RUN_DIR"
-	echo "Generating Jacobi Slideshow"
-	generate_jacobi_slideshow_html "$RUN_DIR"
-	echo "DONE"
+    echo "Generiere HTML Dashboard + Slideshows..."
+	python3 "${SCRIPT_DIR}/generate_dashboard.py" "$RUN_DIR"
 
     # 4) Find all syncable files (now includes .py)
     FILES=$(find "$RUN_DIR" -type f \( \

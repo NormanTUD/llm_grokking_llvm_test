@@ -1,0 +1,982 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "jinja2",
+# ]
+# ///
+"""
+Fast dashboard + slideshow generator for training runs.
+
+Replaces the bash generate_html / generate_slideshow_html /
+generate_jacobi_slideshow_html functions that hang on large runs.
+
+Usage:
+    python generate_dashboard.py runs/1/
+    # or via uv:
+    uv run generate_dashboard.py runs/1/
+
+What it does (in order):
+    1. Scan the run directory ONCE with os.scandir (not find)
+    2. Classify files into buckets:
+       - summary plots  (plots/*.png, training_plot.png, etc.)
+       - training_plot history  (training_plot-*.png)
+       - jacobi step images    (jacobi_images/jacobi_step*_layer*.png)
+       - epoch txts/csvs       (epoch_NNNN.txt/csv)
+       - other csvs, txts, py files
+    3. Generate index.html     — dashboard with only summary plots
+    4. Generate slideshow.html — training plot history (subsampled)
+    5. Generate jacobi.html    — jacobi field history (subsampled)
+    All HTML is written via Jinja2 templates (embedded).
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Optional
+
+# ── uv bootstrap (same pattern as train.py) ─────────────────────────────
+def _ensure_uv_env():
+    if not os.environ.get("UV_EXCLUDE_NEWER"):
+        past = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        os.environ["UV_EXCLUDE_NEWER"] = past
+        try:
+            os.execvpe("uv", ["uv", "run", "--quiet", sys.argv[0]] + sys.argv[1:], os.environ)
+        except FileNotFoundError:
+            pass  # no uv, hope jinja2 is installed
+
+_ensure_uv_env()
+
+from jinja2 import Environment, BaseLoader
+
+# ═════════════════════════════════════════════════════════════════════════
+# 1. SCAN — single pass over the directory tree
+# ═════════════════════════════════════════════════════════════════════════
+
+RE_TRAINING_PLOT_HIST = re.compile(r'^training_plot-\d+\.png$')
+RE_JACOBI_IMG = re.compile(r'^jacobi_step(\d+)_layer(\d+)\.png$')
+RE_EPOCH_TXT = re.compile(r'^epoch_(\d+)\.txt$')
+RE_EPOCH_CSV = re.compile(r'^epoch_(\d+)\.csv$')
+
+class RunFiles:
+    """All classified files from a single scan."""
+    def __init__(self):
+        self.summary_images: list[str] = []      # plots to show in dashboard
+        self.training_hist: list[str] = []        # training_plot-*.png sorted
+        self.jacobi_images: list[tuple[int, int, str]] = []  # (step, layer, relpath)
+        self.epoch_txts: list[str] = []
+        self.epoch_csvs: list[str] = []
+        self.other_csvs: list[str] = []
+        self.other_txts: list[str] = []
+        self.py_files: list[str] = []
+        self.started_at: str = ""
+        self.has_current_plot: bool = False
+
+def scan_run_dir(run_dir: Path) -> RunFiles:
+    """Walk the run directory once, classify everything."""
+    rf = RunFiles()
+
+    # Read started_at.txt
+    sa_path = run_dir / "started_at.txt"
+    if sa_path.is_file():
+        rf.started_at = sa_path.read_text().strip().split("\n")[0].strip()
+
+    if (run_dir / "training_plot.png").is_file():
+        rf.has_current_plot = True
+
+    for entry in _walk_fast(run_dir, max_depth=3):
+        rel = entry.relative_to(run_dir).as_posix()
+        name = entry.name
+        suffix = entry.suffix.lower()
+
+        # Skip npz, hidden files, the HTML outputs themselves
+        if suffix == '.npz' or name.startswith('.') or suffix == '.html':
+            continue
+
+        # ── Training plot history ───────────────────────────────
+        if RE_TRAINING_PLOT_HIST.match(name) and entry.parent == run_dir:
+            rf.training_hist.append(rel)
+            continue
+
+        # ── Jacobi images ───────────────────────────────────────
+        m_jac = RE_JACOBI_IMG.match(name)
+        if m_jac and 'jacobi_images' in rel:
+            step, layer = int(m_jac.group(1)), int(m_jac.group(2))
+            rf.jacobi_images.append((step, layer, rel))
+            continue
+
+        # ── Epoch files ─────────────────────────────────────────
+        if RE_EPOCH_TXT.match(name):
+            rf.epoch_txts.append(rel)
+            continue
+        if RE_EPOCH_CSV.match(name):
+            rf.epoch_csvs.append(rel)
+            continue
+
+        # ── Summary images (everything else that's an image) ────
+        if suffix in ('.png', '.jpg', '.jpeg', '.svg'):
+            # Exclude jacobi step images that aren't in jacobi_images/
+            if name.startswith('jacobi_step'):
+                continue
+            rf.summary_images.append(rel)
+            continue
+
+        # ── Other files ─────────────────────────────────────────
+        if name == 'started_at.txt':
+            continue
+        if suffix == '.csv':
+            rf.other_csvs.append(rel)
+        elif suffix == '.txt':
+            rf.other_txts.append(rel)
+        elif suffix == '.py':
+            rf.py_files.append(rel)
+
+    # Sort everything
+    rf.summary_images.sort()
+    rf.training_hist.sort()
+    rf.jacobi_images.sort()
+    rf.epoch_txts.sort()
+    rf.epoch_csvs.sort()
+    rf.other_csvs.sort()
+    rf.other_txts.sort()
+    rf.py_files.sort()
+
+    return rf
+
+
+def _walk_fast(root: Path, max_depth: int = 3) -> list[Path]:
+    """os.scandir-based walk, much faster than find for large dirs."""
+    results = []
+    _walk_recurse(root, results, 0, max_depth)
+    return results
+
+def _walk_recurse(directory: Path, results: list, depth: int, max_depth: int):
+    if depth > max_depth:
+        return
+    try:
+        with os.scandir(directory) as it:
+            for entry in it:
+                if entry.is_file(follow_symlinks=False):
+                    results.append(Path(entry.path))
+                elif entry.is_dir(follow_symlinks=False) and not entry.name.startswith('.'):
+                    _walk_recurse(Path(entry.path), results, depth + 1, max_depth)
+    except PermissionError:
+        pass
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 2. SUBSAMPLE — pick evenly spaced frames
+# ═════════════════════════════════════════════════════════════════════════
+
+def subsample(items: list, max_count: int) -> list:
+    """Return at most max_count evenly-spaced items, always including first+last."""
+    n = len(items)
+    if n <= max_count:
+        return list(items)
+    step = n / max_count
+    indices = set()
+    indices.add(0)
+    indices.add(n - 1)
+    for i in range(max_count):
+        indices.add(min(int(i * step), n - 1))
+    return [items[i] for i in sorted(indices)]
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 3. EPOCH PARSING — fast awk-like pass in Python
+# ═════════════════════════════════════════════════════════════════════════
+
+def parse_epoch_files(run_dir: Path, epoch_txts: list[str]) -> tuple[list[dict], dict[int, list[dict]]]:
+    """
+    Parse epoch_NNNN.txt files.
+    Returns:
+        overview: [{epoch, correct, total, pct}, ...]
+        details:  {epoch_num: [{sample, params, expected, predicted, correct}, ...]}
+    """
+    overview = []
+    details = {}
+
+    for rel in epoch_txts:
+        m = RE_EPOCH_TXT.match(Path(rel).name)
+        if not m:
+            continue
+        epoch_num = int(m.group(1))
+        fpath = run_dir / rel
+
+        samples = []
+        current = {}
+        try:
+            text = fpath.read_text(errors='replace')
+        except Exception:
+            continue
+
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith('params:'):
+                current['params'] = line[7:].strip()
+            elif line.startswith('expected:'):
+                current['expected'] = line[9:].strip()
+            elif line.startswith('predicted:'):
+                current['predicted'] = line[10:].strip()
+            elif line.startswith('correct:'):
+                current['correct'] = line[8:].strip() == 'True'
+                samples.append(current)
+                current = {}
+
+        if samples:
+            correct = sum(1 for s in samples if s.get('correct'))
+            total = len(samples)
+            pct = int(100 * correct / total) if total > 0 else 0
+            overview.append({'epoch': epoch_num, 'correct': correct, 'total': total, 'pct': pct})
+            details[epoch_num] = samples
+
+    overview.sort(key=lambda x: x['epoch'])
+    return overview, details
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 4. ELAPSED TIME
+# ═════════════════════════════════════════════════════════════════════════
+
+def compute_elapsed(started_at: str) -> str:
+    """Try to parse started_at and compute elapsed time string."""
+    if not started_at:
+        return ""
+    # Try common formats
+    for fmt in ("%Y-%m-%d %H:%M:%S %Z", "%Y-%m-%d %H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S", "%a %b %d %H:%M:%S %Z %Y"):
+        try:
+            # Handle CEST/CET
+            cleaned = started_at.replace(' CEST', '+0200').replace(' CET', '+0100')
+            dt = datetime.strptime(cleaned, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            diff = datetime.now(timezone.utc) - dt
+            secs = int(diff.total_seconds())
+            if secs < 0:
+                return ""
+            days, rem = divmod(secs, 86400)
+            hours, rem = divmod(rem, 3600)
+            mins, _ = divmod(rem, 60)
+            if days > 0:
+                return f"{days}d {hours}h {mins}m"
+            elif hours > 0:
+                return f"{hours}h {mins}m"
+            else:
+                return f"{mins}m"
+        except (ValueError, OverflowError):
+            continue
+    return ""
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 5. HTML TEMPLATES (Jinja2, embedded)
+# ═════════════════════════════════════════════════════════════════════════
+
+JINJA_ENV = Environment(loader=BaseLoader(), autoescape=False)
+
+# Register custom filters BEFORE compiling any templates
+JINJA_ENV.filters['basename'] = lambda s: Path(s).name
+
+# ── index.html template ────────────────────────────────────────────────
+DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grokking Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  :root {
+    --bg:#08090d;--bg2:#0d0f16;--card:#12152a;--card2:#181c35;
+    --border:#1e2340;--border-light:#2a2f55;
+    --accent:#7c5cfc;--accent-dim:rgba(124,92,252,0.12);
+    --accent2:#00d4aa;--accent2-dim:rgba(0,212,170,0.12);
+    --accent3:#f472b6;
+    --text:#e8eaf6;--muted:#6b70a0;--muted2:#4a4f78;
+    --glow:rgba(124,92,252,0.08);
+    --green:#00d4aa;--red:#ff5c72;--yellow:#f0c040;
+    --radius:16px;--radius-sm:10px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+  .hero{position:relative;background:linear-gradient(160deg,#130f30 0%,#08090d 40%,#061215 100%);border-bottom:1px solid var(--border);padding:3rem 2rem 2rem;text-align:center;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 20%,rgba(124,92,252,0.06) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(0,212,170,0.04) 0%,transparent 50%);pointer-events:none}
+  .hero h1{font-size:2.8rem;font-weight:900;letter-spacing:-0.03em;background:linear-gradient(135deg,#7c5cfc 0%,#00d4aa 50%,#f472b6 100%);background-size:200% 200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:gs 8s ease infinite;margin-bottom:0.4rem;position:relative}
+  @keyframes gs{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+  .hero .subtitle{color:var(--muted);font-size:0.95rem;position:relative}
+  .hero .meta-row{display:flex;justify-content:center;gap:1rem;flex-wrap:wrap;margin-top:1rem;position:relative}
+  .meta-pill{display:inline-flex;align-items:center;gap:0.4rem;padding:0.35rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:999px;font-size:0.78rem;color:var(--muted)}
+  .meta-pill .val{color:var(--accent2);font-weight:600}
+  .meta-pill .val-warm{color:var(--accent3);font-weight:600}
+  .meta-pill .val-purple{color:var(--accent);font-weight:600}
+  .stats-ribbon{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:2rem 0}
+  .stat-card{background:var(--card);padding:1.2rem 1.5rem;text-align:center}
+  .stat-card .stat-value{font-size:1.8rem;font-weight:800;font-family:'JetBrains Mono',monospace}
+  .stat-card .stat-label{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:0.2rem}
+  .stat-green{color:var(--green)}.stat-purple{color:var(--accent)}.stat-pink{color:var(--accent3)}.stat-yellow{color:var(--yellow)}
+  .container{max-width:1440px;margin:0 auto;padding:0 1.5rem 3rem}
+  .section-title{font-size:1.2rem;font-weight:700;margin:2.5rem 0 1rem;padding-bottom:0.6rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem}
+  .badge{background:var(--accent-dim);color:var(--accent);font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:600;border:1px solid rgba(124,92,252,0.2)}
+  .badge-green{background:var(--accent2-dim);color:var(--accent2);border-color:rgba(0,212,170,0.2)}
+  .image-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:1.2rem}
+  .image-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:transform 0.25s,box-shadow 0.25s}
+  .image-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(124,92,252,0.12)}
+  .image-card img{width:100%;display:block;background:#000}
+  .image-card .label{padding:0.65rem 1rem;font-size:0.78rem;color:var(--muted);font-family:'JetBrains Mono',monospace;border-top:1px solid var(--border)}
+  .table-scroll{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+  .epoch-overview{width:100%;border-collapse:collapse}
+  .epoch-overview th{background:var(--card2);text-align:left;padding:0.7rem 1rem;font-size:0.75rem;color:var(--accent);border-bottom:2px solid var(--border);position:sticky;top:0;font-weight:600;text-transform:uppercase;letter-spacing:0.06em}
+  .epoch-overview td{padding:0.5rem 1rem;font-size:0.82rem;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;background:var(--card)}
+  .epoch-overview tr:hover td{background:var(--card2)}
+  .acc-good{color:var(--green);font-weight:700}.acc-mid{color:var(--yellow);font-weight:700}.acc-bad{color:var(--red);font-weight:700}
+  .acc-bar-bg{width:130px;height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .acc-bar-fg{height:100%;border-radius:4px;transition:width 0.3s}
+  details{margin-bottom:0.4rem}
+  details summary{cursor:pointer;padding:0.55rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.82rem;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:0.8rem;list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:'▸';color:var(--muted);transition:transform 0.2s;font-size:0.9rem;flex-shrink:0}
+  details[open] summary::before{transform:rotate(90deg)}
+  details summary:hover{background:var(--card2)}
+  details[open] summary{border-radius:var(--radius-sm) var(--radius-sm) 0 0;border-bottom-color:transparent}
+  details .detail-body{background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);overflow-x:auto}
+  .sample-table{width:100%;border-collapse:collapse}
+  .sample-table th{background:var(--card2);text-align:left;padding:0.4rem 0.8rem;font-size:0.7rem;color:var(--muted);border-bottom:1px solid var(--border);text-transform:uppercase}
+  .sample-table td{padding:0.35rem 0.8rem;font-size:0.78rem;border-bottom:1px solid rgba(30,35,64,0.6);font-family:'JetBrains Mono',monospace}
+  .row-correct td{color:var(--green)}.row-wrong td{color:var(--red)}
+  .file-link-grid{display:flex;flex-wrap:wrap;gap:0.5rem}
+  .file-link{display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.75rem;background:var(--card);border:1px solid var(--border);border-radius:999px;font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:var(--accent);text-decoration:none;transition:background 0.15s}
+  .file-link:hover{background:var(--card2);border-color:var(--accent)}
+  .file-link-green{color:var(--accent2)}.file-link-green:hover{border-color:var(--accent2)}
+  .file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:1rem}
+  .file-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .file-card .file-header{padding:0.65rem 1rem;font-size:0.82rem;font-weight:600;background:linear-gradient(90deg,var(--accent-dim),transparent);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:0.4rem}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .dot-csv{background:var(--accent2)}.dot-txt{background:var(--accent)}.dot-py{background:var(--yellow)}
+  .file-card pre{padding:0.8rem 1rem;font-size:0.72rem;line-height:1.55;overflow-x:auto;max-height:300px;overflow-y:auto;color:#aab;background:var(--bg2);font-family:'JetBrains Mono',monospace}
+  .file-card a.file-open{display:block;padding:0.6rem 1rem;text-align:center;color:var(--accent);text-decoration:none;font-size:0.8rem;font-weight:600;border-top:1px solid var(--border)}
+  .file-card a.file-open:hover{background:var(--accent-dim)}
+  .empty-state{color:var(--muted);font-style:italic;padding:1rem 0;font-size:0.9rem}
+  .footer{text-align:center;padding:2rem;color:var(--muted2);font-size:0.75rem;border-top:1px solid var(--border);margin-top:2rem}
+  ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  @media(max-width:600px){.image-grid,.file-grid{grid-template-columns:1fr}.hero h1{font-size:1.8rem}.stats-ribbon{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>Grokking Dashboard</h1>
+  <div class="subtitle">Live training monitor</div>
+  <div class="meta-row">
+    {% if started_at %}<div class="meta-pill">🏁 Started <span class="val-warm">{{ started_at }}</span></div>{% endif %}
+    {% if elapsed %}<div class="meta-pill">⏱ Elapsed <span class="val-purple">{{ elapsed }}</span></div>{% endif %}
+    <div class="meta-pill">📸 Snapshot <span class="val">{{ timestamp }}</span></div>
+  </div>
+</div>
+<div class="container">
+
+<div class="stats-ribbon">
+  <div class="stat-card"><div class="stat-value stat-purple">{{ epoch_count }}</div><div class="stat-label">Epochs</div></div>
+  <div class="stat-card"><div class="stat-value stat-green">{{ latest_acc }}</div><div class="stat-label">Latest Accuracy</div></div>
+  <div class="stat-card"><div class="stat-value stat-pink">{{ n_plots }}</div><div class="stat-label">Plots</div></div>
+  <div class="stat-card"><div class="stat-value stat-yellow">{{ total_files }}</div><div class="stat-label">Total Files</div></div>
+</div>
+
+<!-- Slideshow links -->
+{% if has_slideshow or has_jacobi %}
+<div class="section-title">🎬 Slideshows</div>
+<div class="file-link-grid">
+  {% if has_slideshow %}<a class="file-link" href="slideshow.html" target="_blank">📈 Training Plot History ({{ n_training_hist }} frames)</a>{% endif %}
+  {% if has_jacobi %}<a class="file-link file-link-green" href="jacobi.html" target="_blank">🌊 Jacobi Field History ({{ n_jacobi_steps }} steps)</a>{% endif %}
+</div>
+{% endif %}
+
+<!-- Plots -->
+<div class="section-title">📊 Plots &amp; Visualizations <span class="badge">{{ n_plots }}</span></div>
+{% if images %}
+<div class="image-grid">
+  {% for img in images %}
+  <div class="image-card">
+    <a href="{{ img }}?t={{ cache_bust }}" target="_blank"><img src="{{ img }}?t={{ cache_bust }}" alt="{{ img }}" loading="lazy"></a>
+    <div class="label">{{ img }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No images found yet.</div>
+{% endif %}
+
+<!-- Epoch accuracy -->
+<div class="section-title">🧪 Epoch Accuracy <span class="badge">{{ epoch_count }} epochs</span></div>
+{% if overview %}
+<div class="table-scroll"><table class="epoch-overview">
+<thead><tr><th>Epoch</th><th>Correct</th><th>Total</th><th>Accuracy</th><th style="min-width:150px">Progress</th></tr></thead>
+<tbody>
+{% for e in overview %}
+{% set cls = 'acc-good' if e.pct >= 80 else ('acc-mid' if e.pct >= 50 else 'acc-bad') %}
+{% set col = 'var(--green)' if e.pct >= 80 else ('#f0c040' if e.pct >= 50 else 'var(--red)') %}
+<tr><td>{{ e.epoch }}</td><td>{{ e.correct }}</td><td>{{ e.total }}</td><td class="{{ cls }}">{{ e.pct }}%</td>
+<td><div class="acc-bar-bg"><div class="acc-bar-fg" style="width:{{ e.pct }}%;background:{{ col }}"></div></div></td></tr>
+{% endfor %}
+</tbody></table></div>
+
+<h3 style="color:var(--muted);margin:1.5rem 0 0.8rem;font-size:0.9rem;font-weight:500;">Click an epoch to inspect individual predictions:</h3>
+{% for e in overview %}
+{% set samples = details.get(e.epoch, []) %}
+{% if samples %}
+{% set cls = 'acc-good' if e.pct >= 80 else ('acc-mid' if e.pct >= 50 else 'acc-bad') %}
+<details>
+<summary><strong>Epoch {{ e.epoch }}</strong> <span class="{{ cls }}">{{ e.correct }}/{{ e.total }} correct ({{ e.pct }}%)</span></summary>
+<div class="detail-body"><table class="sample-table">
+<thead><tr><th>#</th><th>Params</th><th>Expected</th><th>Predicted</th><th>✓</th></tr></thead><tbody>
+{% for s in samples %}
+<tr class="{{ 'row-correct' if s.correct else 'row-wrong' }}"><td>{{ loop.index }}</td><td>{{ s.get('params','') }}</td><td>{{ s.get('expected','') }}</td><td>{{ s.get('predicted','') }}</td><td>{{ '✔' if s.correct else '✗' }}</td></tr>
+{% endfor %}
+</tbody></table></div></details>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+<!-- Epoch sample file links -->
+{% if epoch_txts or epoch_csvs %}
+<div class="section-title">📁 Sample Files <span class="badge-green badge">{{ (epoch_txts|length) + (epoch_csvs|length) }} files</span></div>
+<div class="file-link-grid">
+  {% for f in epoch_txts %}<a class="file-link" href="{{ f }}" target="_blank">📝 {{ f | basename }}</a>{% endfor %}
+  {% for f in epoch_csvs %}<a class="file-link file-link-green" href="{{ f }}" target="_blank">📊 {{ f | basename }}</a>{% endfor %}
+</div>
+{% endif %}
+
+<!-- Other CSV files -->
+{% if other_csvs %}
+<div class="section-title">📈 CSV Data <span class="badge-green badge">{{ other_csvs|length }}</span></div>
+<div class="file-grid">
+  {% for csv in other_csvs %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-csv"></span>{{ csv }}</div>
+    <pre>{{ previews.get(csv, '') }}</pre>
+    <a class="file-open" href="{{ csv }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Other TXT files -->
+{% if other_txts %}
+<div class="section-title">📝 Text Logs <span class="badge">{{ other_txts|length }}</span></div>
+<div class="file-grid">
+  {% for txt in other_txts %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-txt"></span>{{ txt }}</div>
+    <pre>{{ previews.get(txt, '') }}</pre>
+    <a class="file-open" href="{{ txt }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Python scripts -->
+{% if py_files %}
+<div class="section-title">🐍 Visualization Scripts <span class="badge" style="background:rgba(240,192,64,0.12);color:var(--yellow);border-color:rgba(240,192,64,0.2)">{{ py_files|length }}</span></div>
+<div class="file-grid">
+  {% for py in py_files %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-py"></span>{{ py }}</div>
+    <pre>{{ previews.get(py, '') }}</pre>
+    <a class="file-open" href="{{ py }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="footer">{{ timestamp }}</div>
+</div>
+</body>
+</html>
+''')
+
+# ── Slideshow template (shared by training + jacobi) ───────────────────
+SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090d; color: #e8eaf6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; user-select: none;
+  }
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.5rem 1.5rem; background: #12152a;
+    border-bottom: 1px solid #1e2340; flex-shrink: 0; z-index: 10;
+  }
+  .toolbar .title {
+    font-size: 1rem; font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .toolbar .controls { display: flex; align-items: center; gap: 0.6rem; }
+  .toolbar button {
+    background: #1e2340; border: 1px solid #2a2f55; color: #e8eaf6;
+    padding: 0.35rem 0.9rem; border-radius: 6px; cursor: pointer;
+    font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover { background: #2a2f55; border-color: #7c5cfc; }
+  .toolbar button:active { background: #7c5cfc; color: #fff; }
+  .toolbar button.playing { background: #00d4aa; color: #08090d; border-color: #00d4aa; }
+  .counter {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+    color: #6b70a0; min-width: 140px; text-align: center;
+  }
+  .counter .current { color: #7c5cfc; font-weight: 700; }
+  .scrubber-container {
+    flex-shrink: 0; height: 28px; background: #0d0f16;
+    cursor: pointer; position: relative; display: flex;
+    align-items: center; border-bottom: 1px solid #1e2340;
+  }
+  .scrubber-track {
+    position: absolute; left: 12px; right: 12px; height: 6px;
+    background: #1e2340; border-radius: 3px; overflow: hidden;
+  }
+  .scrubber-track:hover, .scrubber-container.dragging .scrubber-track { height: 10px; }
+  .scrubber-fill {
+    height: 100%; background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    border-radius: 3px; pointer-events: none; will-change: width;
+  }
+  .scrubber-thumb {
+    position: absolute; width: 16px; height: 16px;
+    background: #e8eaf6; border: 2px solid #7c5cfc;
+    border-radius: 50%; top: 50%; transform: translate(-50%, -50%);
+    pointer-events: none; will-change: left;
+    box-shadow: 0 0 8px rgba(124,92,252,0.4); transition: transform 0.1s;
+  }
+  .scrubber-container.dragging .scrubber-thumb {
+    transform: translate(-50%, -50%) scale(1.3); background: #7c5cfc;
+  }
+  .slide-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative; background: #000;
+  }
+  .slide-container img {
+    max-width: 100%; max-height: 100%; object-fit: contain; will-change: opacity;
+  }
+  {% if is_jacobi %}
+  .slide-container {
+    flex-wrap: wrap; align-content: center; gap: 6px; padding: 8px; overflow: auto;
+  }
+  .slide-container .layer-img {
+    max-height: 48%; max-width: 48%; object-fit: contain;
+    border: 1px solid #1e2340; border-radius: 4px; flex-shrink: 1;
+  }
+  .slide-container.single-layer .layer-img { max-height: 95%; max-width: 95%; }
+  .step-label {
+    position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%);
+    font-size: 0.9rem; font-weight: 700; color: #7c5cfc;
+    background: rgba(8,9,13,0.85); padding: 0.2rem 1rem;
+    border-radius: 6px; border: 1px solid #2a2f55; z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  {% endif %}
+  .hint {
+    position: absolute; bottom: 0.5rem; left: 50%; transform: translateX(-50%);
+    font-size: 0.7rem; color: #4a4f78; pointer-events: none; opacity: 0.7; z-index: 5;
+  }
+  .speed-label { font-size: 0.7rem; color: #6b70a0; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div class="title">{{ title }}</div>
+  <div class="controls">
+    <button id="btn-start" title="First (Home)">⏮</button>
+    <button id="btn-prev" title="Previous">◀</button>
+    <button id="btn-play" title="Play/Pause (Space)">▶</button>
+    <button id="btn-next" title="Next">▶▶</button>
+    <button id="btn-end" title="Last (End)">⏭</button>
+    <span class="speed-label">Speed:</span>
+    <button id="btn-slower">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">{{ default_speed }}ms</span>
+    <button id="btn-faster">+</button>
+    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">?</span></div>
+  </div>
+</div>
+<div class="scrubber-container" id="scrubber">
+  <div class="scrubber-track" id="scrubber-track">
+    <div class="scrubber-fill" id="scrubber-fill" style="width:0%"></div>
+  </div>
+  <div class="scrubber-thumb" id="scrubber-thumb" style="left:12px"></div>
+</div>
+<div class="slide-container" id="slide-container">
+  {% if is_jacobi %}<div class="step-label" id="step-label">Step ?</div>{% endif %}
+  {% if not is_jacobi %}<img id="slide-img" src="" alt="frame">{% endif %}
+  <div class="hint">← → navigate · Drag slider · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
+</div>
+<script>
+const images = {{ images_json }};
+const isJacobi = {{ 'true' if is_jacobi else 'false' }};
+const total = isJacobi ? 0 : images.length;
+
+let idx = 0;
+let playing = false;
+let playInterval = null;
+let speed = {{ default_speed }};
+
+const frameNum = document.getElementById('frame-num');
+const frameTotal = document.getElementById('frame-total');
+const btnPlay = document.getElementById('btn-play');
+const speedDisplay = document.getElementById('speed-display');
+const scrubber = document.getElementById('scrubber');
+const scrubberTrack = document.getElementById('scrubber-track');
+const scrubberFill = document.getElementById('scrubber-fill');
+const scrubberThumb = document.getElementById('scrubber-thumb');
+const container = document.getElementById('slide-container');
+
+// === JACOBI: group by step ===
+let steps = [];
+let stepMap = new Map();
+if (isJacobi) {
+  images.forEach(path => {
+    const m = path.match(/jacobi_step(\d+)_layer(\d+)/);
+    if (!m) return;
+    const step = parseInt(m[1], 10), layer = parseInt(m[2], 10);
+    if (!stepMap.has(step)) stepMap.set(step, []);
+    stepMap.get(step).push({ path, layer });
+  });
+  stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
+  steps = [...stepMap.keys()].sort((a, b) => a - b);
+}
+
+function getTotal() { return isJacobi ? steps.length : images.length; }
+frameTotal.textContent = getTotal();
+
+// === PRELOAD CACHE (sliding window) ===
+const cache = new Map();
+const PRELOAD_AHEAD = isJacobi ? 5 : 15;
+const PRELOAD_BEHIND = isJacobi ? 2 : 5;
+const MAX_CACHE = isJacobi ? 120 : 60;
+
+function preloadAround(center) {
+  const t = getTotal();
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(t - 1, center + PRELOAD_AHEAD);
+  if (isJacobi) {
+    for (let i = lo; i <= hi; i++) {
+      const layers = stepMap.get(steps[i]);
+      if (!layers) continue;
+      layers.forEach(l => {
+        if (!cache.has(l.path)) { const img = new Image(); img.src = l.path; cache.set(l.path, img); }
+      });
+    }
+  } else {
+    for (let i = lo; i <= hi; i++) {
+      if (!cache.has(images[i])) { const img = new Image(); img.src = images[i]; cache.set(images[i], img); }
+    }
+  }
+  if (cache.size > MAX_CACHE) {
+    for (const [url] of cache) {
+      if (cache.size <= MAX_CACHE) break;
+      cache.delete(url);
+    }
+  }
+}
+
+function show(i) {
+  const t = getTotal();
+  if (t === 0) return;
+  idx = Math.max(0, Math.min(t - 1, i));
+  frameNum.textContent = idx + 1;
+
+  if (isJacobi) {
+    const step = steps[idx];
+    const layers = stepMap.get(step);
+    const label = document.getElementById('step-label');
+    if (label) label.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
+    container.querySelectorAll('.layer-img').forEach(el => el.remove());
+    container.classList.toggle('single-layer', layers.length === 1);
+    layers.forEach(l => {
+      const img = document.createElement('img');
+      img.className = 'layer-img'; img.src = l.path;
+      img.alt = 'Layer ' + l.layer; img.title = 'Step ' + step + ', Layer ' + l.layer;
+      container.appendChild(img);
+    });
+  } else {
+    document.getElementById('slide-img').src = images[idx];
+  }
+  updateScrubber();
+  preloadAround(idx);
+}
+
+// === SCRUBBER ===
+function updateScrubber() {
+  const t = getTotal();
+  const pct = t > 1 ? idx / (t - 1) : 0;
+  scrubberFill.style.width = (pct * 100) + '%';
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  const left = trackRect.left - scrubber.getBoundingClientRect().left + pct * trackRect.width;
+  scrubberThumb.style.left = left + 'px';
+}
+
+let dragging = false;
+function scrubFromEvent(e) {
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  let pct = (e.clientX - trackRect.left) / trackRect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  show(Math.round(pct * (getTotal() - 1)));
+}
+scrubber.addEventListener('pointerdown', (e) => {
+  dragging = true; scrubber.classList.add('dragging');
+  scrubber.setPointerCapture(e.pointerId); scrubFromEvent(e);
+});
+scrubber.addEventListener('pointermove', (e) => { if (dragging) scrubFromEvent(e); });
+scrubber.addEventListener('pointerup', () => { dragging = false; scrubber.classList.remove('dragging'); });
+scrubber.addEventListener('pointercancel', () => { dragging = false; scrubber.classList.remove('dragging'); });
+
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸' : '▶';
+  btnPlay.classList.toggle('playing', playing);
+  if (playing) {
+    playInterval = setInterval(() => {
+      if (idx >= getTotal() - 1) { togglePlay(); return; }
+      show(idx + 1);
+    }, speed);
+  } else { clearInterval(playInterval); playInterval = null; }
+}
+function updateSpeed(s) {
+  speed = Math.max(30, Math.min(10000, s));
+  speedDisplay.textContent = speed + 'ms';
+  if (playing) { clearInterval(playInterval); playInterval = setInterval(() => {
+    if (idx >= getTotal() - 1) { togglePlay(); return; } show(idx + 1);
+  }, speed); }
+}
+function next() { show(idx + 1); }
+function prev() { show(idx - 1); }
+function goStart() { show(0); }
+function goEnd() { show(getTotal() - 1); }
+
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-start').addEventListener('click', goStart);
+document.getElementById('btn-end').addEventListener('click', goEnd);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowLeft': case 'ArrowDown': e.preventDefault(); prev(); break;
+    case 'ArrowRight': case 'ArrowUp': e.preventDefault(); next(); break;
+    case 'Home': e.preventDefault(); goStart(); break;
+    case 'End': e.preventDefault(); goEnd(); break;
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case '+': e.preventDefault(); updateSpeed(speed - 100); break;
+    case '-': e.preventDefault(); updateSpeed(speed + 100); break;
+    case 'PageDown': e.preventDefault(); show(idx + 50); break;
+    case 'PageUp': e.preventDefault(); show(idx - 50); break;
+  }
+});
+
+container.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY > 0 || e.deltaX > 0) next(); else prev();
+}, { passive: false });
+
+let touchStartX = 0;
+container.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+container.addEventListener('touchend', (e) => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 40) { if (dx < 0) next(); else prev(); }
+}, { passive: true });
+
+window.addEventListener('resize', () => updateScrubber());
+preloadAround(0);
+show(0);
+</script>
+</body>
+</html>
+''')
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 6. RENDER — put it all together
+# ═════════════════════════════════════════════════════════════════════════
+
+def render_dashboard(run_dir: Path, rf: RunFiles):
+    """Generate index.html."""
+    import html as html_mod
+    import json
+    import time
+
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S %Z')
+    elapsed = compute_elapsed(rf.started_at)
+
+    # Parse epoch files
+    overview, details = parse_epoch_files(run_dir, rf.epoch_txts)
+    latest_acc = f"{overview[-1]['pct']}%" if overview else "—"
+
+    # File previews (first 20-30 lines, HTML-escaped)
+    previews = {}
+    for rel in rf.other_csvs + rf.other_txts + rf.py_files:
+        try:
+            text = (run_dir / rel).read_text(errors='replace')
+            lines = text.splitlines()[:30]
+            previews[rel] = html_mod.escape('\n'.join(lines))
+        except Exception:
+            previews[rel] = '(could not read)'
+
+    # Basename filter for Jinja
+    JINJA_ENV.filters['basename'] = lambda s: Path(s).name
+
+    cache_bust = str(int(time.time()))
+
+    html_out = DASHBOARD_TEMPLATE.render(
+        timestamp=timestamp,
+        started_at=rf.started_at,
+        elapsed=elapsed,
+        epoch_count=len(rf.epoch_txts),
+        latest_acc=latest_acc,
+        n_plots=len(rf.summary_images),
+        total_files=(len(rf.summary_images) + len(rf.epoch_txts) + len(rf.epoch_csvs)
+                     + len(rf.other_csvs) + len(rf.other_txts) + len(rf.py_files)),
+        images=rf.summary_images,
+        cache_bust=cache_bust,
+        has_slideshow=len(rf.training_hist) > 0,
+        has_jacobi=len(rf.jacobi_images) > 0,
+        n_training_hist=len(rf.training_hist),
+        n_jacobi_steps=len(set(s for s, _, _ in rf.jacobi_images)),
+        overview=overview,
+        details=details,
+        epoch_txts=rf.epoch_txts,
+        epoch_csvs=rf.epoch_csvs,
+        other_csvs=rf.other_csvs,
+        other_txts=rf.other_txts,
+        py_files=rf.py_files,
+        previews=previews,
+    )
+
+    (run_dir / 'index.html').write_text(html_out)
+    print(f"  ✅ index.html ({len(rf.summary_images)} plots, {len(overview)} epochs)")
+
+
+def render_slideshow(run_dir: Path, rf: RunFiles, max_frames: int = 500):
+    """Generate slideshow.html for training plot history."""
+    import json
+
+    all_images = list(rf.training_hist)
+    if rf.has_current_plot:
+        all_images.append('training_plot.png')
+
+    if not all_images:
+        return
+
+    images = subsample(all_images, max_frames)
+    if len(images) < len(all_images):
+        print(f"  Training slideshow: subsampled {len(all_images)} → {len(images)} frames")
+
+    html_out = SLIDESHOW_TEMPLATE.render(
+        title="Training Plot History",
+        is_jacobi=False,
+        default_speed=500,
+        images_json=json.dumps(images),
+    )
+
+    (run_dir / 'slideshow.html').write_text(html_out)
+    print(f"  ✅ slideshow.html ({len(images)} frames)")
+
+
+def render_jacobi_slideshow(run_dir: Path, rf: RunFiles, max_steps: int = 200):
+    """Generate jacobi.html for Jacobi field history."""
+    import json
+
+    if not rf.jacobi_images:
+        return
+
+    # Get unique steps
+    all_steps = sorted(set(s for s, _, _ in rf.jacobi_images))
+
+    # Subsample steps
+    selected_steps = subsample(all_steps, max_steps)
+    if len(selected_steps) < len(all_steps):
+        print(f"  Jacobi slideshow: subsampled {len(all_steps)} → {len(selected_steps)} steps")
+
+    selected_set = set(selected_steps)
+
+    # Filter images to selected steps only
+    images = [path for step, layer, path in rf.jacobi_images if step in selected_set]
+
+    html_out = SLIDESHOW_TEMPLATE.render(
+        title="Jacobi Field History",
+        is_jacobi=True,
+        default_speed=1000,
+        images_json=json.dumps(images),
+    )
+
+    (run_dir / 'jacobi.html').write_text(html_out)
+    print(f"  ✅ jacobi.html ({len(images)} images across {len(selected_steps)} steps)")
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 7. MAIN
+# ═════════════════════════════════════════════════════════════════════════
+
+def main():
+    """
+    Fast dashboard + slideshow generator.
+
+    Steps:
+      1. Parse CLI args (just the run directory path)
+      2. Scan the run directory ONCE with os.scandir (not find)
+         → classify into: summary plots, training_plot history,
+           jacobi images, epoch txts/csvs, other files
+         → skip: .npz, .html, hidden files, jacobi_step*.png in root
+      3. Generate index.html    — dashboard with summary plots only
+      4. Generate slideshow.html — training plot history (subsampled to ~500)
+      5. Generate jacobi.html   — jacobi field history (subsampled to ~200 steps)
+    """
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <run_directory>")
+        sys.exit(1)
+
+    run_dir = Path(sys.argv[1]).resolve()
+    if not run_dir.is_dir():
+        print(f"Error: {run_dir} is not a directory")
+        sys.exit(1)
+
+    print(f"📊 Generating dashboard for: {run_dir}")
+
+    # Step 2: Scan
+    t0 = time.time()
+    rf = scan_run_dir(run_dir)
+    scan_time = time.time() - t0
+    print(f"  Scanned in {scan_time:.2f}s: "
+          f"{len(rf.summary_images)} plots, "
+          f"{len(rf.training_hist)} training frames, "
+          f"{len(rf.jacobi_images)} jacobi images, "
+          f"{len(rf.epoch_txts)} epoch files")
+
+    # Step 3: Dashboard
+    render_dashboard(run_dir, rf)
+
+    # Step 4: Training slideshow
+    render_slideshow(run_dir, rf)
+
+    # Step 5: Jacobi slideshow
+    render_jacobi_slideshow(run_dir, rf)
+
+    total_time = time.time() - t0
+    print(f"  🎉 Done in {total_time:.2f}s")
+
+
+if __name__ == '__main__':
+    main()
