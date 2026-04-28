@@ -2860,7 +2860,10 @@ class LivePlotter:
             del fig_s
 
     def _get_n_labels(n_tokens):
-        return min(max(n_tokens // 8, 3), 25)
+        min_nr = 3
+        max_nr = 100
+        every_nth = 5
+        return min(max(n_tokens // every_nth, min_nr), max_nr)
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
