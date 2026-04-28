@@ -29,21 +29,8 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
     """
     Compute the Jacobi field of the space deformation itself at each layer.
     
-    Interpretation: tokens are FIXED OBSERVERS. The space (representation
-    manifold) deforms around them as it passes through each layer.
-    
-    At each point on a 2D grid (in PCA space), we interpolate the local
-    2×2 Jacobian from nearby token observations, then decompose it:
-    
-        J = R · S   (polar decomposition)
-        S = volumetric + shear
-    
-    We store everything needed for a colorful vector field rendering:
-    - The displacement field (J-I) applied to basis vectors → shows how
-      space is being pulled/pushed at each point
-    - Volume change (det J) → expansion vs contraction
-    - Principal stretch directions and magnitudes → anisotropy
-    - Rotation angle → local curl/twist of space
+    For 2D hidden states, raw coordinates are used (no PCA).
+    For 3+D hidden states, PCA projection is used.
     """
     model.eval()
     output = model(input_ids=input_ids, output_hidden_states=True)
@@ -64,38 +51,47 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
 
     fields = []
 
-    # ── Shared PCA basis from all layers for consistent 2D view ─────
-    all_points = []
-    for hs in hidden_states:
-        pts = hs.detach().float().cpu()
-        pts = pts.reshape(-1, pts.shape[-1])  # (B*T, D)
-        all_points.append(pts)
+    # ── Determine hidden dimension ──────────────────────────────────
+    D = hidden_states[0].shape[-1]
+    use_pca = (D > 2)
 
-    all_concat = torch.cat(all_points, dim=0)
-    mean = all_concat.mean(0)
-    centered = all_concat - mean
+    if use_pca:
+        # ── Shared PCA basis from all layers for consistent 2D view ─
+        all_points = []
+        for hs in hidden_states:
+            pts = hs.detach().float().cpu()
+            pts = pts.reshape(-1, pts.shape[-1])
+            all_points.append(pts)
 
-    try:
-        U, S_pca, Vh = torch.linalg.svd(centered, full_matrices=False)
-        pca_basis = Vh[:2, :]  # (2, D)
-        total_var = (S_pca ** 2).sum()
-        var_explained = ((S_pca[:2] ** 2).sum() / total_var).item()
-    except Exception:
-        pca_basis = torch.eye(2, centered.shape[1])
-        var_explained = 0.0
+        all_concat = torch.cat(all_points, dim=0)
+        mean = all_concat.mean(0)
+        centered = all_concat - mean
+
+        try:
+            U, S_pca, Vh = torch.linalg.svd(centered, full_matrices=False)
+            pca_basis = Vh[:2, :]  # (2, D)
+            total_var = (S_pca ** 2).sum()
+            var_explained = ((S_pca[:2] ** 2).sum() / total_var).item()
+        except Exception:
+            pca_basis = torch.eye(2, centered.shape[1])
+            var_explained = 0.0
+    else:
+        # 2D: no PCA needed — use identity projection
+        mean = torch.zeros(D)
+        pca_basis = torch.eye(2, D)
+        var_explained = 1.0  # exact representation
 
     for ell in range(len(hidden_states) - 1):
-        h_in = hidden_states[ell].detach().float()         # (B, T, D)
-        h_in = h_in.reshape(-1, h_in.shape[-1])            # (B*T, D)
-        h_out = hidden_states[ell + 1].detach().float()      # (B, T, D)  ← FIXED
-        h_out = h_out.reshape(-1, h_out.shape[-1])           # (B*T, D)  ← FIXED
+        h_in = hidden_states[ell].detach().float()
+        h_in = h_in.reshape(-1, h_in.shape[-1])
+        h_out = hidden_states[ell + 1].detach().float()
+        h_out = h_out.reshape(-1, h_out.shape[-1])
 
         T, D = h_in.shape
         if T > max_tokens:
             idx = torch.linspace(0, T - 1, max_tokens).long()
             h_in = h_in[idx]
             h_out = h_out[idx]
-            # ── Keep token strings in sync with downsampling ────────
             if token_strings is not None:
                 token_strings_layer = [token_strings[i] for i in idx.tolist()]
             else:
@@ -107,7 +103,17 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
         delta = h_out - h_in
 
         # Project to 2D for visualization
-        h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()   # (T, 2)
+        if use_pca:
+            h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()
+        else:
+            # 2D: use raw coordinates directly
+            h_in_2d = h_in.cpu().numpy()[:, :2]
+
+        # ── Per-token delta in 2D (for cumulative panel) ────────────
+        if use_pca:
+            delta_2d = ((delta.cpu()) @ pca_basis.T).numpy()
+        else:
+            delta_2d = delta.cpu().numpy()[:, :2]
 
         # ── Per-token LOCAL Jacobian via neighbors ──────────────────
         per_token_J_2d = np.zeros((T, 2, 2))
@@ -199,11 +205,8 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
         grid_max_stretch_val = np.zeros((grid_n, grid_n))
         grid_min_stretch_val = np.zeros((grid_n, grid_n))
         grid_max_stretch_dir = np.zeros((grid_n, grid_n, 2))
-        # The displacement field: (J - I) applied to the local position
-        # This shows how space is being PULLED at each point
         grid_disp_x = np.zeros((grid_n, grid_n))
         grid_disp_y = np.zeros((grid_n, grid_n))
-        # Also: (J - I) applied to e_x and e_y separately for a richer field
         grid_Jm1_ex_x = np.zeros((grid_n, grid_n))
         grid_Jm1_ex_y = np.zeros((grid_n, grid_n))
         grid_Jm1_ey_x = np.zeros((grid_n, grid_n))
@@ -212,15 +215,13 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
         for gi in range(grid_n):
             for gj in range(grid_n):
                 J_loc = grid_J[gi, gj]
-                F = J_loc - np.eye(2)  # deformation gradient minus identity
+                F = J_loc - np.eye(2)
 
-                # Displacement = F · position (how space moves at this point)
                 pos = np.array([grid_x[gi, gj], grid_y[gi, gj]])
                 disp = F @ pos
                 grid_disp_x[gi, gj] = disp[0]
                 grid_disp_y[gi, gj] = disp[1]
 
-                # F applied to basis vectors (for the vector field)
                 grid_Jm1_ex_x[gi, gj] = F[0, 0]
                 grid_Jm1_ex_y[gi, gj] = F[1, 0]
                 grid_Jm1_ey_x[gi, gj] = F[0, 1]
@@ -244,6 +245,12 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
                 S_trace = np.trace(S_g)
                 S_traceless = S_g - (S_trace / 2.0) * np.eye(2)
                 grid_shear[gi, gj] = np.linalg.norm(S_traceless, 'fro')
+
+        # ── Per-token delta in 2D (for cumulative panel) ────────────
+        if use_pca:
+            delta_2d = ((delta.cpu()) @ pca_basis.T).numpy()
+        else:
+            delta_2d = delta.cpu().numpy()[:, :2]
 
         # ── Global metrics ─────────────────────────────────────────
         try:
@@ -279,6 +286,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
             'per_token_volume': per_token_volume,
             'per_token_rotation': per_token_rotation,
             'per_token_shear_mag': per_token_shear_mag,
+            'per_token_delta_2d': delta_2d,  # NEW: per-token displacement this layer
             # ── Grid data ───────────────────────────────────────
             'grid_x': grid_x,
             'grid_y': grid_y,
@@ -298,6 +306,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
             'x_lim': (x_min, x_max),
             'y_lim': (y_min, y_max),
             'var_explained': var_explained,
+            'use_pca': use_pca,  # NEW: flag for labeling
             # ── Compatibility ───────────────────────────────────
             'per_token_divergence': per_token_volume,
             'per_token_curl': per_token_rotation,
@@ -623,15 +632,14 @@ class LivePlotter:
         """
         Render the Jacobi field as a colorful vector field image per layer.
 
-        Each layer panel shows:
-        1. BACKGROUND: HSV color field
-           - Hue = direction of space deformation (angle of (J-I)·r)
-           - Brightness = magnitude of deformation
-           - Warm/cool tint for volume expansion/contraction
-        2. STREAMLINES: displacement field (J-I)·r as continuous curves
-        3. STRETCH WHISKERS: max stretch direction at sparse grid points
-        4. TOKEN MARKERS: fixed observers, ringed by volume change
-        5. COLOR WHEEL LEGEND + TEXT LEGEND on the right
+        Each layer gets TWO panels stacked vertically:
+          TOP:    Full Jacobi field visualization (per-layer deformation)
+          BOTTOM: Cumulative space movements — tokens are FIXED points,
+                  arrows show accumulated displacement from layer 0 through
+                  the current layer.
+
+        For 2D hidden states: raw coordinates (no PCA).
+        For 3+D hidden states: PCA projection.
         """
         if ax is None or jacobi_data is None:
             return
@@ -656,9 +664,11 @@ class LivePlotter:
             spine.set_visible(False)
 
         var_exp = fields[0].get('var_explained', 0) if fields else 0
+        use_pca = fields[0].get('use_pca', True) if fields else True
+        proj_label = f"PCA var={var_exp:.0%}" if use_pca else "raw 2D (exact)"
         ax.set_title(
             f"Jacobi Fields \u2014 Space Deformation (step {step}, "
-            f"PCA var={var_exp:.0%})",
+            f"{proj_label})",
             fontsize=10, fontweight="bold", color="#c0d8e8",
         )
 
@@ -676,269 +686,79 @@ class LivePlotter:
         from matplotlib.colors import hsv_to_rgb
 
         # ═══════════════════════════════════════════════════════════════
-        # Layout: reserve right edge for the color wheel legend
+        # Layout: two rows (top = jacobi, bottom = cumulative),
+        # reserve right edge for the color wheel legend
         # ═══════════════════════════════════════════════════════════════
         legend_width_frac = 0.12
         field_width_frac = 1.0 - legend_width_frac
 
         n_cols = min(n_layers, 6)
-        n_rows = math.ceil(n_layers / n_cols)
 
         pad_x = 0.02
         pad_y = 0.10
         pad_bottom = 0.03
+        row_gap = 0.04
+
+        total_h = 1.0 - pad_y - pad_bottom
+        row_h = (total_h - row_gap) / 2.0
+
         cell_w = (field_width_frac - 2 * pad_x) / n_cols
-        cell_h = (1.0 - pad_y - pad_bottom) / n_rows
         inset_margin = 0.005
 
         parent_bbox = ax.get_position()
         px0, py0 = parent_bbox.x0, parent_bbox.y0
         pw, ph = parent_bbox.width, parent_bbox.height
 
+        # ── Precompute cumulative displacements ─────────────────────
+        # Use the FIRST layer's token positions as the fixed reference
+        ref_h_in_2d = fields[0]['h_in_2d']  # (T, 2) — FIXED positions
+        cumulative_delta = np.zeros_like(ref_h_in_2d)  # (T, 2)
+
         for ell, f in enumerate(fields):
             col = ell % n_cols
-            row = n_rows - 1 - (ell // n_cols)
 
+            # ═══════════════════════════════════════════════════════
+            # TOP ROW: Jacobi field (existing visualization)
+            # ═══════════════════════════════════════════════════════
             fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
-            fy = py0 + ph * (pad_bottom + row * cell_h + inset_margin)
+            fy_top = py0 + ph * (pad_bottom + row_h + row_gap + inset_margin)
             fw = pw * (cell_w - 2 * inset_margin)
-            fh = ph * (cell_h - 2 * inset_margin)
+            fh = ph * (row_h - 2 * inset_margin)
 
-            sub_ax = self.fig.add_axes([fx, fy, fw, fh])
+            sub_ax = self.fig.add_axes([fx, fy_top, fw, fh])
             sub_ax.set_facecolor("#0d1117")
             sub_ax.set_in_layout(False)
             self._jacobi_subaxes.append(sub_ax)
 
-            h_in_2d = f['h_in_2d']
-            grid_x = f['grid_x']
-            grid_y = f['grid_y']
-            grid_volume = f['grid_volume']
-            grid_disp_x = f['grid_disp_x']
-            grid_disp_y = f['grid_disp_y']
-            grid_max_stretch_val = f['grid_max_stretch_val']
-            grid_min_stretch_val = f['grid_min_stretch_val']
-            grid_max_stretch_dir = f['grid_max_stretch_dir']
-            x_lim = f['x_lim']
-            y_lim = f['y_lim']
-            per_token_volume = f['per_token_volume']
-            per_token_shear = f['per_token_shear_mag']
-            per_token_rotation = f['per_token_rotation']
-
-            grid_n = grid_x.shape[0]
+            self._draw_single_jacobi_panel(sub_ax, f, ell, jacobi_data, hsv_to_rgb)
 
             # ═══════════════════════════════════════════════════════
-            # 1. COLORFUL BACKGROUND: HSV encoding of deformation
+            # BOTTOM ROW: Cumulative space movements
+            # Tokens are FIXED at their layer-0 positions.
+            # Arrows show cumulative displacement through this layer.
             # ═══════════════════════════════════════════════════════
-            disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
-            disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+            cumulative_delta += f['per_token_delta_2d']
 
-            mag_norm = np.arcsinh(disp_mag * 2.0)
-            mag_max = max(mag_norm.max(), 1e-10)
-            mag_norm = mag_norm / mag_max
+            fy_bot = py0 + ph * (pad_bottom + inset_margin)
 
-            H = (disp_angle + np.pi) / (2 * np.pi)
-            S_hsv = np.ones_like(H) * 0.85
-            V_hsv = 0.15 + 0.85 * mag_norm
+            cum_ax = self.fig.add_axes([fx, fy_bot, fw, fh])
+            cum_ax.set_facecolor("#0d1117")
+            cum_ax.set_in_layout(False)
+            self._jacobi_subaxes.append(cum_ax)
 
-            hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
-            rgb_img = hsv_to_rgb(hsv_img)
-
-            # Volume change tint
-            log_vol = np.log(np.clip(grid_volume, 1e-6, None))
-            lv_absmax = max(np.abs(log_vol).max(), 1e-6)
-            lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
-
-            vol_blend = 0.2
-            rgb_img[:, :, 0] = np.clip(
-                rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1
+            self._draw_cumulative_panel(
+                cum_ax, ref_h_in_2d, cumulative_delta.copy(),
+                f, ell, step
             )
-            rgb_img[:, :, 2] = np.clip(
-                rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1
-            )
-
-            sub_ax.imshow(
-                rgb_img,
-                extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
-                origin='lower',
-                aspect='auto',
-                interpolation='bilinear',
-                alpha=0.9,
-            )
-
-            # ═══════════════════════════════════════════════════════
-            # 2. STREAMLINES
-            # ═══════════════════════════════════════════════════════
-            gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
-            gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
-
-            try:
-                speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
-                lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
-
-                sub_ax.streamplot(
-                    gx_1d, gy_1d, grid_disp_x, grid_disp_y,
-                    color='white',
-                    linewidth=lw,
-                    density=0.7,
-                    arrowsize=0.6,
-                    arrowstyle='->',
-                    zorder=2,
-                    minlength=0.2,
-                )
-            except Exception:
-                pass
-
-            # ═══════════════════════════════════════════════════════
-            # 3. STRETCH WHISKERS
-            # ═══════════════════════════════════════════════════════
-            whisker_step = max(1, grid_n // 8)
-            x_span = x_lim[1] - x_lim[0]
-            y_span = y_lim[1] - y_lim[0]
-            whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
-
-            for gi in range(whisker_step // 2, grid_n, whisker_step):
-                for gj in range(whisker_step // 2, grid_n, whisker_step):
-                    cx = grid_x[gi, gj]
-                    cy = grid_y[gi, gj]
-                    d = grid_max_stretch_dir[gi, gj]
-                    s_max = grid_max_stretch_val[gi, gj]
-                    s_min = grid_min_stretch_val[gi, gj]
-
-                    ratio = s_max / max(s_min, 1e-10)
-                    if ratio < 1.05:
-                        continue
-
-                    length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
-
-                    if ratio < 1.5:
-                        wcolor, walpha = '#ffff44', 0.4
-                    elif ratio < 3.0:
-                        wcolor, walpha = '#ff8800', 0.6
-                    else:
-                        wcolor, walpha = '#ff2222', 0.8
-
-                    x0 = cx - length * d[0]
-                    y0 = cy - length * d[1]
-                    x1 = cx + length * d[0]
-                    y1 = cy + length * d[1]
-
-                    sub_ax.plot(
-                        [x0, x1], [y0, y1],
-                        color=wcolor, linewidth=1.0, alpha=walpha,
-                        zorder=4, solid_capstyle='round',
-                    )
-
-            # ═══════════════════════════════════════════════════════
-            # 4. TOKEN MARKERS
-            # ═══════════════════════════════════════════════════════
-            shear_max = max(per_token_shear.max(), 1e-6)
-            shear_norm = per_token_shear / shear_max
-
-            sub_ax.scatter(
-                h_in_2d[:, 0], h_in_2d[:, 1],
-                s=10, c=shear_norm, cmap='magma',
-                vmin=0, vmax=1,
-                edgecolors='none',
-                zorder=6, alpha=0.9,
-            )
-
-            # ═══════════════════════════════════════════════════════
-            # 4b. SPARSE HUMAN-READABLE TOKEN LABELS
-            # ═══════════════════════════════════════════════════════
-            token_strings_f = f.get('token_strings', None)
-            n_tokens = h_in_2d.shape[0]
-
-            # ── Dynamic font size from subplot pixel dimensions ───
-            fig_dpi = self.fig.dpi
-            fig_w_in, fig_h_in = self.fig.get_size_inches()
-            panel_w_px = fw * fig_w_in * fig_dpi
-            panel_h_px = fh * fig_h_in * fig_dpi
-            panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
-
-            # ~2% of diagonal, scaled inversely with token count
-            base_font = panel_diag_px * 0.020
-            token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
-            label_fontsize = max(7.0, min(18.0, base_font * token_scale))
-
-            # ── How many labels ───────────────────────────────────
-            n_labels = min(max(n_tokens // 8, 3), 25)
-            if panel_diag_px < 200:
-                n_labels = min(n_labels, 6)
-
-            # ── Seed: shifts each render, but stable within a layer
-            draw_key = jacobi_data.get('draw_key', 0)
-            rng = np.random.RandomState(
-                seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
-            )
-            label_idx = rng.choice(
-                n_tokens, size=min(n_labels, n_tokens), replace=False
-            )
-
-            offset_px = max(3.0, label_fontsize * 0.7)
-
-            for li in label_idx:
-                tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
-
-                # ── Human-readable label ──────────────────────────
-                if token_strings_f is not None and li < len(token_strings_f):
-                    label_text = token_strings_f[li]
-                    if len(label_text) > 14:
-                        label_text = label_text[:13] + "…"
-                else:
-                    label_text = f"t{li}"
-
-                # Whitespace-only → visible placeholder
-                if not label_text.strip():
-                    label_text = "␣"
-
-                sub_ax.annotate(
-                    label_text,
-                    (tx, ty),
-                    fontsize=label_fontsize,
-                    color='#f0f0f0',
-                    alpha=0.92,
-                    fontweight='bold',
-                    fontfamily='monospace',
-                    xytext=(offset_px, offset_px),
-                    textcoords='offset points',
-                    zorder=8,
-                    bbox=dict(
-                        boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
-                        facecolor='#0d1117',
-                        edgecolor='#3a5a7a',
-                        alpha=0.75,
-                        linewidth=0.4,
-                    ),
-                )
-
-            # ═══════════════════════════════════════════════════════
-            # 5. LAYER LABEL
-            # ═══════════════════════════════════════════════════════
-            layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
-            mean_vol = per_token_volume.mean()
-            aniso_val = f['anisotropy']
-
-            sub_ax.set_title(
-                f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}",
-                fontsize=7, fontweight="bold", color="#aaccee", pad=2,
-            )
-
-            sub_ax.set_xlim(*x_lim)
-            sub_ax.set_ylim(*y_lim)
-            sub_ax.set_aspect('auto')
-            sub_ax.tick_params(labelsize=0, length=0)
-            for spine in sub_ax.spines.values():
-                spine.set_color('#2a3a4a')
-                spine.set_linewidth(0.5)
 
         # ═══════════════════════════════════════════════════════════════
-        # 6. COLOR WHEEL LEGEND (Cartesian imshow, not polar pcolormesh)
+        # COLOR WHEEL LEGEND (right side)
         # ═══════════════════════════════════════════════════════════════
         legend_x = px0 + pw * (field_width_frac + 0.01)
         legend_w = pw * (legend_width_frac - 0.02)
 
-        wheel_size = min(legend_w, ph * 0.22)
-        wheel_y = py0 + ph * 0.73
+        wheel_size = min(legend_w, ph * 0.18)
+        wheel_y = py0 + ph * 0.78
         wheel_ax = self.fig.add_axes(
             [legend_x + (legend_w - wheel_size) * 0.5, wheel_y,
              wheel_size, wheel_size]
@@ -959,7 +779,6 @@ class LivePlotter:
         W_S = np.ones_like(W_H) * 0.85
         W_V = 0.15 + 0.85 * np.clip(W_radius, 0, 1)
 
-        # Mask outside the unit circle
         mask = W_radius > 1.0
         W_S[mask] = 0.0
         W_V[mask] = 0.0
@@ -967,7 +786,6 @@ class LivePlotter:
         hsv_wheel = np.stack([W_H, W_S, W_V], axis=-1)
         rgb_wheel = hsv_to_rgb(hsv_wheel)
 
-        # RGBA with transparent outside
         alpha_channel = np.ones((wheel_res, wheel_res))
         alpha_channel[mask] = 0.0
         rgba_wheel = np.concatenate(
@@ -982,15 +800,21 @@ class LivePlotter:
             interpolation='bilinear',
         )
 
-        # Direction labels at cardinal points
+        # Direction labels
+        if use_pca:
+            lbl_right, lbl_left = '+PC1\n\u2192', '\u2190\n\u2212PC1'
+            lbl_up, lbl_down = '\u2191 +PC2', '\u2193 \u2212PC2'
+        else:
+            lbl_right, lbl_left = '+dim0\n\u2192', '\u2190\n\u2212dim0'
+            lbl_up, lbl_down = '\u2191 +dim1', '\u2193 \u2212dim1'
+
         lbl_cfg = dict(fontsize=6.5, fontweight='bold', color='white',
                        ha='center', va='center')
-        wheel_ax.text(1.35, 0.0, '+PC1\n\u2192', **lbl_cfg)
-        wheel_ax.text(-1.35, 0.0, '\u2190\n\u2212PC1', **lbl_cfg)
-        wheel_ax.text(0.0, 1.35, '\u2191 +PC2', **lbl_cfg)
-        wheel_ax.text(0.0, -1.35, '\u2193 \u2212PC2', **lbl_cfg)
+        wheel_ax.text(1.35, 0.0, lbl_right, **lbl_cfg)
+        wheel_ax.text(-1.35, 0.0, lbl_left, **lbl_cfg)
+        wheel_ax.text(0.0, 1.35, lbl_up, **lbl_cfg)
+        wheel_ax.text(0.0, -1.35, lbl_down, **lbl_cfg)
 
-        # Center label
         wheel_ax.text(0.0, 0.0, 'weak', fontsize=5, color='#666666',
                       ha='center', va='center', fontstyle='italic')
 
@@ -1003,10 +827,10 @@ class LivePlotter:
                            pad=8)
 
         # ═══════════════════════════════════════════════════════════════
-        # 7. TEXT LEGEND below the color wheel
+        # TEXT LEGEND below the color wheel
         # ═══════════════════════════════════════════════════════════════
         legend_text_y = py0 + ph * 0.03
-        legend_text_h = ph * 0.68
+        legend_text_h = ph * 0.73
         legend_text_ax = self.fig.add_axes(
             [legend_x, legend_text_y, legend_w, legend_text_h]
         )
@@ -1017,11 +841,8 @@ class LivePlotter:
         legend_text_ax.set_in_layout(False)
         self._jacobi_subaxes.append(legend_text_ax)
 
-        # ── Legend items: (symbol, description, color, is_header) ──
-        # For non-header items, symbol and description are rendered
-        # on the SAME line to avoid overlap.
         legend_items = [
-            ("BACKGROUND", "", "#c0d8e8", True),
+            ("TOP ROW", "", "#c0d8e8", True),
             ("\u2588\u2588 Hue", "deformation direction", "#ffffff", False),
             ("\u2588\u2588 Bright", "strong deformation", "#dddddd", False),
             ("\u2588\u2588 Dark", "weak / no deformation", "#555555", False),
@@ -1034,10 +855,14 @@ class LivePlotter:
             ("\u2500\u2500 orange", "moderate stretch", "#ff8800", False),
             ("\u2500\u2500 red", "extreme stretch", "#ff2222", False),
             ("", "", "#000000", False),
+            ("BOTTOM ROW", "", "#88ccaa", True),
+            ("\u2192 arrows", "cumulative displacement", "#88ccaa", False),
+            ("\u25cf white", "fixed token positions", "#ffffff", False),
+            ("hue", "direction of movement", "#aaddcc", False),
+            ("length", "magnitude of movement", "#aaddcc", False),
+            ("", "", "#000000", False),
             ("TOKENS", "", "#c0d8e8", True),
             ("\u25cf dot", "shear magnitude (magma)", "#dd6644", False),
-            ("\u25cb red ring", "expanding (top 15%)", "#ff4444", False),
-            ("\u25a1 blue ring", "contracting (top 15%)", "#4488ff", False),
         ]
 
         n_items = len(legend_items)
@@ -1046,10 +871,9 @@ class LivePlotter:
         for i, (symbol, desc, color, is_header) in enumerate(legend_items):
             y = 0.97 - i * line_spacing
             if not symbol and not desc:
-                continue  # spacer line
+                continue
 
             if is_header:
-                # Section header — bold, larger font, standalone
                 legend_text_ax.text(
                     0.05, y, symbol,
                     fontsize=7, fontweight='bold', color=color,
@@ -1057,10 +881,798 @@ class LivePlotter:
                     transform=legend_text_ax.transAxes,
                 )
             else:
-                # Symbol + description on ONE line to prevent overlap
-                # Symbol in its own color, then description in gray
-                # We render the colored symbol first, then the gray desc
-                # next to it using a fixed x-offset.
+                legend_text_ax.text(
+                    0.05, y, symbol,
+                    fontsize=6, fontweight='bold', color=color,
+                    fontfamily='monospace', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+                legend_text_ax.text(
+                    0.55, y, desc,
+                    fontsize=5.5, color='#999999',
+                    fontfamily='sans-serif', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+
+    def _draw_single_jacobi_panel(self, sub_ax, f, ell, jacobi_data, hsv_to_rgb):
+        """Draw a single layer's Jacobi field panel (top row)."""
+        h_in_2d = f['h_in_2d']
+        grid_x = f['grid_x']
+        grid_y = f['grid_y']
+        grid_volume = f['grid_volume']
+        grid_disp_x = f['grid_disp_x']
+        grid_disp_y = f['grid_disp_y']
+        grid_max_stretch_val = f['grid_max_stretch_val']
+        grid_min_stretch_val = f['grid_min_stretch_val']
+        grid_max_stretch_dir = f['grid_max_stretch_dir']
+        x_lim = f['x_lim']
+        y_lim = f['y_lim']
+        per_token_volume = f['per_token_volume']
+        per_token_shear = f['per_token_shear_mag']
+
+        grid_n = grid_x.shape[0]
+
+        # ── 1. COLORFUL BACKGROUND: HSV encoding of deformation ───
+        disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
+        disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+
+        mag_norm = np.arcsinh(disp_mag * 2.0)
+        mag_max = max(mag_norm.max(), 1e-10)
+        mag_norm = mag_norm / mag_max
+
+        H = (disp_angle + np.pi) / (2 * np.pi)
+        S_hsv = np.ones_like(H) * 0.85
+        V_hsv = 0.15 + 0.85 * mag_norm
+
+        hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
+        rgb_img = hsv_to_rgb(hsv_img)
+
+        log_vol = np.log(np.clip(grid_volume, 1e-6, None))
+        lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+        lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
+
+        vol_blend = 0.2
+        rgb_img[:, :, 0] = np.clip(
+            rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1
+        )
+        rgb_img[:, :, 2] = np.clip(
+            rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1
+        )
+
+        sub_ax.imshow(
+            rgb_img,
+            extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
+            origin='lower', aspect='auto', interpolation='bilinear', alpha=0.9,
+        )
+
+        # ── 2. STREAMLINES ────────────────────────────────────────
+        gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
+        gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
+
+        try:
+            speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+            lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
+            sub_ax.streamplot(
+                gx_1d, gy_1d, grid_disp_x, grid_disp_y,
+                color='white', linewidth=lw, density=0.7,
+                arrowsize=0.6, arrowstyle='->', zorder=2, minlength=0.2,
+            )
+        except Exception:
+            pass
+
+        # ── 3. STRETCH WHISKERS ───────────────────────────────────
+        whisker_step = max(1, grid_n // 8)
+        x_span = x_lim[1] - x_lim[0]
+        y_span = y_lim[1] - y_lim[0]
+        whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
+
+        for gi in range(whisker_step // 2, grid_n, whisker_step):
+            for gj in range(whisker_step // 2, grid_n, whisker_step):
+                cx = grid_x[gi, gj]
+                cy = grid_y[gi, gj]
+                d = grid_max_stretch_dir[gi, gj]
+                s_max = grid_max_stretch_val[gi, gj]
+                s_min = grid_min_stretch_val[gi, gj]
+
+                ratio = s_max / max(s_min, 1e-10)
+                if ratio < 1.05:
+                    continue
+
+                length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
+
+                if ratio < 1.5:
+                    wcolor, walpha = '#ffff44', 0.4
+                elif ratio < 3.0:
+                    wcolor, walpha = '#ff8800', 0.6
+                else:
+                    wcolor, walpha = '#ff2222', 0.8
+
+                x0 = cx - length * d[0]
+                y0 = cy - length * d[1]
+                x1 = cx + length * d[0]
+                y1 = cy + length * d[1]
+
+                sub_ax.plot(
+                    [x0, x1], [y0, y1],
+                    color=wcolor, linewidth=1.0, alpha=walpha,
+                    zorder=4, solid_capstyle='round',
+                )
+
+        # ── 4. TOKEN MARKERS ─────────────────────────────────────
+        shear_max = max(per_token_shear.max(), 1e-6)
+        shear_norm = per_token_shear / shear_max
+
+        sub_ax.scatter(
+            h_in_2d[:, 0], h_in_2d[:, 1],
+            s=10, c=shear_norm, cmap='magma',
+            vmin=0, vmax=1, edgecolors='none', zorder=6, alpha=0.9,
+        )
+
+        # ── 4b. SPARSE TOKEN LABELS ──────────────────────────────
+        token_strings_f = f.get('token_strings', None)
+        n_tokens = h_in_2d.shape[0]
+
+        fig_dpi = self.fig.dpi
+        fig_w_in, fig_h_in = self.fig.get_size_inches()
+        pos = sub_ax.get_position()
+        panel_w_px = pos.width * fig_w_in * fig_dpi
+        panel_h_px = pos.height * fig_h_in * fig_dpi
+        panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
+
+        base_font = panel_diag_px * 0.020
+        token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
+        label_fontsize = max(7.0, min(18.0, base_font * token_scale))
+
+        n_labels = min(max(n_tokens // 8, 3), 25)
+        if panel_diag_px < 200:
+            n_labels = min(n_labels, 6)
+
+        draw_key = jacobi_data.get('draw_key', 0)
+        rng = np.random.RandomState(
+            seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
+        )
+        label_idx = rng.choice(
+            n_tokens, size=min(n_labels, n_tokens), replace=False
+        )
+
+        offset_px = max(3.0, label_fontsize * 0.7)
+
+        for li in label_idx:
+            tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
+
+            if token_strings_f is not None and li < len(token_strings_f):
+                label_text = token_strings_f[li]
+                if len(label_text) > 14:
+                    label_text = label_text[:13] + "\u2026"
+            else:
+                label_text = f"t{li}"
+
+            # Whitespace-only → visible placeholder
+            if not label_text.strip():
+                label_text = "␣"
+
+            sub_ax.annotate(
+                label_text,
+                (tx, ty),
+                fontsize=label_fontsize,
+                color='#f0f0f0',
+                alpha=0.92,
+                fontweight='bold',
+                fontfamily='monospace',
+                xytext=(offset_px, offset_px),
+                textcoords='offset points',
+                zorder=8,
+                bbox=dict(
+                    boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                    facecolor='#0d1117',
+                    edgecolor='#3a5a7a',
+                    alpha=0.75,
+                    linewidth=0.4,
+                ),
+            )
+
+        # ═══════════════════════════════════════════════════════
+        # 5. LAYER LABEL
+        # ═══════════════════════════════════════════════════════
+        layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
+        mean_vol = per_token_volume.mean()
+        aniso_val = f['anisotropy']
+
+        sub_ax.set_title(
+            f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2099={aniso_val:.1f}",
+            fontsize=7, fontweight="bold", color="#aaccee", pad=2,
+        )
+
+        sub_ax.set_xlim(*x_lim)
+        sub_ax.set_ylim(*y_lim)
+        sub_ax.set_aspect('auto')
+        sub_ax.tick_params(labelsize=0, length=0)
+        for spine in sub_ax.spines.values():
+            spine.set_color('#2a3a4a')
+            spine.set_linewidth(0.5)
+
+    def _draw_cumulative_panel(self, cum_ax, ref_h_in_2d, cumulative_delta, f, ell, step):
+        """
+        Draw the cumulative space-movements panel.
+
+        Token positions are ABSOLUTELY FIXED at their layer-0 positions.
+        Arrows show the cumulative displacement that space has undergone
+        from layer 0 through the current layer.
+        """
+        from matplotlib.colors import hsv_to_rgb
+
+        n_tokens = ref_h_in_2d.shape[0]
+
+        # ── Axis limits: use the reference positions with some padding ──
+        x_range = ref_h_in_2d[:, 0]
+        y_range = ref_h_in_2d[:, 1]
+        pad_frac = 0.25
+        x_span = max(np.ptp(x_range), 0.1)
+        y_span = max(np.ptp(y_range), 0.1)
+        x_min = x_range.min() - pad_frac * x_span
+        x_max = x_range.max() + pad_frac * x_span
+        y_min = y_range.min() - pad_frac * y_span
+        y_max = y_range.max() + pad_frac * y_span
+
+        # ── Background: dark ────────────────────────────────────────────
+        cum_ax.set_facecolor("#0d1117")
+
+        # ── Draw arrows from fixed positions showing cumulative movement ─
+        mag = np.sqrt(cumulative_delta[:, 0]**2 + cumulative_delta[:, 1]**2)
+        mag_max = max(mag.max(), 1e-10)
+        mag_norm = mag / mag_max
+
+        # Color arrows by direction (HSV hue = angle, saturation = magnitude)
+        angles = np.arctan2(cumulative_delta[:, 1], cumulative_delta[:, 0])
+        hues = (angles + np.pi) / (2 * np.pi)
+
+        for i in range(n_tokens):
+            if mag[i] < 1e-8:
+                continue  # skip zero-displacement tokens
+
+            # Arrow color from HSV
+            h_val = hues[i]
+            s_val = 0.85
+            v_val = 0.4 + 0.6 * mag_norm[i]
+            rgb = hsv_to_rgb(np.array([[[h_val, s_val, v_val]]]))[0, 0]
+
+            alpha = 0.3 + 0.6 * mag_norm[i]
+
+            cum_ax.annotate(
+                '',
+                xy=(ref_h_in_2d[i, 0] + cumulative_delta[i, 0],
+                    ref_h_in_2d[i, 1] + cumulative_delta[i, 1]),
+                xytext=(ref_h_in_2d[i, 0], ref_h_in_2d[i, 1]),
+                arrowprops=dict(
+                    arrowstyle='->', color=rgb,
+                    lw=0.8 + 1.2 * mag_norm[i],
+                    mutation_scale=8,
+                    alpha=alpha,
+                ),
+                zorder=3,
+            )
+
+        # ── Fixed token markers (always at reference positions) ─────────
+        cum_ax.scatter(
+            ref_h_in_2d[:, 0], ref_h_in_2d[:, 1],
+            s=12, color='#ffffff', edgecolors='#3a5a7a',
+            linewidths=0.4, zorder=6, alpha=0.9,
+        )
+
+        # ── Sparse token labels ─────────────────────────────────────────
+        token_strings_f = f.get('token_strings', None)
+        n_labels = min(max(n_tokens // 10, 2), 15)
+
+        rng = np.random.RandomState(seed=(ell * 17 + 42) & 0xFFFFFFFF)
+        label_idx = rng.choice(n_tokens, size=min(n_labels, n_tokens), replace=False)
+
+        for li in label_idx:
+            tx, ty = ref_h_in_2d[li, 0], ref_h_in_2d[li, 1]
+            if token_strings_f is not None and li < len(token_strings_f):
+                label_text = token_strings_f[li]
+                if len(label_text) > 10:
+                    label_text = label_text[:9] + "\u2026"
+            else:
+                label_text = f"t{li}"
+            if not label_text.strip():
+                label_text = "\u2423"
+
+            cum_ax.annotate(
+                label_text,
+                (tx, ty),
+                fontsize=5.5,
+                color='#cccccc',
+                alpha=0.8,
+                fontweight='bold',
+                fontfamily='monospace',
+                xytext=(3, 3),
+                textcoords='offset points',
+                zorder=8,
+                bbox=dict(
+                    boxstyle='round,pad=0.12',
+                    facecolor='#0d1117',
+                    edgecolor='#2a3a4a',
+                    alpha=0.7,
+                    linewidth=0.3,
+                ),
+            )
+
+        # ── Title ───────────────────────────────────────────────────────
+        layer_label = "Emb\u2192L1" if ell == 0 else f"L0\u2192L{ell+1}"
+        mean_cum_mag = mag.mean()
+        max_cum_mag = mag.max()
+
+        cum_ax.set_title(
+            f"Cumul. {layer_label}  \u03bc|\u0394|={mean_cum_mag:.3f}  max={max_cum_mag:.3f}",
+            fontsize=6, fontweight="bold", color="#88ccaa", pad=2,
+        )
+
+        cum_ax.set_xlim(x_min, x_max)
+        cum_ax.set_ylim(y_min, y_max)
+        cum_ax.set_aspect('auto')
+        cum_ax.tick_params(labelsize=0, length=0)
+        for spine in cum_ax.spines.values():
+            spine.set_color('#1a3a2a')
+            spine.set_linewidth(0.5)
+
+    def _draw_single_jacobi_panel(self, sub_ax, f, ell, jacobi_data, hsv_to_rgb):
+        """Draw a single layer's Jacobi field panel (the existing top-row visualization)."""
+        h_in_2d = f['h_in_2d']
+        grid_x = f['grid_x']
+        grid_y = f['grid_y']
+        grid_volume = f['grid_volume']
+        grid_disp_x = f['grid_disp_x']
+        grid_disp_y = f['grid_disp_y']
+        grid_max_stretch_val = f['grid_max_stretch_val']
+        grid_min_stretch_val = f['grid_min_stretch_val']
+        grid_max_stretch_dir = f['grid_max_stretch_dir']
+        x_lim = f['x_lim']
+        y_lim = f['y_lim']
+        per_token_volume = f['per_token_volume']
+        per_token_shear = f['per_token_shear_mag']
+
+        grid_n = grid_x.shape[0]
+
+        # ── 1. COLORFUL BACKGROUND: HSV encoding of deformation ───
+        disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
+        disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+
+        mag_norm = np.arcsinh(disp_mag * 2.0)
+        mag_max = max(mag_norm.max(), 1e-10)
+        mag_norm = mag_norm / mag_max
+
+        H = (disp_angle + np.pi) / (2 * np.pi)
+        S_hsv = np.ones_like(H) * 0.85
+        V_hsv = 0.15 + 0.85 * mag_norm
+
+        hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
+        rgb_img = hsv_to_rgb(hsv_img)
+
+        log_vol = np.log(np.clip(grid_volume, 1e-6, None))
+        lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+        lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
+
+        vol_blend = 0.2
+        rgb_img[:, :, 0] = np.clip(
+            rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1
+        )
+        rgb_img[:, :, 2] = np.clip(
+            rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1
+        )
+
+        sub_ax.imshow(
+            rgb_img,
+            extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
+            origin='lower', aspect='auto', interpolation='bilinear', alpha=0.9,
+        )
+
+        # ── 2. STREAMLINES ────────────────────────────────────────
+        gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
+        gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
+
+        try:
+            speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
+            lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
+            sub_ax.streamplot(
+                gx_1d, gy_1d, grid_disp_x, grid_disp_y,
+                color='white', linewidth=lw, density=0.7,
+                arrowsize=0.6, arrowstyle='->', zorder=2, minlength=0.2,
+            )
+        except Exception:
+            pass
+
+        # ── 3. STRETCH WHISKERS ───────────────────────────────────
+        whisker_step = max(1, grid_n // 8)
+        x_span = x_lim[1] - x_lim[0]
+        y_span = y_lim[1] - y_lim[0]
+        whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
+
+        for gi in range(whisker_step // 2, grid_n, whisker_step):
+            for gj in range(whisker_step // 2, grid_n, whisker_step):
+                cx = grid_x[gi, gj]
+                cy = grid_y[gi, gj]
+                d = grid_max_stretch_dir[gi, gj]
+                s_max = grid_max_stretch_val[gi, gj]
+                s_min = grid_min_stretch_val[gi, gj]
+
+                ratio = s_max / max(s_min, 1e-10)
+                if ratio < 1.05:
+                    continue
+
+                length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
+
+                if ratio < 1.5:
+                    wcolor, walpha = '#ffff44', 0.4
+                elif ratio < 3.0:
+                    wcolor, walpha = '#ff8800', 0.6
+                else:
+                    wcolor, walpha = '#ff2222', 0.8
+
+                x0 = cx - length * d[0]
+                y0 = cy - length * d[1]
+                x1 = cx + length * d[0]
+                y1 = cy + length * d[1]
+
+                sub_ax.plot(
+                    [x0, x1], [y0, y1],
+                    color=wcolor, linewidth=1.0, alpha=walpha,
+                    zorder=4, solid_capstyle='round',
+                )
+
+        # ── 4. TOKEN MARKERS ─────────────────────────────────────
+        shear_max = max(per_token_shear.max(), 1e-6)
+        shear_norm = per_token_shear / shear_max
+
+        sub_ax.scatter(
+            h_in_2d[:, 0], h_in_2d[:, 1],
+            s=10, c=shear_norm, cmap='magma',
+            vmin=0, vmax=1, edgecolors='none', zorder=6, alpha=0.9,
+        )
+
+        # ── 4b. SPARSE TOKEN LABELS ──────────────────────────────
+        token_strings_f = f.get('token_strings', None)
+        n_tokens = h_in_2d.shape[0]
+
+        fig_dpi = self.fig.dpi
+        fig_w_in, fig_h_in = self.fig.get_size_inches()
+        # Estimate panel pixel size from figure-fraction coords
+        # (fw and fh are in figure fraction; we don't have them here,
+        #  so use a reasonable estimate based on sub_ax position)
+        pos = sub_ax.get_position()
+        panel_w_px = pos.width * fig_w_in * fig_dpi
+        panel_h_px = pos.height * fig_h_in * fig_dpi
+        panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
+
+        base_font = panel_diag_px * 0.020
+        token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
+        label_fontsize = max(7.0, min(18.0, base_font * token_scale))
+
+        # ── How many labels ───────────────────────────────────
+        n_labels = min(max(n_tokens // 8, 3), 25)
+        if panel_diag_px < 200:
+            n_labels = min(n_labels, 6)
+
+        # ── Seed: shifts each render, but stable within a layer
+        draw_key = jacobi_data.get('draw_key', 0)
+        rng = np.random.RandomState(
+            seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
+        )
+        label_idx = rng.choice(
+            n_tokens, size=min(n_labels, n_tokens), replace=False
+        )
+
+        offset_px = max(3.0, label_fontsize * 0.7)
+
+        for li in label_idx:
+            tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
+
+            # ── Human-readable label ──────────────────────────
+            if token_strings_f is not None and li < len(token_strings_f):
+                label_text = token_strings_f[li]
+                if len(label_text) > 14:
+                    label_text = label_text[:13] + "…"
+            else:
+                label_text = f"t{li}"
+
+            # Whitespace-only → visible placeholder
+            if not label_text.strip():
+                label_text = "␣"
+
+            sub_ax.annotate(
+                label_text,
+                (tx, ty),
+                fontsize=label_fontsize,
+                color='#f0f0f0',
+                alpha=0.92,
+                fontweight='bold',
+                fontfamily='monospace',
+                xytext=(offset_px, offset_px),
+                textcoords='offset points',
+                zorder=8,
+                bbox=dict(
+                    boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                    facecolor='#0d1117',
+                    edgecolor='#3a5a7a',
+                    alpha=0.75,
+                    linewidth=0.4,
+                ),
+            )
+
+        # ═══════════════════════════════════════════════════════
+        # 5. LAYER LABEL
+        # ═══════════════════════════════════════════════════════
+        layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+        mean_vol = per_token_volume.mean()
+        aniso_val = f['anisotropy']
+
+        sub_ax.set_title(
+            f"{layer_label}  det={mean_vol:.2f}  σ₁/σₙ={aniso_val:.1f}",
+            fontsize=7, fontweight="bold", color="#aaccee", pad=2,
+        )
+
+        sub_ax.set_xlim(*x_lim)
+        sub_ax.set_ylim(*y_lim)
+        sub_ax.set_aspect('auto')
+        sub_ax.tick_params(labelsize=0, length=0)
+        for spine in sub_ax.spines.values():
+            spine.set_color('#2a3a4a')
+            spine.set_linewidth(0.5)
+
+    def _draw_cumulative_panel(self, cum_ax, ref_h_in_2d, cumulative_delta, f, ell, step):
+        """
+        Draw the cumulative space-movements panel.
+        
+        Token positions are ABSOLUTELY FIXED at their layer-0 positions.
+        Arrows show the cumulative displacement that space has undergone
+        from layer 0 through the current layer.
+        """
+        from matplotlib.colors import hsv_to_rgb
+
+        n_tokens = ref_h_in_2d.shape[0]
+
+        # ── Axis limits: use the reference positions with some padding ──
+        x_range = ref_h_in_2d[:, 0]
+        y_range = ref_h_in_2d[:, 1]
+        pad_frac = 0.25
+        x_span = max(np.ptp(x_range), 0.1)
+        y_span = max(np.ptp(y_range), 0.1)
+        x_min = x_range.min() - pad_frac * x_span
+        x_max = x_range.max() + pad_frac * x_span
+        y_min = y_range.min() - pad_frac * y_span
+        y_max = y_range.max() + pad_frac * y_span
+
+        # ── Background: dark ────────────────────────────────────────────
+        cum_ax.set_facecolor("#0d1117")
+
+        # ── Draw arrows from fixed positions showing cumulative movement ─
+        mag = np.sqrt(cumulative_delta[:, 0]**2 + cumulative_delta[:, 1]**2)
+        mag_max = max(mag.max(), 1e-10)
+        mag_norm = mag / mag_max
+
+        # Color arrows by direction (HSV hue = angle, saturation = magnitude)
+        angles = np.arctan2(cumulative_delta[:, 1], cumulative_delta[:, 0])
+        hues = (angles + np.pi) / (2 * np.pi)
+
+        for i in range(n_tokens):
+            if mag[i] < 1e-8:
+                continue  # skip zero-displacement tokens
+
+            # Arrow color from HSV
+            h_val = hues[i]
+            s_val = 0.85
+            v_val = 0.4 + 0.6 * mag_norm[i]
+            rgb = hsv_to_rgb(np.array([[[h_val, s_val, v_val]]]))[0, 0]
+
+            alpha = 0.3 + 0.6 * mag_norm[i]
+
+            cum_ax.annotate(
+                '',
+                xy=(ref_h_in_2d[i, 0] + cumulative_delta[i, 0],
+                    ref_h_in_2d[i, 1] + cumulative_delta[i, 1]),
+                xytext=(ref_h_in_2d[i, 0], ref_h_in_2d[i, 1]),
+                arrowprops=dict(
+                    arrowstyle='->', color=rgb,
+                    lw=0.8 + 1.2 * mag_norm[i],
+                    mutation_scale=8,
+                    alpha=alpha,
+                ),
+                zorder=3,
+            )
+
+        # ── Fixed token markers (always at reference positions) ─────────
+        cum_ax.scatter(
+            ref_h_in_2d[:, 0], ref_h_in_2d[:, 1],
+            s=12, color='#ffffff', edgecolors='#3a5a7a',
+            linewidths=0.4, zorder=6, alpha=0.9,
+        )
+
+        # ── Sparse token labels ─────────────────────────────────────────
+        token_strings_f = f.get('token_strings', None)
+        n_labels = min(max(n_tokens // 10, 2), 15)
+
+        rng = np.random.RandomState(seed=(ell * 17 + 42) & 0xFFFFFFFF)
+        label_idx = rng.choice(n_tokens, size=min(n_labels, n_tokens), replace=False)
+
+        for li in label_idx:
+            tx, ty = ref_h_in_2d[li, 0], ref_h_in_2d[li, 1]
+            if token_strings_f is not None and li < len(token_strings_f):
+                label_text = token_strings_f[li]
+                if len(label_text) > 10:
+                    label_text = label_text[:9] + "…"
+            else:
+                label_text = f"t{li}"
+            if not label_text.strip():
+                label_text = "␣"
+
+            cum_ax.annotate(
+                label_text,
+                (tx, ty),
+                fontsize=5.5,
+                color='#cccccc',
+                alpha=0.8,
+                fontweight='bold',
+                fontfamily='monospace',
+                xytext=(3, 3),
+                textcoords='offset points',
+                zorder=8,
+                bbox=dict(
+                    boxstyle='round,pad=0.12',
+                    facecolor='#0d1117',
+                    edgecolor='#2a3a4a',
+                    alpha=0.7,
+                    linewidth=0.3,
+                ),
+            )
+
+        # ── Title ───────────────────────────────────────────────────────
+        layer_label = "Emb→L1" if ell == 0 else f"L0→L{ell+1}"
+        mean_cum_mag = mag.mean()
+        max_cum_mag = mag.max()
+
+        cum_ax.set_title(
+            f"Cumul. {layer_label}  μ|Δ|={mean_cum_mag:.3f}  max={max_cum_mag:.3f}",
+            fontsize=6, fontweight="bold", color="#88ccaa", pad=2,
+        )
+
+        cum_ax.set_xlim(x_min, x_max)
+        cum_ax.set_ylim(y_min, y_max)
+        cum_ax.set_aspect('auto')
+        cum_ax.tick_params(labelsize=0, length=0)
+        for spine in cum_ax.spines.values():
+            spine.set_color('#1a3a2a')
+            spine.set_linewidth(0.5)
+
+    def _draw_jacobi_legend(self, ax, px0, py0, pw, ph,
+                            field_width_frac, legend_width_frac,
+                            hsv_to_rgb, use_pca):
+        """Draw the color wheel legend and text legend on the right side."""
+        legend_x = px0 + pw * (field_width_frac + 0.01)
+        legend_w = pw * (legend_width_frac - 0.02)
+
+        wheel_size = min(legend_w, ph * 0.18)
+        wheel_y = py0 + ph * 0.78
+        wheel_ax = self.fig.add_axes(
+            [legend_x + (legend_w - wheel_size) * 0.5, wheel_y,
+             wheel_size, wheel_size]
+        )
+        wheel_ax.set_facecolor("#0a0a1a")
+        wheel_ax.set_in_layout(False)
+        self._jacobi_subaxes.append(wheel_ax)
+
+        # Build the color wheel as a Cartesian RGBA image
+        wheel_res = 128
+        wx = np.linspace(-1, 1, wheel_res)
+        wy = np.linspace(-1, 1, wheel_res)
+        WX, WY = np.meshgrid(wx, wy)
+        W_angle = np.arctan2(WY, WX)
+        W_radius = np.sqrt(WX**2 + WY**2)
+
+        W_H = (W_angle + np.pi) / (2 * np.pi)
+        W_S = np.ones_like(W_H) * 0.85
+        W_V = 0.15 + 0.85 * np.clip(W_radius, 0, 1)
+
+        mask = W_radius > 1.0
+        W_S[mask] = 0.0
+        W_V[mask] = 0.0
+
+        hsv_wheel = np.stack([W_H, W_S, W_V], axis=-1)
+        rgb_wheel = hsv_to_rgb(hsv_wheel)
+
+        alpha_channel = np.ones((wheel_res, wheel_res))
+        alpha_channel[mask] = 0.0
+        rgba_wheel = np.concatenate(
+            [rgb_wheel, alpha_channel[:, :, np.newaxis]], axis=-1
+        )
+
+        wheel_ax.imshow(
+            rgba_wheel,
+            extent=[-1.0, 1.0, -1.0, 1.0],
+            origin='lower',
+            aspect='equal',
+            interpolation='bilinear',
+        )
+
+        # Direction labels
+        if use_pca:
+            lbl_right, lbl_left = '+PC1\n→', '←\n−PC1'
+            lbl_up, lbl_down = '↑ +PC2', '↓ −PC2'
+        else:
+            lbl_right, lbl_left = '+dim0\n→', '←\n−dim0'
+            lbl_up, lbl_down = '↑ +dim1', '↓ −dim1'
+
+        lbl_cfg = dict(fontsize=6.5, fontweight='bold', color='white',
+                       ha='center', va='center')
+        wheel_ax.text(1.35, 0.0, lbl_right, **lbl_cfg)
+        wheel_ax.text(-1.35, 0.0, lbl_left, **lbl_cfg)
+        wheel_ax.text(0.0, 1.35, lbl_up, **lbl_cfg)
+        wheel_ax.text(0.0, -1.35, lbl_down, **lbl_cfg)
+
+        wheel_ax.text(0.0, 0.0, 'weak', fontsize=5, color='#666666',
+                      ha='center', va='center', fontstyle='italic')
+
+        wheel_ax.set_xlim(-1.7, 1.7)
+        wheel_ax.set_ylim(-1.7, 1.7)
+        wheel_ax.axis('off')
+
+        wheel_ax.set_title("Deformation\nDirection & Strength",
+                           fontsize=8, fontweight='bold', color='#c0d8e8',
+                           pad=8)
+
+        # ═══════════════════════════════════════════════════════════════
+        # TEXT LEGEND below the color wheel
+        # ═══════════════════════════════════════════════════════════════
+        legend_text_y = py0 + ph * 0.03
+        legend_text_h = ph * 0.73
+        legend_text_ax = self.fig.add_axes(
+            [legend_x, legend_text_y, legend_w, legend_text_h]
+        )
+        legend_text_ax.set_facecolor("#0a0a1a")
+        legend_text_ax.set_xlim(0, 1)
+        legend_text_ax.set_ylim(0, 1)
+        legend_text_ax.axis('off')
+        legend_text_ax.set_in_layout(False)
+        self._jacobi_subaxes.append(legend_text_ax)
+
+        legend_items = [
+            ("TOP ROW", "", "#c0d8e8", True),
+            ("██ Hue", "deformation direction", "#ffffff", False),
+            ("██ Bright", "strong deformation", "#dddddd", False),
+            ("██ Dark", "weak / no deformation", "#555555", False),
+            ("██ Red tint", "expanding (det J > 1)", "#ff6666", False),
+            ("██ Blue tint", "contracting (det J < 1)", "#6688ff", False),
+            ("", "", "#000000", False),
+            ("OVERLAYS", "", "#c0d8e8", True),
+            ("── white", "streamlines (flow)", "#ffffff", False),
+            ("── yellow", "mild anisotropic stretch", "#ffff44", False),
+            ("── orange", "moderate stretch", "#ff8800", False),
+            ("── red", "extreme stretch", "#ff2222", False),
+            ("", "", "#000000", False),
+            ("BOTTOM ROW", "", "#88ccaa", True),
+            ("→ arrows", "cumulative displacement", "#88ccaa", False),
+            ("● white", "fixed token positions", "#ffffff", False),
+            ("hue", "direction of movement", "#aaddcc", False),
+            ("length", "magnitude of movement", "#aaddcc", False),
+            ("", "", "#000000", False),
+            ("TOKENS", "", "#c0d8e8", True),
+            ("● dot", "shear magnitude (magma)", "#dd6644", False),
+        ]
+
+        n_items = len(legend_items)
+        line_spacing = 0.95 / max(n_items, 1)
+
+        for i, (symbol, desc, color, is_header) in enumerate(legend_items):
+            y = 0.97 - i * line_spacing
+            if not symbol and not desc:
+                continue
+
+            if is_header:
+                legend_text_ax.text(
+                    0.05, y, symbol,
+                    fontsize=7, fontweight='bold', color=color,
+                    fontfamily='sans-serif', va='top',
+                    transform=legend_text_ax.transAxes,
+                )
+            else:
                 legend_text_ax.text(
                     0.05, y, symbol,
                     fontsize=6, fontweight='bold', color=color,
