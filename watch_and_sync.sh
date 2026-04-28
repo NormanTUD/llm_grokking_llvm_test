@@ -331,8 +331,7 @@ generate_slideshow_html() {
 
     local TOTAL=${#IMAGES[@]}
 
-    # --- Write HTML ---
-    cat > "$OUT" <<HEADER
+    cat > "$OUT" <<'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -340,7 +339,113 @@ generate_slideshow_html() {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Training Plot History</title>
 <style>
-$(_slideshow_common_css)
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090d;
+    color: #e8eaf6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 1.5rem;
+    background: #12152a;
+    border-bottom: 1px solid #1e2340;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .toolbar .title {
+    font-size: 1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .toolbar .controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .toolbar button {
+    background: #1e2340;
+    border: 1px solid #2a2f55;
+    color: #e8eaf6;
+    padding: 0.35rem 0.9rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover { background: #2a2f55; border-color: #7c5cfc; }
+  .toolbar button:active { background: #7c5cfc; color: #fff; }
+  .toolbar button.playing { background: #00d4aa; color: #08090d; border-color: #00d4aa; }
+
+  .counter {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: #6b70a0;
+    min-width: 140px;
+    text-align: center;
+  }
+  .counter .current { color: #7c5cfc; font-weight: 700; }
+
+  /* === SCRUBBER / SLIDER === */
+  .scrubber-container {
+    flex-shrink: 0;
+    height: 28px;
+    background: #0d0f16;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #1e2340;
+  }
+  .scrubber-track {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    height: 6px;
+    background: #1e2340;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .scrubber-track:hover, .scrubber-container.dragging .scrubber-track {
+    height: 10px;
+  }
+  .scrubber-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    border-radius: 3px;
+    pointer-events: none;
+    will-change: width;
+  }
+  .scrubber-thumb {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: #e8eaf6;
+    border: 2px solid #7c5cfc;
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    will-change: left;
+    box-shadow: 0 0 8px rgba(124,92,252,0.4);
+    transition: transform 0.1s;
+  }
+  .scrubber-container.dragging .scrubber-thumb {
+    transform: translate(-50%, -50%) scale(1.3);
+    background: #7c5cfc;
+  }
+
   .slide-container {
     flex: 1;
     display: flex;
@@ -354,73 +459,266 @@ $(_slideshow_common_css)
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+    will-change: opacity;
   }
+  .slide-container img.hidden { display: none; }
+
+  .hint {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: #4a4f78;
+    pointer-events: none;
+    opacity: 0.7;
+    z-index: 5;
+  }
+  .speed-label { font-size: 0.7rem; color: #6b70a0; }
 </style>
 </head>
 <body>
-HEADER
 
-    _slideshow_common_toolbar_html \
-        "Training Plot History" \
-        "500" \
-        "<div class=\"counter\"><span class=\"current\" id=\"frame-num\">1</span> / ${TOTAL}</div>" \
-        >> "$OUT"
-
-    cat >> "$OUT" <<'CONTAINER'
-<div class="slide-container">
-  <img id="slide-img" src="" alt="Training plot">
-  <div class="hint">↑ ↓ ← → navigate · Space play/pause · Home/End jump · +/− speed</div>
+<div class="toolbar">
+  <div class="title">Training Plot History</div>
+  <div class="controls">
+    <button id="btn-start" title="First (Home)">⏮</button>
+    <button id="btn-prev" title="Previous (←/↓)">◀</button>
+    <button id="btn-play" title="Play/Pause (Space)">▶</button>
+    <button id="btn-next" title="Next (→/↑)">▶▶</button>
+    <button id="btn-end" title="Last (End)">⏭</button>
+    <span class="speed-label">Speed:</span>
+    <button id="btn-slower" title="Slower (−)">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
+    <button id="btn-faster" title="Faster (+)">+</button>
+    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">?</span></div>
+  </div>
 </div>
+
+<div class="scrubber-container" id="scrubber">
+  <div class="scrubber-track" id="scrubber-track">
+    <div class="scrubber-fill" id="scrubber-fill" style="width:0%"></div>
+  </div>
+  <div class="scrubber-thumb" id="scrubber-thumb" style="left:12px"></div>
+</div>
+
+<div class="slide-container" id="slide-container">
+  <img id="slide-img-a" src="" alt="Training plot">
+  <img id="slide-img-b" src="" alt="Training plot" class="hidden">
+  <div class="hint">← → navigate · Drag slider · Scroll wheel · Space play/pause · Home/End jump · +/− speed</div>
+</div>
+
 <script>
-CONTAINER
+HTMLEOF
 
     # Build the JS image array
     echo 'const images = [' >> "$OUT"
     for img in "${IMAGES[@]}"; do
-        local cb="?t=$(date +%s)"
-        echo "  \"${img}${cb}\"," >> "$OUT"
+        echo "\"${img}\"," >> "$OUT"
     done
     echo '];' >> "$OUT"
 
-    cat >> "$OUT" <<'SLIDESHOW_LOGIC'
+    cat >> "$OUT" <<'JSEOF'
 const total = images.length;
-let idx = 0;  // start at the first frame
+document.getElementById('frame-total').textContent = total;
 
-const imgEl = document.getElementById('slide-img');
+let idx = 0;
+let playing = false;
+let playInterval = null;
+let speed = 500;
+
+// --- DOM refs ---
+const imgA = document.getElementById('slide-img-a');
+const imgB = document.getElementById('slide-img-b');
 const frameNum = document.getElementById('frame-num');
+const btnPlay = document.getElementById('btn-play');
+const speedDisplay = document.getElementById('speed-display');
+const scrubber = document.getElementById('scrubber');
+const scrubberTrack = document.getElementById('scrubber-track');
+const scrubberFill = document.getElementById('scrubber-fill');
+const scrubberThumb = document.getElementById('scrubber-thumb');
 
-function getTotal() { return total; }
+// === PRELOAD CACHE (sliding window) ===
+const cache = new Map();       // url -> HTMLImageElement (decoded)
+const PRELOAD_AHEAD = 15;
+const PRELOAD_BEHIND = 5;
+const MAX_CACHE = 60;          // max cached images in memory
 
-function show(i) {
-  idx = Math.max(0, Math.min(total - 1, i));
-  imgEl.src = images[idx];
-  frameNum.textContent = idx + 1;
-  progressFill.style.width = ((idx + 1) / total * 100) + '%';
+function getUrl(i) {
+  return images[i];  // no cache-bust needed for local; add ?t=... if you want
 }
 
-function next() { show(idx + 1); if (idx >= total - 1 && playing) togglePlay(); }
+function preloadAround(center) {
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(total - 1, center + PRELOAD_AHEAD);
+
+  for (let i = lo; i <= hi; i++) {
+    const url = getUrl(i);
+    if (!cache.has(url)) {
+      const img = new Image();
+      img.src = url;
+      cache.set(url, img);
+    }
+  }
+
+  // Evict far-away entries if cache too large
+  if (cache.size > MAX_CACHE) {
+    for (const [url] of cache) {
+      if (cache.size <= MAX_CACHE) break;
+      // find index of this url
+      const urlIdx = images.indexOf(url);
+      if (urlIdx < lo - 10 || urlIdx > hi + 10) {
+        cache.delete(url);
+      }
+    }
+  }
+}
+
+// === DISPLAY ===
+let activeImg = imgA;
+
+function show(i) {
+  i = Math.max(0, Math.min(total - 1, i));
+  if (i === idx && activeImg.src.includes(getUrl(i))) return; // no change
+  idx = i;
+
+  const url = getUrl(idx);
+  activeImg.src = url;
+
+  frameNum.textContent = idx + 1;
+  updateScrubber();
+  preloadAround(idx);
+}
+
+// === SCRUBBER ===
+function updateScrubber() {
+  const pct = total > 1 ? idx / (total - 1) : 0;
+  scrubberFill.style.width = (pct * 100) + '%';
+
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  const left = trackRect.left - scrubber.getBoundingClientRect().left + pct * trackRect.width;
+  scrubberThumb.style.left = left + 'px';
+}
+
+// --- Drag logic ---
+let dragging = false;
+
+function scrubFromEvent(e) {
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  let pct = (e.clientX - trackRect.left) / trackRect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  const newIdx = Math.round(pct * (total - 1));
+  show(newIdx);
+}
+
+function onPointerDown(e) {
+  dragging = true;
+  scrubber.classList.add('dragging');
+  scrubber.setPointerCapture(e.pointerId);
+  scrubFromEvent(e);
+}
+function onPointerMove(e) {
+  if (!dragging) return;
+  scrubFromEvent(e);
+}
+function onPointerUp(e) {
+  if (!dragging) return;
+  dragging = false;
+  scrubber.classList.remove('dragging');
+}
+
+scrubber.addEventListener('pointerdown', onPointerDown);
+scrubber.addEventListener('pointermove', onPointerMove);
+scrubber.addEventListener('pointerup', onPointerUp);
+scrubber.addEventListener('pointercancel', onPointerUp);
+
+// === PLAYBACK ===
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸' : '▶';
+  btnPlay.classList.toggle('playing', playing);
+  if (playing) {
+    playInterval = setInterval(() => {
+      if (idx >= total - 1) { togglePlay(); return; }
+      show(idx + 1);
+    }, speed);
+  } else {
+    clearInterval(playInterval);
+    playInterval = null;
+  }
+}
+
+function updateSpeed(newSpeed) {
+  speed = Math.max(30, Math.min(5000, newSpeed));
+  speedDisplay.textContent = speed + 'ms';
+  if (playing) {
+    clearInterval(playInterval);
+    playInterval = setInterval(() => {
+      if (idx >= total - 1) { togglePlay(); return; }
+      show(idx + 1);
+    }, speed);
+  }
+}
+
+function next() { show(idx + 1); }
 function prev() { show(idx - 1); }
 function goStart() { show(0); }
 function goEnd() { show(total - 1); }
-SLIDESHOW_LOGIC
 
-    _slideshow_common_controls_js "100" "500" "50" "5000" >> "$OUT"
+// === CONTROLS ===
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-start').addEventListener('click', goStart);
+document.getElementById('btn-end').addEventListener('click', goEnd);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
 
-    cat >> "$OUT" <<'PRELOAD_AND_INIT'
-
-// Preload ALL images on page load for smooth navigation
-(function preloadAll() {
-  for (let i = 0; i < total; i++) {
-    const img = new Image();
-    img.src = images[i];
+// === KEYBOARD ===
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowLeft':  case 'ArrowDown':  e.preventDefault(); prev(); break;
+    case 'ArrowRight': case 'ArrowUp':    e.preventDefault(); next(); break;
+    case 'Home':       e.preventDefault(); goStart(); break;
+    case 'End':        e.preventDefault(); goEnd(); break;
+    case ' ':          e.preventDefault(); togglePlay(); break;
+    case '+':          e.preventDefault(); updateSpeed(speed - 100); break;
+    case '-':          e.preventDefault(); updateSpeed(speed + 100); break;
+    case 'PageDown':   e.preventDefault(); show(idx + 50); break;
+    case 'PageUp':     e.preventDefault(); show(idx - 50); break;
   }
-})();
+});
 
-show(idx);
+// === MOUSE WHEEL on the image area ===
+document.getElementById('slide-container').addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY > 0 || e.deltaX > 0) next();
+  else prev();
+}, { passive: false });
+
+// === TOUCH SWIPE on the image area ===
+let touchStartX = 0;
+const slideContainer = document.getElementById('slide-container');
+slideContainer.addEventListener('touchstart', (e) => {
+  touchStartX = e.touches[0].clientX;
+}, { passive: true });
+slideContainer.addEventListener('touchend', (e) => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 40) {
+    if (dx < 0) next(); else prev();
+  }
+}, { passive: true });
+
+// === RESIZE handler for scrubber ===
+window.addEventListener('resize', () => updateScrubber());
+
+// === INIT ===
+preloadAround(0);
+show(0);
 </script>
 </body>
 </html>
-PRELOAD_AND_INIT
+JSEOF
 
     echo "Slideshow generated: $OUT (${TOTAL} frames)"
 }
