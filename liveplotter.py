@@ -1133,7 +1133,7 @@ class LivePlotter:
         """
         Render Jacobi fields for 3D/4D models using multiple 2D coordinate slices.
         
-        Layout: rows = coordinate-pair slices, columns = layers.
+        Layout: rows = layers, columns = coordinate-pair slices.
         Each cell is rendered like the 2D special case (warped grid, tokens, etc.).
         """
         try:
@@ -1155,12 +1155,12 @@ class LivePlotter:
             fontsize=10, fontweight="bold", color="#c0d8e8",
         )
 
-        # Layout: n_slices rows × n_layers columns, plus legend on right
+        # Layout: n_layers rows × n_slices columns, plus legend on right
         legend_width_frac = 0.10
         field_width_frac = 1.0 - legend_width_frac
 
-        n_cols = min(n_layers, 6)
-        n_rows = n_slices
+        n_cols = n_slices
+        n_rows = min(n_layers, 6)
 
         pad_x = 0.02
         pad_y = 0.10
@@ -1178,15 +1178,14 @@ class LivePlotter:
         pw, ph = parent_bbox.width, parent_bbox.height
 
         for ell, layer_data in enumerate(fields):
-            col = ell % n_cols
+            row = ell % n_rows
             slice_field_list = layer_data['slice_fields']
 
             for si, sf in enumerate(slice_field_list):
-                # Row 0 = top slice, row n_slices-1 = bottom slice
-                row = si
+                col = si
 
                 fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
-                # Top row at top of panel, bottom row at bottom
+                # Top row (layer 0) at top of panel, bottom row at bottom
                 fy = py0 + ph * (pad_bottom + (n_rows - 1 - row) * cell_h + inset_margin)
                 fw = pw * (cell_w - 2 * inset_margin)
                 fh = ph * (cell_h - 2 * inset_margin)
@@ -1210,14 +1209,28 @@ class LivePlotter:
                     fontsize=6, fontweight="bold", color="#aaccee", pad=2,
                 )
 
-        # ── Row labels on the left edge ─────────────────────────────
+        # ── Column labels on the top edge (slice labels) ────────────────
         for si, (dim_a, dim_b) in enumerate(slice_pairs):
-            row = si
-            label_y = py0 + ph * (pad_bottom + (n_rows - 1 - row) * cell_h + cell_h * 0.5)
-            label_x = px0 + pw * 0.005
+            col = si
+            label_x = px0 + pw * (pad_x + col * cell_w + cell_w * 0.5)
+            label_y = py0 + ph * (pad_bottom + total_h + 0.01)
             ax.text(
                 (label_x - px0) / pw, (label_y - py0) / ph,
                 f"d{dim_a}×d{dim_b}",
+                fontsize=7, fontweight='bold', color='#88aacc',
+                ha='center', va='bottom',
+                transform=ax.transAxes,
+            )
+
+        # ── Row labels on the left edge (layer labels) ──────────────────
+        for ell in range(min(n_layers, n_rows)):
+            row = ell
+            label_y = py0 + ph * (pad_bottom + (n_rows - 1 - row) * cell_h + cell_h * 0.5)
+            label_x = px0 + pw * 0.005
+            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            ax.text(
+                (label_x - px0) / pw, (label_y - py0) / ph,
+                layer_label,
                 fontsize=7, fontweight='bold', color='#88aacc',
                 ha='left', va='center', rotation=90,
                 transform=ax.transAxes,
@@ -1242,10 +1255,11 @@ class LivePlotter:
         legend_items = [
             (f"{D_orig}D SLICED VIEW", "", "#c0d8e8", True),
             ("", "", "#000000", False),
-            ("Each row = one 2D", "", "#88aacc", False),
+            ("Each column = one 2D", "", "#88aacc", False),
             ("coordinate slice", "", "#88aacc", False),
             (f"({n_slices} slices from", "", "#88aacc", False),
             (f" C({D_orig},2) pairs)", "", "#88aacc", False),
+            ("Each row = one layer", "", "#88aacc", False),
             ("", "", "#000000", False),
             ("── gray grid", "input space", "#888888", False),
             ("── colored grid", "output space", "#44aaff", False),
