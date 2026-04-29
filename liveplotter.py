@@ -32,404 +32,673 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
     For 2D hidden states: returns raw coordinates and output positions for
     direct morphed-space visualization (no PCA, no Jacobian decomposition).
     For 3+D hidden states: PCA projection with full Jacobian analysis.
+    
+    This is the coordinator function — delegates to specialized sub-functions.
     """
     model.eval()
-    output = model(input_ids=input_ids, output_hidden_states=True)
-    hidden_states = output.hidden_states
-
-    if hidden_states is None or len(hidden_states) < 2:
+    hidden_states = _extract_hidden_states(model, input_ids)
+    if hidden_states is None:
         return []
 
-    # ── Decode human-readable token strings ─────────────────────────
-    token_strings = None
-    if tokenizer is not None:
-        try:
-            flat_ids = input_ids.reshape(-1).tolist()
-            token_strings = [tokenizer.decode([tid]).strip() or f"<{tid}>"
-                             for tid in flat_ids]
-        except Exception:
-            token_strings = None
-
-    fields = []
-
-    # ── Determine hidden dimension ──────────────────────────────────
+    token_strings = _decode_token_strings(input_ids, tokenizer)
     D = hidden_states[0].shape[-1]
     is_2d = (D == 2)
-    use_pca = (D > 2)
 
-    if use_pca:
-        # ── Shared PCA basis from all layers for consistent 2D view ─
-        all_points = []
-        for hs in hidden_states:
-            pts = hs.detach().float().cpu()
-            pts = pts.reshape(-1, pts.shape[-1])
-            all_points.append(pts)
+    projection = _compute_projection_basis(hidden_states, D, is_2d)
 
-        all_concat = torch.cat(all_points, dim=0)
-        mean = all_concat.mean(0)
-        centered = all_concat - mean
-
-        try:
-            U, S_pca, Vh = torch.linalg.svd(centered, full_matrices=False)
-            pca_basis = Vh[:2, :]  # (2, D)
-            total_var = (S_pca ** 2).sum()
-            var_explained = ((S_pca[:2] ** 2).sum() / total_var).item()
-        except Exception:
-            pca_basis = torch.eye(2, centered.shape[1])
-            var_explained = 0.0
-    else:
-        # 2D: no PCA needed — use identity projection
-        mean = torch.zeros(D)
-        pca_basis = torch.eye(2, D)
-        var_explained = 1.0  # exact representation
-
+    fields = []
     for ell in range(len(hidden_states) - 1):
-        h_in = hidden_states[ell].detach().float()
-        h_in = h_in.reshape(-1, h_in.shape[-1])
-        h_out = hidden_states[ell + 1].detach().float()
-        h_out = h_out.reshape(-1, h_out.shape[-1])
-
-        T, D = h_in.shape
-        if T > max_tokens:
-            idx = torch.linspace(0, T - 1, max_tokens).long()
-            h_in = h_in[idx]
-            h_out = h_out[idx]
-            if token_strings is not None:
-                token_strings_layer = [token_strings[i] for i in idx.tolist()]
-            else:
-                token_strings_layer = None
-            T = max_tokens
-        else:
-            token_strings_layer = token_strings
-
+        h_in, h_out, token_strings_layer = _prepare_layer_pair(
+            hidden_states, ell, max_tokens, token_strings
+        )
         delta = h_out - h_in
 
-        # ── 2D coordinates ──────────────────────────────────────────
-        if use_pca:
-            h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()
-            h_out_2d = ((h_out.cpu() - mean) @ pca_basis.T).numpy()
-            delta_2d = ((delta.cpu()) @ pca_basis.T).numpy()
-        else:
-            h_in_2d = h_in.cpu().numpy()[:, :2]
-            h_out_2d = h_out.cpu().numpy()[:, :2]
-            delta_2d = delta.cpu().numpy()[:, :2]
+        h_in_2d, h_out_2d, delta_2d = _project_to_2d(
+            h_in, h_out, delta, projection, is_2d
+        )
 
-        # ════════════════════════════════════════════════════════════
-        # 2D SPECIAL CASE: morphed-space visualization
-        # No PCA, no Jacobian decomposition, no RBF interpolation.
-        # Just build a grid, warp it through the layer, and store both.
-        # ════════════════════════════════════════════════════════════
         if is_2d:
-            # Axis limits from input positions
-            pad_frac = 0.2
-            x_range = h_in_2d[:, 0]
-            y_range = h_in_2d[:, 1]
-            x_span = max(np.ptp(x_range), 0.1)
-            y_span = max(np.ptp(y_range), 0.1)
-            x_min = x_range.min() - pad_frac * x_span
-            x_max = x_range.max() + pad_frac * x_span
-            y_min = y_range.min() - pad_frac * y_span
-            y_max = y_range.max() + pad_frac * y_span
+            field = _compute_2d_field(
+                h_in, h_out, delta, h_in_2d, h_out_2d, delta_2d,
+                projection['pca_basis'], ell, token_strings_layer
+            )
+        else:
+            field = _compute_nd_field(
+                h_in, h_out, delta, h_in_2d, delta_2d,
+                projection, ell, token_strings_layer
+            )
 
-            # Build a regular grid in the input space
-            grid_n = 24
-            gx = np.linspace(x_min, x_max, grid_n)
-            gy = np.linspace(y_min, y_max, grid_n)
-            grid_x_in, grid_y_in = np.meshgrid(gx, gy)
-
-            # Warp the grid through the layer using nearest-neighbor interpolation
-            # of the actual layer mapping (h_in -> h_out)
-            from scipy.interpolate import RBFInterpolator
-
-            # Interpolate the OUTPUT x and y coordinates as functions of INPUT x,y
-            try:
-                rbf_out_x = RBFInterpolator(
-                    h_in_2d, h_out_2d[:, 0],
-                    kernel='thin_plate_spline', smoothing=1.0
-                )
-                rbf_out_y = RBFInterpolator(
-                    h_in_2d, h_out_2d[:, 1],
-                    kernel='thin_plate_spline', smoothing=1.0
-                )
-
-                grid_pts_in = np.stack([grid_x_in.ravel(), grid_y_in.ravel()], axis=1)
-                grid_x_out = rbf_out_x(grid_pts_in).reshape(grid_n, grid_n)
-                grid_y_out = rbf_out_y(grid_pts_in).reshape(grid_n, grid_n)
-            except Exception:
-                # Fallback: just use identity (no warp)
-                grid_x_out = grid_x_in.copy()
-                grid_y_out = grid_y_in.copy()
-
-            # Compute per-token volume change (det of local Jacobian) for coloring dots
-            per_token_volume = np.ones(T)
-            for t in range(T):
-                dists = torch.norm(h_in - h_in[t], dim=1)
-                dists[t] = float('inf')
-                k = min(max(4, D + 2), T - 1)
-                nn_idx = torch.argsort(dists)[:k]
-                dh_in_local = (h_in[nn_idx] - h_in[t]).cpu().numpy()
-                dh_out_local = (h_out[nn_idx] - h_out[t]).cpu().numpy()
-                try:
-                    J_local, _, _, _ = np.linalg.lstsq(dh_in_local, dh_out_local, rcond=None)
-                    per_token_volume[t] = abs(np.linalg.det(J_local))
-                except Exception:
-                    per_token_volume[t] = 1.0
-
-            # Global Jacobian for aggregate metrics
-            h_in_c = h_in - h_in.mean(0)
-            delta_c = delta - delta.mean(0)
-            try:
-                J_residual = torch.linalg.lstsq(h_in_c.cpu(), delta_c.cpu()).solution
-                J_global = torch.eye(D) + J_residual
-            except Exception:
-                J_global = torch.eye(D)
-
-            try:
-                S_global = torch.linalg.svdvals(J_global)
-                singular_values = S_global.cpu().numpy()
-                anisotropy = (S_global.max() / S_global.min().clamp(min=1e-10)).item()
-                log_det = torch.log(S_global.clamp(min=1e-10)).sum().item()
-            except Exception:
-                singular_values = np.ones(D)
-                anisotropy = 1.0
-                log_det = 0.0
-
-            fields.append({
-                'layer': ell,
-                'is_2d': True,
-                'h_in_2d': h_in_2d,
-                'h_out_2d': h_out_2d,
-                'per_token_delta_2d': delta_2d,
-                'per_token_volume': per_token_volume,
-                # Grid: input and warped output
-                'grid_x_in': grid_x_in,
-                'grid_y_in': grid_y_in,
-                'grid_x_out': grid_x_out,
-                'grid_y_out': grid_y_out,
-                'grid_n': grid_n,
-                'x_lim': (x_min, x_max),
-                'y_lim': (y_min, y_max),
-                # Global metrics
-                'jacobian': J_global.cpu().numpy(),
-                'singular_values': singular_values,
-                'anisotropy': anisotropy,
-                'log_det': log_det,
-                'var_explained': 1.0,
-                'use_pca': False,
-                'token_strings': token_strings_layer,
-                # Compatibility keys (unused in 2D path but prevent KeyErrors)
-                'divergence': torch.trace(J_global).item(),
-                'curl': 0.0,
-                'shear': 0.0,
-                'per_token_divergence': per_token_volume,
-                'per_token_curl': np.zeros(T),
-                'per_token_shear': np.zeros(T),
-                'per_token_shear_mag': np.zeros(T),
-                'per_token_rotation': np.zeros(T),
-                'principal_directions': pca_basis.numpy(),
-            })
-            continue
-
-        # ════════════════════════════════════════════════════════════
-        # 3+D PATH: full Jacobian decomposition (existing code)
-        # ════════════════════════════════════════════════════════════
-
-        # ── Per-token LOCAL Jacobian via neighbors ──────────────────
-        per_token_J_2d = np.zeros((T, 2, 2))
-        per_token_volume = np.zeros(T)
-        per_token_rotation = np.zeros(T)
-        per_token_shear_mag = np.zeros(T)
-
-        # Global Jacobian for aggregate metrics
-        h_in_c = h_in - h_in.mean(0)
-        delta_c = delta - delta.mean(0)
-
-        try:
-            J_residual = torch.linalg.lstsq(h_in_c.cpu(), delta_c.cpu()).solution
-            J_global = torch.eye(D) + J_residual
-        except Exception:
-            J_global = torch.eye(D)
-
-        P = pca_basis  # (2, D)
-
-        for t in range(T):
-            dists = torch.norm(h_in - h_in[t], dim=1)
-            dists[t] = float('inf')
-            k = min(max(D // 2, 8), T - 1)
-            nn_idx = torch.argsort(dists)[:k]
-
-            dh_in = (h_in[nn_idx] - h_in[t]).cpu()
-            dh_out = (h_out[nn_idx] - h_out[t]).cpu()
-
-            try:
-                J_local = torch.linalg.lstsq(dh_in, dh_out).solution
-            except Exception:
-                J_local = torch.eye(D)
-
-            J_2d = (P @ J_local @ P.T).numpy()
-            per_token_J_2d[t] = J_2d
-
-            try:
-                U_j, sigma_j, Vht_j = np.linalg.svd(J_2d)
-                R_2d = U_j @ Vht_j
-            except Exception:
-                sigma_j = np.array([1.0, 1.0])
-                R_2d = np.eye(2)
-
-            per_token_volume[t] = sigma_j[0] * sigma_j[1]
-            per_token_rotation[t] = np.arctan2(R_2d[1, 0], R_2d[0, 0])
-
-            S_2d = Vht_j.T @ np.diag(sigma_j) @ Vht_j if 'Vht_j' in dir() else np.eye(2)
-            S_trace = np.trace(S_2d)
-            S_traceless = S_2d - (S_trace / 2.0) * np.eye(2)
-            per_token_shear_mag[t] = np.linalg.norm(S_traceless, 'fro')
-
-        # ── Build grid and interpolate the full 2×2 Jacobian ───────
-        from scipy.interpolate import RBFInterpolator
-
-        grid_n = 32
-        x_range = h_in_2d[:, 0]
-        y_range = h_in_2d[:, 1]
-        pad_frac = 0.2
-        x_span = max(np.ptp(x_range), 0.1)
-        y_span = max(np.ptp(y_range), 0.1)
-        x_min = x_range.min() - pad_frac * x_span
-        x_max = x_range.max() + pad_frac * x_span
-        y_min = y_range.min() - pad_frac * y_span
-        y_max = y_range.max() + pad_frac * y_span
-
-        gx = np.linspace(x_min, x_max, grid_n)
-        gy = np.linspace(y_min, y_max, grid_n)
-        grid_x, grid_y = np.meshgrid(gx, gy)
-        grid_pts = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1)
-
-        # Interpolate each component of the 2×2 Jacobian
-        grid_J = np.zeros((grid_n, grid_n, 2, 2))
-        try:
-            for i in range(2):
-                for j in range(2):
-                    rbf = RBFInterpolator(
-                        h_in_2d, per_token_J_2d[:, i, j],
-                        kernel='thin_plate_spline', smoothing=1.0
-                    )
-                    grid_J[:, :, i, j] = rbf(grid_pts).reshape(grid_n, grid_n)
-        except Exception:
-            J_2d_global = (pca_basis.numpy() @ J_global.numpy() @ pca_basis.numpy().T)
-            grid_J[:, :] = J_2d_global
-
-        # ── Decompose at each grid point ───────────────────────────
-        grid_volume = np.zeros((grid_n, grid_n))
-        grid_rotation = np.zeros((grid_n, grid_n))
-        grid_shear = np.zeros((grid_n, grid_n))
-        grid_max_stretch_val = np.zeros((grid_n, grid_n))
-        grid_min_stretch_val = np.zeros((grid_n, grid_n))
-        grid_max_stretch_dir = np.zeros((grid_n, grid_n, 2))
-        grid_disp_x = np.zeros((grid_n, grid_n))
-        grid_disp_y = np.zeros((grid_n, grid_n))
-        grid_Jm1_ex_x = np.zeros((grid_n, grid_n))
-        grid_Jm1_ex_y = np.zeros((grid_n, grid_n))
-        grid_Jm1_ey_x = np.zeros((grid_n, grid_n))
-        grid_Jm1_ey_y = np.zeros((grid_n, grid_n))
-
-        for gi in range(grid_n):
-            for gj in range(grid_n):
-                J_loc = grid_J[gi, gj]
-                F = J_loc - np.eye(2)
-
-                pos = np.array([grid_x[gi, gj], grid_y[gi, gj]])
-                disp = F @ pos
-                grid_disp_x[gi, gj] = disp[0]
-                grid_disp_y[gi, gj] = disp[1]
-
-                grid_Jm1_ex_x[gi, gj] = F[0, 0]
-                grid_Jm1_ex_y[gi, gj] = F[1, 0]
-                grid_Jm1_ey_x[gi, gj] = F[0, 1]
-                grid_Jm1_ey_y[gi, gj] = F[1, 1]
-
-                try:
-                    U_g, sigma_g, Vht_g = np.linalg.svd(J_loc)
-                    R_g = U_g @ Vht_g
-                except Exception:
-                    sigma_g = np.array([1.0, 1.0])
-                    R_g = np.eye(2)
-                    Vht_g = np.eye(2)
-
-                grid_volume[gi, gj] = sigma_g[0] * sigma_g[1]
-                grid_rotation[gi, gj] = np.arctan2(R_g[1, 0], R_g[0, 0])
-                grid_max_stretch_val[gi, gj] = sigma_g[0]
-                grid_min_stretch_val[gi, gj] = sigma_g[1]
-                grid_max_stretch_dir[gi, gj] = Vht_g[0]
-
-                S_g = Vht_g.T @ np.diag(sigma_g) @ Vht_g
-                S_trace = np.trace(S_g)
-                S_traceless = S_g - (S_trace / 2.0) * np.eye(2)
-                grid_shear[gi, gj] = np.linalg.norm(S_traceless, 'fro')
-
-        # ── Global metrics ─────────────────────────────────────────
-        try:
-            S_global = torch.linalg.svdvals(J_global)
-            singular_values = S_global.cpu().numpy()
-            anisotropy = (S_global.max() / S_global.min().clamp(min=1e-10)).item()
-            log_det = torch.log(S_global.clamp(min=1e-10)).sum().item()
-        except Exception:
-            singular_values = np.ones(D)
-            anisotropy = 1.0
-            log_det = 0.0
-
-        divergence = torch.trace(J_global).item()
-        J_sym = (J_global + J_global.T) / 2
-        J_antisym = (J_global - J_global.T) / 2
-        curl = torch.norm(J_antisym, p='fro').item()
-        trace_sym = torch.trace(J_sym)
-        shear_tensor = J_sym - (trace_sym / D) * torch.eye(D)
-        shear = torch.norm(shear_tensor, p='fro').item()
-
-        fields.append({
-            'layer': ell,
-            'is_2d': False,
-            'jacobian': J_global.cpu().numpy(),
-            'divergence': divergence,
-            'curl': curl,
-            'shear': shear,
-            'singular_values': singular_values,
-            'log_det': log_det,
-            'anisotropy': anisotropy,
-            # ── Token data ──────────────────────────────────────
-            'h_in_2d': h_in_2d,
-            'per_token_J_2d': per_token_J_2d,
-            'per_token_volume': per_token_volume,
-            'per_token_rotation': per_token_rotation,
-            'per_token_shear_mag': per_token_shear_mag,
-            'per_token_delta_2d': delta_2d,
-            # ── Grid data ───────────────────────────────────────
-            'grid_x': grid_x,
-            'grid_y': grid_y,
-            'grid_J': grid_J,
-            'grid_volume': grid_volume,
-            'grid_rotation': grid_rotation,
-            'grid_shear': grid_shear,
-            'grid_max_stretch_val': grid_max_stretch_val,
-            'grid_min_stretch_val': grid_min_stretch_val,
-            'grid_max_stretch_dir': grid_max_stretch_dir,
-            'grid_disp_x': grid_disp_x,
-            'grid_disp_y': grid_disp_y,
-            'grid_Jm1_ex_x': grid_Jm1_ex_x,
-            'grid_Jm1_ex_y': grid_Jm1_ex_y,
-            'grid_Jm1_ey_x': grid_Jm1_ey_x,
-            'grid_Jm1_ey_y': grid_Jm1_ey_y,
-            'x_lim': (x_min, x_max),
-            'y_lim': (y_min, y_max),
-            'var_explained': var_explained,
-            'use_pca': use_pca,
-            # ── Compatibility ───────────────────────────────────
-            'per_token_divergence': per_token_volume,
-            'per_token_curl': per_token_rotation,
-            'per_token_shear': per_token_shear_mag,
-            'principal_directions': pca_basis.numpy(),
-            'token_strings': token_strings_layer
-        })
+        fields.append(field)
 
     return fields
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LEVEL 1: Top-level helpers called by the coordinator
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _extract_hidden_states(model, input_ids):
+    """Run the model forward pass and return hidden states, or None if insufficient."""
+    output = model(input_ids=input_ids, output_hidden_states=True)
+    hidden_states = output.hidden_states
+    if hidden_states is None or len(hidden_states) < 2:
+        return None
+    return hidden_states
+
+
+def _decode_token_strings(input_ids, tokenizer):
+    """Decode input_ids into human-readable token strings."""
+    if tokenizer is None:
+        return None
+    try:
+        flat_ids = input_ids.reshape(-1).tolist()
+        return [tokenizer.decode([tid]).strip() or f"<{tid}>" for tid in flat_ids]
+    except Exception:
+        return None
+
+
+def _compute_projection_basis(hidden_states, D, is_2d):
+    """
+    Compute the shared PCA basis (or identity for 2D) used across all layers.
+    
+    Returns a dict with keys: pca_basis, mean, var_explained, use_pca.
+    """
+    if is_2d:
+        return {
+            'pca_basis': torch.eye(2, D),
+            'mean': torch.zeros(D),
+            'var_explained': 1.0,
+            'use_pca': False,
+        }
+
+    all_points = _gather_all_layer_points(hidden_states)
+    pca_basis, mean, var_explained = _fit_shared_pca(all_points)
+
+    return {
+        'pca_basis': pca_basis,
+        'mean': mean,
+        'var_explained': var_explained,
+        'use_pca': True,
+    }
+
+
+def _prepare_layer_pair(hidden_states, ell, max_tokens, token_strings):
+    """
+    Extract and flatten the input/output hidden state pair for a layer,
+    applying token subsampling if needed.
+    
+    Returns: (h_in, h_out, token_strings_layer)
+    """
+    h_in = hidden_states[ell].detach().float().reshape(-1, hidden_states[ell].shape[-1])
+    h_out = hidden_states[ell + 1].detach().float().reshape(-1, hidden_states[ell + 1].shape[-1])
+
+    T = h_in.shape[0]
+    if T > max_tokens:
+        idx = torch.linspace(0, T - 1, max_tokens).long()
+        h_in = h_in[idx]
+        h_out = h_out[idx]
+        token_strings_layer = (
+            [token_strings[i] for i in idx.tolist()] if token_strings else None
+        )
+    else:
+        token_strings_layer = token_strings
+
+    return h_in, h_out, token_strings_layer
+
+
+def _project_to_2d(h_in, h_out, delta, projection, is_2d):
+    """Project hidden states to 2D using PCA basis or direct slicing."""
+    pca_basis = projection['pca_basis']
+    mean = projection['mean']
+
+    if not is_2d:
+        h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()
+        h_out_2d = ((h_out.cpu() - mean) @ pca_basis.T).numpy()
+        delta_2d = (delta.cpu() @ pca_basis.T).numpy()
+    else:
+        h_in_2d = h_in.cpu().numpy()[:, :2]
+        h_out_2d = h_out.cpu().numpy()[:, :2]
+        delta_2d = delta.cpu().numpy()[:, :2]
+
+    return h_in_2d, h_out_2d, delta_2d
+
+
+def _compute_2d_field(h_in, h_out, delta, h_in_2d, h_out_2d, delta_2d,
+                      pca_basis, ell, token_strings_layer):
+    """
+    Compute the full Jacobi field dict for the 2D special case.
+    Morphed-space visualization with warped grid.
+    """
+    T, D = h_in.shape
+
+    grid_data = _build_2d_warped_grid(h_in_2d, h_out_2d)
+    per_token_volume = _compute_2d_per_token_volume(h_in, h_out, T, D)
+    global_metrics = _compute_global_jacobian_metrics(h_in, h_out, delta, D)
+
+    return _assemble_2d_field_dict(
+        ell, h_in_2d, h_out_2d, delta_2d, per_token_volume,
+        grid_data, global_metrics, pca_basis, token_strings_layer, T
+    )
+
+
+def _compute_nd_field(h_in, h_out, delta, h_in_2d, delta_2d,
+                      projection, ell, token_strings_layer):
+    """
+    Compute the full Jacobi field dict for the 3+D case.
+    Full Jacobian decomposition with PCA projection.
+    """
+    T, D = h_in.shape
+    pca_basis = projection['pca_basis']
+    var_explained = projection['var_explained']
+
+    per_token_data = _compute_nd_per_token_jacobians(h_in, h_out, pca_basis, T, D)
+    global_metrics = _compute_global_jacobian_metrics(h_in, h_out, delta, D)
+    grid_data = _build_nd_interpolated_grid(h_in_2d, per_token_data, global_metrics, pca_basis)
+    decomposed_grid = _decompose_grid_jacobians(grid_data)
+    scalar_metrics = _compute_nd_scalar_metrics(global_metrics, D)
+
+    return _assemble_nd_field_dict(
+        ell, h_in_2d, delta_2d, per_token_data, grid_data,
+        decomposed_grid, global_metrics, scalar_metrics,
+        pca_basis, var_explained, token_strings_layer
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LEVEL 2: Helpers called by Level 1 functions
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _gather_all_layer_points(hidden_states):
+    """Flatten and concatenate all hidden states for shared PCA."""
+    all_points = []
+    for hs in hidden_states:
+        pts = hs.detach().float().cpu().reshape(-1, hs.shape[-1])
+        all_points.append(pts)
+    return torch.cat(all_points, dim=0)
+
+
+def _fit_shared_pca(all_concat):
+    """Fit a 2-component PCA on concatenated points. Returns (basis, mean, var_explained)."""
+    mean = all_concat.mean(0)
+    centered = all_concat - mean
+
+    try:
+        U, S_pca, Vh = torch.linalg.svd(centered, full_matrices=False)
+        pca_basis = Vh[:2, :]  # (2, D)
+        total_var = (S_pca ** 2).sum()
+        var_explained = ((S_pca[:2] ** 2).sum() / total_var).item()
+    except Exception:
+        pca_basis = torch.eye(2, centered.shape[1])
+        var_explained = 0.0
+
+    return pca_basis, mean, var_explained
+
+
+def _build_2d_warped_grid(h_in_2d, h_out_2d):
+    """
+    Build a regular grid in input space and warp it through the layer
+    using RBF interpolation. Returns a dict with grid arrays.
+    """
+    bounds = _compute_grid_bounds(h_in_2d, pad_frac=0.2)
+    grid_n = 24
+
+    gx = np.linspace(bounds['x_min'], bounds['x_max'], grid_n)
+    gy = np.linspace(bounds['y_min'], bounds['y_max'], grid_n)
+    grid_x_in, grid_y_in = np.meshgrid(gx, gy)
+
+    grid_x_out, grid_y_out = _warp_grid_rbf(
+        h_in_2d, h_out_2d, grid_x_in, grid_y_in, grid_n
+    )
+
+    return {
+        'grid_x_in': grid_x_in,
+        'grid_y_in': grid_y_in,
+        'grid_x_out': grid_x_out,
+        'grid_y_out': grid_y_out,
+        'grid_n': grid_n,
+        'x_lim': (bounds['x_min'], bounds['x_max']),
+        'y_lim': (bounds['y_min'], bounds['y_max']),
+    }
+
+
+def _compute_2d_per_token_volume(h_in, h_out, T, D):
+    """Compute per-token volume change (det of local Jacobian) for 2D case."""
+    per_token_volume = np.ones(T)
+    for t in range(T):
+        J_local = _estimate_local_jacobian(h_in, h_out, t, T, D, k_min=4)
+        try:
+            per_token_volume[t] = abs(np.linalg.det(J_local))
+        except Exception:
+            per_token_volume[t] = 1.0
+    return per_token_volume
+
+
+def _compute_global_jacobian_metrics(h_in, h_out, delta, D):
+    """
+    Compute the global Jacobian (identity + residual) and its SVD metrics.
+    Returns a dict with J_global, singular_values, anisotropy, log_det.
+    """
+    J_global = _fit_global_jacobian(h_in, delta, D)
+    singular_values, anisotropy, log_det = _svd_metrics(J_global, D)
+
+    return {
+        'J_global': J_global,
+        'singular_values': singular_values,
+        'anisotropy': anisotropy,
+        'log_det': log_det,
+    }
+
+
+def _compute_nd_per_token_jacobians(h_in, h_out, pca_basis, T, D):
+    """
+    Compute per-token local Jacobians projected to 2D, plus volume,
+    rotation, and shear magnitudes.
+    """
+    P = pca_basis  # (2, D)
+    per_token_J_2d = np.zeros((T, 2, 2))
+    per_token_volume = np.zeros(T)
+    per_token_rotation = np.zeros(T)
+    per_token_shear_mag = np.zeros(T)
+
+    k = min(max(D // 2, 8), T - 1)
+
+    for t in range(T):
+        J_local = _estimate_local_jacobian_torch(h_in, h_out, t, T, D, k)
+        J_2d = (P @ J_local @ P.T).numpy()
+        per_token_J_2d[t] = J_2d
+
+        volume, rotation, shear_mag = _decompose_2x2_jacobian(J_2d)
+        per_token_volume[t] = volume
+        per_token_rotation[t] = rotation
+        per_token_shear_mag[t] = shear_mag
+
+    return {
+        'per_token_J_2d': per_token_J_2d,
+        'per_token_volume': per_token_volume,
+        'per_token_rotation': per_token_rotation,
+        'per_token_shear_mag': per_token_shear_mag,
+    }
+
+
+def _build_nd_interpolated_grid(h_in_2d, per_token_data, global_metrics, pca_basis):
+    """
+    Build a grid and interpolate the full 2×2 Jacobian at each grid point
+    using RBF interpolation of per-token Jacobians.
+    """
+    from scipy.interpolate import RBFInterpolator
+
+    bounds = _compute_grid_bounds(h_in_2d, pad_frac=0.2)
+    grid_n = 32
+
+    gx = np.linspace(bounds['x_min'], bounds['x_max'], grid_n)
+    gy = np.linspace(bounds['y_min'], bounds['y_max'], grid_n)
+    grid_x, grid_y = np.meshgrid(gx, gy)
+    grid_pts = np.stack([grid_x.ravel(), grid_y.ravel()], axis=1)
+
+    per_token_J_2d = per_token_data['per_token_J_2d']
+    grid_J = _interpolate_jacobian_field(
+        h_in_2d, per_token_J_2d, grid_pts, grid_n,
+        global_metrics['J_global'], pca_basis
+    )
+
+    return {
+        'grid_x': grid_x,
+        'grid_y': grid_y,
+        'grid_pts': grid_pts,
+        'grid_J': grid_J,
+        'grid_n': grid_n,
+        'x_lim': (bounds['x_min'], bounds['x_max']),
+        'y_lim': (bounds['y_min'], bounds['y_max']),
+    }
+
+
+def _decompose_grid_jacobians(grid_data):
+    """
+    Decompose the interpolated 2×2 Jacobian at each grid point into
+    volume, rotation, shear, stretch directions, and displacement.
+    """
+    grid_x = grid_data['grid_x']
+    grid_y = grid_data['grid_y']
+    grid_J = grid_data['grid_J']
+    grid_n = grid_data['grid_n']
+
+    result = _init_grid_decomposition_arrays(grid_n)
+
+    for gi in range(grid_n):
+        for gj in range(grid_n):
+            J_loc = grid_J[gi, gj]
+            pos = np.array([grid_x[gi, gj], grid_y[gi, gj]])
+            _decompose_single_grid_point(J_loc, pos, gi, gj, result)
+
+    return result
+
+
+def _compute_nd_scalar_metrics(global_metrics, D):
+    """Compute divergence, curl, and shear from the global Jacobian."""
+    J_global = global_metrics['J_global']
+
+    divergence = torch.trace(J_global).item()
+
+    J_sym = (J_global + J_global.T) / 2
+    J_antisym = (J_global - J_global.T) / 2
+    curl = torch.norm(J_antisym, p='fro').item()
+
+    trace_sym = torch.trace(J_sym)
+    shear_tensor = J_sym - (trace_sym / D) * torch.eye(D)
+    shear = torch.norm(shear_tensor, p='fro').item()
+
+    return {
+        'divergence': divergence,
+        'curl': curl,
+        'shear': shear,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LEVEL 3: Lowest-level utility functions
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _compute_grid_bounds(points_2d, pad_frac=0.2):
+    """Compute padded axis limits from 2D points."""
+    x_range = points_2d[:, 0]
+    y_range = points_2d[:, 1]
+    x_span = max(np.ptp(x_range), 0.1)
+    y_span = max(np.ptp(y_range), 0.1)
+    return {
+        'x_min': x_range.min() - pad_frac * x_span,
+        'x_max': x_range.max() + pad_frac * x_span,
+        'y_min': y_range.min() - pad_frac * y_span,
+        'y_max': y_range.max() + pad_frac * y_span,
+    }
+
+
+def _warp_grid_rbf(h_in_2d, h_out_2d, grid_x_in, grid_y_in, grid_n):
+    """Warp a grid through the layer mapping using RBF interpolation."""
+    from scipy.interpolate import RBFInterpolator
+
+    try:
+        rbf_out_x = RBFInterpolator(
+            h_in_2d, h_out_2d[:, 0],
+            kernel='thin_plate_spline', smoothing=1.0
+        )
+        rbf_out_y = RBFInterpolator(
+            h_in_2d, h_out_2d[:, 1],
+            kernel='thin_plate_spline', smoothing=1.0
+        )
+        grid_pts_in = np.stack([grid_x_in.ravel(), grid_y_in.ravel()], axis=1)
+        grid_x_out = rbf_out_x(grid_pts_in).reshape(grid_n, grid_n)
+        grid_y_out = rbf_out_y(grid_pts_in).reshape(grid_n, grid_n)
+    except Exception:
+        grid_x_out = grid_x_in.copy()
+        grid_y_out = grid_y_in.copy()
+
+    return grid_x_out, grid_y_out
+
+
+def _estimate_local_jacobian(h_in, h_out, t, T, D, k_min=4):
+    """
+    Estimate the local Jacobian at token t using nearest-neighbor least squares.
+    Returns a numpy array of shape (D, D).
+    """
+    dists = torch.norm(h_in - h_in[t], dim=1)
+    dists[t] = float('inf')
+    k = min(max(k_min, D + 2), T - 1)
+    nn_idx = torch.argsort(dists)[:k]
+
+    dh_in_local = (h_in[nn_idx] - h_in[t]).cpu().numpy()
+    dh_out_local = (h_out[nn_idx] - h_out[t]).cpu().numpy()
+
+    try:
+        J_local, _, _, _ = np.linalg.lstsq(dh_in_local, dh_out_local, rcond=None)
+    except Exception:
+        J_local = np.eye(D)
+
+    return J_local
+
+
+def _estimate_local_jacobian_torch(h_in, h_out, t, T, D, k):
+    """
+    Estimate the local Jacobian at token t using torch least squares.
+    Returns a torch tensor of shape (D, D).
+    """
+    dists = torch.norm(h_in - h_in[t], dim=1)
+    dists[t] = float('inf')
+    nn_idx = torch.argsort(dists)[:k]
+
+    dh_in = (h_in[nn_idx] - h_in[t]).cpu()
+    dh_out = (h_out[nn_idx] - h_out[t]).cpu()
+
+    try:
+        J_local = torch.linalg.lstsq(dh_in, dh_out).solution
+    except Exception:
+        J_local = torch.eye(D)
+
+    return J_local
+
+
+def _fit_global_jacobian(h_in, delta, D):
+    """Fit the global Jacobian as identity + least-squares residual."""
+    h_in_c = h_in - h_in.mean(0)
+    delta_c = delta - delta.mean(0)
+
+    try:
+        J_residual = torch.linalg.lstsq(h_in_c.cpu(), delta_c.cpu()).solution
+        J_global = torch.eye(D) + J_residual
+    except Exception:
+        J_global = torch.eye(D)
+
+    return J_global
+
+
+def _svd_metrics(J_global, D):
+    """Compute singular values, anisotropy, and log-det from a Jacobian."""
+    try:
+        S_global = torch.linalg.svdvals(J_global)
+        singular_values = S_global.cpu().numpy()
+        anisotropy = (S_global.max() / S_global.min().clamp(min=1e-10)).item()
+        log_det = torch.log(S_global.clamp(min=1e-10)).sum().item()
+    except Exception:
+        singular_values = np.ones(D)
+        anisotropy = 1.0
+        log_det = 0.0
+
+    return singular_values, anisotropy, log_det
+
+
+def _decompose_2x2_jacobian(J_2d):
+    """
+    Decompose a 2×2 Jacobian into volume change, rotation angle, and shear magnitude.
+    Returns: (volume, rotation, shear_mag)
+    """
+    try:
+        U_j, sigma_j, Vht_j = np.linalg.svd(J_2d)
+        R_2d = U_j @ Vht_j
+    except Exception:
+        sigma_j = np.array([1.0, 1.0])
+        R_2d = np.eye(2)
+        Vht_j = np.eye(2)
+
+    volume = sigma_j[0] * sigma_j[1]
+    rotation = np.arctan2(R_2d[1, 0], R_2d[0, 0])
+
+    S_2d = Vht_j.T @ np.diag(sigma_j) @ Vht_j
+    S_trace = np.trace(S_2d)
+    S_traceless = S_2d - (S_trace / 2.0) * np.eye(2)
+    shear_mag = np.linalg.norm(S_traceless, 'fro')
+
+    return volume, rotation, shear_mag
+
+
+def _interpolate_jacobian_field(h_in_2d, per_token_J_2d, grid_pts, grid_n,
+                                J_global, pca_basis):
+    """Interpolate per-token 2×2 Jacobians onto a regular grid using RBF."""
+    from scipy.interpolate import RBFInterpolator
+
+    grid_J = np.zeros((grid_n, grid_n, 2, 2))
+
+    try:
+        for i in range(2):
+            for j in range(2):
+                rbf = RBFInterpolator(
+                    h_in_2d, per_token_J_2d[:, i, j],
+                    kernel='thin_plate_spline', smoothing=1.0
+                )
+                grid_J[:, :, i, j] = rbf(grid_pts).reshape(grid_n, grid_n)
+    except Exception:
+        J_2d_global = (pca_basis.numpy() @ J_global.numpy() @ pca_basis.numpy().T)
+        grid_J[:, :] = J_2d_global
+
+    return grid_J
+
+
+def _init_grid_decomposition_arrays(grid_n):
+    """Initialize all arrays needed for grid-point Jacobian decomposition."""
+    return {
+        'grid_volume': np.zeros((grid_n, grid_n)),
+        'grid_rotation': np.zeros((grid_n, grid_n)),
+        'grid_shear': np.zeros((grid_n, grid_n)),
+        'grid_max_stretch_val': np.zeros((grid_n, grid_n)),
+        'grid_min_stretch_val': np.zeros((grid_n, grid_n)),
+        'grid_max_stretch_dir': np.zeros((grid_n, grid_n, 2)),
+        'grid_disp_x': np.zeros((grid_n, grid_n)),
+        'grid_disp_y': np.zeros((grid_n, grid_n)),
+        'grid_Jm1_ex_x': np.zeros((grid_n, grid_n)),
+        'grid_Jm1_ex_y': np.zeros((grid_n, grid_n)),
+        'grid_Jm1_ey_x': np.zeros((grid_n, grid_n)),
+        'grid_Jm1_ey_y': np.zeros((grid_n, grid_n)),
+    }
+
+
+def _decompose_single_grid_point(J_loc, pos, gi, gj, result):
+    """Decompose the Jacobian at a single grid point and store into result arrays."""
+    F = J_loc - np.eye(2)
+
+    # Displacement
+    disp = F @ pos
+    result['grid_disp_x'][gi, gj] = disp[0]
+    result['grid_disp_y'][gi, gj] = disp[1]
+
+    # Basis vector deformations
+    result['grid_Jm1_ex_x'][gi, gj] = F[0, 0]
+    result['grid_Jm1_ex_y'][gi, gj] = F[1, 0]
+    result['grid_Jm1_ey_x'][gi, gj] = F[0, 1]
+    result['grid_Jm1_ey_y'][gi, gj] = F[1, 1]
+
+    # SVD decomposition
+    try:
+        U_g, sigma_g, Vht_g = np.linalg.svd(J_loc)
+        R_g = U_g @ Vht_g
+    except Exception:
+        sigma_g = np.array([1.0, 1.0])
+        R_g = np.eye(2)
+        Vht_g = np.eye(2)
+
+    result['grid_volume'][gi, gj] = sigma_g[0] * sigma_g[1]
+    result['grid_rotation'][gi, gj] = np.arctan2(R_g[1, 0], R_g[0, 0])
+    result['grid_max_stretch_val'][gi, gj] = sigma_g[0]
+    result['grid_min_stretch_val'][gi, gj] = sigma_g[1]
+    result['grid_max_stretch_dir'][gi, gj] = Vht_g[0]
+
+    # Shear
+    S_g = Vht_g.T @ np.diag(sigma_g) @ Vht_g
+    S_trace = np.trace(S_g)
+    S_traceless = S_g - (S_trace / 2.0) * np.eye(2)
+    result['grid_shear'][gi, gj] = np.linalg.norm(S_traceless, 'fro')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ASSEMBLY: Build the final field dictionaries
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _assemble_2d_field_dict(ell, h_in_2d, h_out_2d, delta_2d, per_token_volume,
+                            grid_data, global_metrics, pca_basis,
+                            token_strings_layer, T):
+    """Assemble the output dict for a 2D layer."""
+    J_global = global_metrics['J_global']
+
+    return {
+        'layer': ell,
+        'is_2d': True,
+        'h_in_2d': h_in_2d,
+        'h_out_2d': h_out_2d,
+        'per_token_delta_2d': delta_2d,
+        'per_token_volume': per_token_volume,
+        # Grid
+        'grid_x_in': grid_data['grid_x_in'],
+        'grid_y_in': grid_data['grid_y_in'],
+        'grid_x_out': grid_data['grid_x_out'],
+        'grid_y_out': grid_data['grid_y_out'],
+        'grid_n': grid_data['grid_n'],
+        'x_lim': grid_data['x_lim'],
+        'y_lim': grid_data['y_lim'],
+        # Global metrics
+        'jacobian': J_global.cpu().numpy(),
+        'singular_values': global_metrics['singular_values'],
+        'anisotropy': global_metrics['anisotropy'],
+        'log_det': global_metrics['log_det'],
+        'var_explained': 1.0,
+        'use_pca': False,
+        'token_strings': token_strings_layer,
+        # Compatibility keys
+        'divergence': torch.trace(J_global).item(),
+        'curl': 0.0,
+        'shear': 0.0,
+        'per_token_divergence': per_token_volume,
+        'per_token_curl': np.zeros(T),
+        'per_token_shear': np.zeros(T),
+        'per_token_shear_mag': np.zeros(T),
+        'per_token_rotation': np.zeros(T),
+        'principal_directions': pca_basis.numpy(),
+    }
+
+def _assemble_nd_field_dict(ell, h_in_2d, delta_2d, per_token_data, grid_data,
+                            decomposed_grid, global_metrics, scalar_metrics,
+                            pca_basis, var_explained, token_strings_layer):
+    """Assemble the output dict for a 3+D layer."""
+    return {
+        'layer': ell,
+        'is_2d': False,
+        'jacobian': global_metrics['J_global'].cpu().numpy(),
+        'divergence': scalar_metrics['divergence'],
+        'curl': scalar_metrics['curl'],
+        'shear': scalar_metrics['shear'],
+        'singular_values': global_metrics['singular_values'],
+        'log_det': global_metrics['log_det'],
+        'anisotropy': global_metrics['anisotropy'],
+        # ── Token data ──────────────────────────────────────
+        'h_in_2d': h_in_2d,
+        'per_token_J_2d': per_token_data['per_token_J_2d'],
+        'per_token_volume': per_token_data['per_token_volume'],
+        'per_token_rotation': per_token_data['per_token_rotation'],
+        'per_token_shear_mag': per_token_data['per_token_shear_mag'],
+        'per_token_delta_2d': delta_2d,
+        # ── Grid data ───────────────────────────────────────
+        'grid_x': grid_data['grid_x'],
+        'grid_y': grid_data['grid_y'],
+        'grid_J': grid_data['grid_J'],
+        'grid_volume': decomposed_grid['grid_volume'],
+        'grid_rotation': decomposed_grid['grid_rotation'],
+        'grid_shear': decomposed_grid['grid_shear'],
+        'grid_max_stretch_val': decomposed_grid['grid_max_stretch_val'],
+        'grid_min_stretch_val': decomposed_grid['grid_min_stretch_val'],
+        'grid_max_stretch_dir': decomposed_grid['grid_max_stretch_dir'],
+        'grid_disp_x': decomposed_grid['grid_disp_x'],
+        'grid_disp_y': decomposed_grid['grid_disp_y'],
+        'grid_Jm1_ex_x': decomposed_grid['grid_Jm1_ex_x'],
+        'grid_Jm1_ex_y': decomposed_grid['grid_Jm1_ex_y'],
+        'grid_Jm1_ey_x': decomposed_grid['grid_Jm1_ey_x'],
+        'grid_Jm1_ey_y': decomposed_grid['grid_Jm1_ey_y'],
+        'x_lim': grid_data['x_lim'],
+        'y_lim': grid_data['y_lim'],
+        'var_explained': var_explained,
+        'use_pca': True,
+        # ── Compatibility ───────────────────────────────────
+        'per_token_divergence': per_token_data['per_token_volume'],
+        'per_token_curl': per_token_data['per_token_rotation'],
+        'per_token_shear': per_token_data['per_token_shear_mag'],
+        'principal_directions': pca_basis.numpy(),
+        'token_strings': token_strings_layer,
+    }
 
 class LivePlotter:
     def __init__(self, enabled: bool = True, update_every: int = 5,
