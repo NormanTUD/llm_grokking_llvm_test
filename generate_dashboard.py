@@ -723,12 +723,12 @@ function show(i) {
       container.appendChild(img);
     });
   } else {
+    const src = images[idx];
     const front = document.getElementById('slide-img-' + activeSlide);
     const backId = activeSlide === 'a' ? 'b' : 'a';
     const back = document.getElementById('slide-img-' + backId);
-    const src = images[idx];
 
-    // Check if already cached in browser
+    // Check if already cached and fully decoded
     const cached = cache.get(src);
     if (cached && cached.complete && cached.naturalWidth > 0) {
       // Image is ready — swap instantly
@@ -737,16 +737,31 @@ function show(i) {
       front.style.opacity = '0';
       activeSlide = backId;
     } else {
-      // Load in background, keep old image visible until ready
-      back.style.opacity = '0';
+      // Load in background — keep the OLD image fully visible until ready
+      // Do NOT touch opacity of either element here
       const loader = new Image();
       const targetIdx = idx; // capture for closure
       loader.onload = () => {
         if (idx !== targetIdx) return; // user already moved on
         back.src = src;
-        back.style.opacity = '1';
-        front.style.opacity = '0';
-        activeSlide = backId;
+        // Force the browser to have the image decoded before swapping
+        if (back.decode) {
+          back.decode().then(() => {
+            if (idx !== targetIdx) return;
+            back.style.opacity = '1';
+            front.style.opacity = '0';
+            activeSlide = backId;
+          }).catch(() => {
+            // Fallback if decode() fails
+            back.style.opacity = '1';
+            front.style.opacity = '0';
+            activeSlide = backId;
+          });
+        } else {
+          back.style.opacity = '1';
+          front.style.opacity = '0';
+          activeSlide = backId;
+        }
       };
       loader.src = src;
       cache.set(src, loader);
