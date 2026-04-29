@@ -1127,6 +1127,8 @@ class LivePlotter:
                         self._save_jacobi_layer_images(self._jacobi_data)
                     except Exception as e:
                         console.print(f"[yellow]⚠ Could not save Jacobi layer images: {e}[/]")
+                else:
+                    console.print(f"[red]⚠ Could not save Jacobi data: no run dir found[/]")
             except Exception as e:
                 console.print(f"[yellow]⚠ Could not save Jacobi data: {e}[/]")
 
