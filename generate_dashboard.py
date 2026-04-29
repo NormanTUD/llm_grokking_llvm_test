@@ -22,11 +22,13 @@ What it does (in order):
        - summary plots  (plots/*.png, training_plot.png, etc.)
        - training_plot history  (training_plot-*.png)
        - jacobi step images    (jacobi_images/jacobi_step*_layer*.png)
+       - jacobi 4D slice images (jacobi_images/jacobi_step*_layer*_d*xd*.png)
        - epoch txts/csvs       (epoch_NNNN.txt/csv)
        - other csvs, txts, py files
     3. Generate index.html     — dashboard with only summary plots
     4. Generate slideshow.html — training plot history (subsampled)
     5. Generate jacobi.html    — jacobi field history (subsampled)
+    6. Generate 4d_jacobi.html — 4D slice jacobi history (subsampled, grouped)
     All HTML is written via Jinja2 templates (embedded).
 """
 
@@ -61,6 +63,7 @@ from jinja2 import Environment, BaseLoader
 
 RE_TRAINING_PLOT_HIST = re.compile(r'^training_plot-\d+\.png$')
 RE_JACOBI_IMG = re.compile(r'^jacobi_step(\d+)_layer(\d+)\.png$')
+RE_JACOBI_4D_IMG = re.compile(r'^jacobi_step(\d+)_layer(\d+)_d(\d+)xd(\d+)\.png$')
 RE_EPOCH_TXT = re.compile(r'^epoch_(\d+)\.txt$')
 RE_EPOCH_CSV = re.compile(r'^epoch_(\d+)\.csv$')
 
@@ -70,6 +73,7 @@ class RunFiles:
         self.summary_images: list[str] = []      # plots to show in dashboard
         self.training_hist: list[str] = []        # training_plot-*.png sorted
         self.jacobi_images: list[tuple[int, int, str]] = []  # (step, layer, relpath)
+        self.jacobi_4d_images: list[tuple[int, int, int, int, str]] = []  # (step, layer, dim_a, dim_b, relpath)
         self.epoch_txts: list[str] = []
         self.epoch_csvs: list[str] = []
         self.other_csvs: list[str] = []
@@ -104,7 +108,17 @@ def scan_run_dir(run_dir: Path) -> RunFiles:
             rf.training_hist.append(rel)
             continue
 
-        # ── Jacobi images ───────────────────────────────────────
+        # ── Jacobi 4D slice images (must check BEFORE plain jacobi) ─
+        m_jac4d = RE_JACOBI_4D_IMG.match(name)
+        if m_jac4d and 'jacobi_images' in rel:
+            step = int(m_jac4d.group(1))
+            layer = int(m_jac4d.group(2))
+            dim_a = int(m_jac4d.group(3))
+            dim_b = int(m_jac4d.group(4))
+            rf.jacobi_4d_images.append((step, layer, dim_a, dim_b, rel))
+            continue
+
+        # ── Jacobi images (plain, non-4D) ──────────────────────
         m_jac = RE_JACOBI_IMG.match(name)
         if m_jac and 'jacobi_images' in rel:
             step, layer = int(m_jac.group(1)), int(m_jac.group(2))
@@ -141,6 +155,7 @@ def scan_run_dir(run_dir: Path) -> RunFiles:
     rf.summary_images.sort()
     rf.training_hist.sort()
     rf.jacobi_images.sort()
+    rf.jacobi_4d_images.sort()
     rf.epoch_txts.sort()
     rf.epoch_csvs.sort()
     rf.other_csvs.sort()
@@ -355,6 +370,7 @@ DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
   .file-link{display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.75rem;background:var(--card);border:1px solid var(--border);border-radius:999px;font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:var(--accent);text-decoration:none;transition:background 0.15s}
   .file-link:hover{background:var(--card2);border-color:var(--accent)}
   .file-link-green{color:var(--accent2)}.file-link-green:hover{border-color:var(--accent2)}
+  .file-link-pink{color:var(--accent3)}.file-link-pink:hover{border-color:var(--accent3)}
   .file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:1rem}
   .file-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
   .file-card .file-header{padding:0.65rem 1rem;font-size:0.82rem;font-weight:600;background:linear-gradient(90deg,var(--accent-dim),transparent);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:0.4rem}
@@ -389,11 +405,12 @@ DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 </div>
 
 <!-- Slideshow links -->
-{% if has_slideshow or has_jacobi %}
+{% if has_slideshow or has_jacobi or has_jacobi_4d %}
 <div class="section-title">🎬 Slideshows</div>
 <div class="file-link-grid">
   {% if has_slideshow %}<a class="file-link" href="slideshow.html" target="_blank">📈 Training Plot History ({{ n_training_hist }} frames)</a>{% endif %}
   {% if has_jacobi %}<a class="file-link file-link-green" href="jacobi.html" target="_blank">🌊 Jacobi Field History ({{ n_jacobi_steps }} steps)</a>{% endif %}
+  {% if has_jacobi_4d %}<a class="file-link file-link-pink" href="4d_jacobi.html" target="_blank">🔮 4D Jacobi Slices ({{ n_jacobi_4d_steps }} steps, {{ n_jacobi_4d_slices }} slices)</a>{% endif %}
 </div>
 {% endif %}
 
@@ -424,593 +441,281 @@ DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <tr><td>{{ e.epoch }}</td><td>{{ e.correct }}</td><td>{{ e.total }}</td><td class="{{ cls }}">{{ e.pct }}%</td>
 <td><div class="acc-bar-bg"><div class="acc-bar-fg" style="width:{{ e.pct }}%;background:{{ col }}"></div></div></td></tr>
 {% endfor %}
-</tbody></table></div>
+</tbody>
+</table></div>
 
-<h3 style="color:var(--muted);margin:1.5rem 0 0.8rem;font-size:0.9rem;font-weight:500;">Click an epoch to inspect individual predictions:</h3>
+<!-- Epoch details (collapsible) -->
+{% if details %}
+<div class="section-title">🔬 Epoch Details <span class="badge-green badge">expandable</span></div>
 {% for e in overview %}
-{% set samples = details.get(e.epoch, []) %}
-{% if samples %}
-{% set cls = 'acc-good' if e.pct >= 80 else ('acc-mid' if e.pct >= 50 else 'acc-bad') %}
+{% if e.epoch in details %}
 <details>
-<summary><strong>Epoch {{ e.epoch }}</strong> <span class="{{ cls }}">{{ e.correct }}/{{ e.total }} correct ({{ e.pct }}%)</span></summary>
-<div class="detail-body"><table class="sample-table">
-<thead><tr><th>#</th><th>Params</th><th>Expected</th><th>Predicted</th><th>✓</th></tr></thead><tbody>
-{% for s in samples %}
-<tr class="{{ 'row-correct' if s.correct else 'row-wrong' }}"><td>{{ loop.index }}</td><td>{{ s.get('params','') }}</td><td>{{ s.get('expected','') }}</td><td>{{ s.get('predicted','') }}</td><td>{{ '✔' if s.correct else '✗' }}</td></tr>
+<summary>
+  <span>Epoch {{ e.epoch }}</span>
+  {% set cls = 'acc-good' if e.pct >= 80 else ('acc-mid' if e.pct >= 50 else 'acc-bad') %}
+  <span class="{{ cls }}">{{ e.pct }}% ({{ e.correct }}/{{ e.total }})</span>
+</summary>
+<div class="detail-body">
+<table class="sample-table">
+<thead><tr><th>#</th><th>Params</th><th>Expected</th><th>Predicted</th><th>✓</th></tr></thead>
+<tbody>
+{% for s in details[e.epoch] %}
+<tr class="{{ 'row-correct' if s.correct else 'row-wrong' }}">
+<td>{{ loop.index }}</td><td>{{ s.params }}</td><td>{{ s.expected }}</td><td>{{ s.predicted }}</td><td>{{ '✓' if s.correct else '✗' }}</td>
+</tr>
 {% endfor %}
-</tbody></table></div></details>
+</tbody>
+</table>
+</div>
+</details>
 {% endif %}
 {% endfor %}
+{% endif %}
+{% else %}
+<div class="empty-state">No epoch data found yet.</div>
 {% endif %}
 
-<!-- Epoch sample file links -->
-{% if epoch_txts or epoch_csvs %}
-<div class="section-title">📁 Sample Files <span class="badge-green badge">{{ (epoch_txts|length) + (epoch_csvs|length) }} files</span></div>
+<!-- Other files -->
+{% if other_csvs or other_txts or py_files %}
+<div class="section-title">📁 Files <span class="badge">{{ (other_csvs|length) + (other_txts|length) + (py_files|length) }}</span></div>
 <div class="file-link-grid">
-  {% for f in epoch_txts %}<a class="file-link" href="{{ f }}" target="_blank">📝 {{ f | basename }}</a>{% endfor %}
-  {% for f in epoch_csvs %}<a class="file-link file-link-green" href="{{ f }}" target="_blank">📊 {{ f | basename }}</a>{% endfor %}
+  {% for f in other_csvs %}<a class="file-link file-link-green" href="{{ f }}" target="_blank">📄 {{ f | basename }}</a>{% endfor %}
+  {% for f in other_txts %}<a class="file-link" href="{{ f }}" target="_blank">📝 {{ f | basename }}</a>{% endfor %}
+  {% for f in py_files %}<a class="file-link file-link-pink" href="{{ f }}" target="_blank">🐍 {{ f | basename }}</a>{% endfor %}
 </div>
 {% endif %}
 
-<!-- Other CSV files -->
-{% if other_csvs %}
-<div class="section-title">📈 CSV Data <span class="badge-green badge">{{ other_csvs|length }}</span></div>
-<div class="file-grid">
-  {% for csv in other_csvs %}
-  <div class="file-card">
-    <div class="file-header"><span class="dot dot-csv"></span>{{ csv }}</div>
-    <pre>{{ previews.get(csv, '') }}</pre>
-    <a class="file-open" href="{{ csv }}" target="_blank">Open full file →</a>
-  </div>
-  {% endfor %}
 </div>
-{% endif %}
-
-<!-- Other TXT files -->
-{% if other_txts %}
-<div class="section-title">📝 Text Logs <span class="badge">{{ other_txts|length }}</span></div>
-<div class="file-grid">
-  {% for txt in other_txts %}
-  <div class="file-card">
-    <div class="file-header"><span class="dot dot-txt"></span>{{ txt }}</div>
-    <pre>{{ previews.get(txt, '') }}</pre>
-    <a class="file-open" href="{{ txt }}" target="_blank">Open full file →</a>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<!-- Python scripts -->
-{% if py_files %}
-<div class="section-title">🐍 Visualization Scripts <span class="badge" style="background:rgba(240,192,64,0.12);color:var(--yellow);border-color:rgba(240,192,64,0.2)">{{ py_files|length }}</span></div>
-<div class="file-grid">
-  {% for py in py_files %}
-  <div class="file-card">
-    <div class="file-header"><span class="dot dot-py"></span>{{ py }}</div>
-    <pre>{{ previews.get(py, '') }}</pre>
-    <a class="file-open" href="{{ py }}" target="_blank">Open full file →</a>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-<div class="footer">{{ timestamp }}</div>
-</div>
+<div class="footer">Generated by generate_dashboard.py · {{ timestamp }}</div>
 </body>
-</html>
-''')
+</html>''')
 
-# ── Slideshow template (shared by training + jacobi) ───────────────────
+
+# ── slideshow.html template ────────────────────────────────────────────
 SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ title }}</title>
+<title>Training Plot Slideshow</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #08090d; color: #e8eaf6;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    height: 100vh; display: flex; flex-direction: column;
-    overflow: hidden; user-select: none;
-  }
-
-    .slide-container img {
-      max-width: 100%; max-height: 100%; object-fit: contain;
-      will-change: opacity;
-      transition: opacity 0.08s ease;
-    }
-
-  .toolbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.5rem 1.5rem; background: #12152a;
-    border-bottom: 1px solid #1e2340; flex-shrink: 0; z-index: 10;
-  }
-  .toolbar .title {
-    font-size: 1rem; font-weight: 700;
-    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .toolbar .controls { display: flex; align-items: center; gap: 0.6rem; }
-  .toolbar button {
-    background: #1e2340; border: 1px solid #2a2f55; color: #e8eaf6;
-    padding: 0.35rem 0.9rem; border-radius: 6px; cursor: pointer;
-    font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .toolbar button:hover { background: #2a2f55; border-color: #7c5cfc; }
-  .toolbar button:active { background: #7c5cfc; color: #fff; }
-  .toolbar button.playing { background: #00d4aa; color: #08090d; border-color: #00d4aa; }
-  .counter {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
-    color: #6b70a0; min-width: 140px; text-align: center;
-  }
-  .counter .current { color: #7c5cfc; font-weight: 700; }
-  .scrubber-container {
-    flex-shrink: 0; height: 28px; background: #0d0f16;
-    cursor: pointer; position: relative; display: flex;
-    align-items: center; border-bottom: 1px solid #1e2340;
-  }
-  .scrubber-track {
-    position: absolute; left: 12px; right: 12px; height: 6px;
-    background: #1e2340; border-radius: 3px; overflow: hidden;
-  }
-  .scrubber-track:hover, .scrubber-container.dragging .scrubber-track { height: 10px; }
-  .scrubber-fill {
-    height: 100%; background: linear-gradient(90deg, #7c5cfc, #00d4aa);
-    border-radius: 3px; pointer-events: none; will-change: width;
-  }
-  .scrubber-thumb {
-    position: absolute; width: 16px; height: 16px;
-    background: #e8eaf6; border: 2px solid #7c5cfc;
-    border-radius: 50%; top: 50%; transform: translate(-50%, -50%);
-    pointer-events: none; will-change: left;
-    box-shadow: 0 0 8px rgba(124,92,252,0.4); transition: transform 0.1s;
-  }
-  .scrubber-container.dragging .scrubber-thumb {
-    transform: translate(-50%, -50%) scale(1.3); background: #7c5cfc;
-  }
-  .slide-container {
-    flex: 1; display: flex; align-items: center; justify-content: center;
-    overflow: hidden; position: relative; background: #000;
-  }
-  .slide-container img {
-    max-width: 100%; max-height: 100%; object-fit: contain; will-change: opacity;
-  }
-  {% if is_jacobi %}
-  .slide-container {
-    flex-wrap: wrap; align-content: center; gap: 6px; padding: 8px; overflow: auto;
-  }
-  .slide-container .layer-img {
-    max-height: 48%; max-width: 48%; object-fit: contain;
-    border: 1px solid #1e2340; border-radius: 4px; flex-shrink: 1;
-  }
-  .slide-container.single-layer .layer-img { max-height: 95%; max-width: 95%; }
-  .step-label {
-    position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%);
-    font-size: 0.9rem; font-weight: 700; color: #7c5cfc;
-    background: rgba(8,9,13,0.85); padding: 0.2rem 1rem;
-    border-radius: 6px; border: 1px solid #2a2f55; z-index: 5;
-    font-family: 'JetBrains Mono', monospace;
-  }
-  {% endif %}
-  .hint {
-    position: absolute; bottom: 0.5rem; left: 50%; transform: translateX(-50%);
-    font-size: 0.7rem; color: #4a4f78; pointer-events: none; opacity: 0.7; z-index: 5;
-  }
-  .speed-label { font-size: 0.7rem; color: #6b70a0; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
+  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
+  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
+  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
+  button:hover{background:var(--accent);border-color:var(--accent)}
+  button.active{background:var(--accent);border-color:var(--accent)}
+  .speed-group{display:flex;gap:0.3rem}
+  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:120px;text-align:center}
+  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .img-container{margin:1rem 0;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000}
+  .img-container img{max-width:90vw;max-height:70vh;display:block}
+  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
 </style>
 </head>
 <body>
-<div class="toolbar">
-  <div class="title">{{ title }}</div>
-  <div class="controls">
-    <button id="btn-start" title="First (Home)">⏮</button>
-    <button id="btn-prev" title="Previous">◀</button>
-    <button id="btn-play" title="Play/Pause (Space)">▶</button>
-    <button id="btn-next" title="Next">▶▶</button>
-    <button id="btn-end" title="Last (End)">⏭</button>
-    <span class="speed-label">Speed:</span>
-    <button id="btn-slower">−</button>
-    <span id="speed-display" class="counter" style="min-width:50px;">{{ default_speed }}ms</span>
-    <button id="btn-faster">+</button>
-    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">?</span></div>
+<h1>📈 Training Plot History</h1>
+<div class="controls">
+  <button onclick="prev()">⏮ Prev</button>
+  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+  <button onclick="next()">Next ⏭</button>
+  <div class="speed-group">
+    <button onclick="setSpeed(2000)">🐢</button>
+    <button onclick="setSpeed(800)" class="active" id="speedMed">🐇</button>
+    <button onclick="setSpeed(200)">⚡</button>
   </div>
 </div>
-<div class="scrubber-container" id="scrubber">
-  <div class="scrubber-track" id="scrubber-track">
-    <div class="scrubber-fill" id="scrubber-fill" style="width:0%"></div>
-  </div>
-  <div class="scrubber-thumb" id="scrubber-thumb" style="left:12px"></div>
-</div>
-<div class="slide-container" id="slide-container">
-  {% if is_jacobi %}<div class="step-label" id="step-label">Step ?</div>{% endif %}
-  {% if not is_jacobi %}
-    <img id="slide-img-a" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;">
-    <img id="slide-img-b" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;opacity:0;">
-  {% endif %}
-  <div class="hint">← → navigate · 0-9 jump to % · Drag slider · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
-</div>
+<div class="slider-row"><input type="range" id="slider" min="0" max="{{ frames|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
+<div class="frame-info" id="info">Frame 1 / {{ frames|length }}</div>
+<div class="img-container"><img id="mainImg" src="{{ frames[0] }}"></div>
+<a class="back" href="index.html">← Back to Dashboard</a>
 <script>
-const images = {{ images_json }};
-const isJacobi = {{ 'true' if is_jacobi else 'false' }};
-const total = isJacobi ? 0 : images.length;
+const frames = {{ frames_json }};
+let idx = 0, playing = false, timer = null, speed = 800;
+function show(i){idx=i;document.getElementById('mainImg').src=frames[i];document.getElementById('slider').value=i;document.getElementById('info').textContent=`Frame ${i+1} / ${frames.length}`;}
+function next(){show((idx+1)%frames.length)}
+function prev(){show((idx-1+frames.length)%frames.length)}
+function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
+function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
+function goTo(i){show(i)}
+</script>
+</body>
+</html>''')
 
-let idx = 0;
-let playing = false;
-let playInterval = null;
-let speed = {{ default_speed }};
 
-const frameNum = document.getElementById('frame-num');
-const frameTotal = document.getElementById('frame-total');
-const btnPlay = document.getElementById('btn-play');
-const speedDisplay = document.getElementById('speed-display');
-const scrubber = document.getElementById('scrubber');
-const scrubberTrack = document.getElementById('scrubber-track');
-const scrubberFill = document.getElementById('scrubber-fill');
-const scrubberThumb = document.getElementById('scrubber-thumb');
-const container = document.getElementById('slide-container');
-
-// === JACOBI: group by step ===
-let steps = [];
-let stepMap = new Map();
-if (isJacobi) {
-  images.forEach(path => {
-    const m = path.match(/jacobi_step(\d+)_layer(\d+)/);
-    if (!m) return;
-    const step = parseInt(m[1], 10), layer = parseInt(m[2], 10);
-    if (!stepMap.has(step)) stepMap.set(step, []);
-    stepMap.get(step).push({ path, layer });
-  });
-  stepMap.forEach(arr => arr.sort((a, b) => a.layer - b.layer));
-  steps = [...stepMap.keys()].sort((a, b) => a - b);
-}
-
-function getTotal() { return isJacobi ? steps.length : images.length; }
-frameTotal.textContent = getTotal();
-
-// === PRELOAD CACHE (sliding window) ===
-const cache = new Map();
-const PRELOAD_AHEAD = isJacobi ? 5 : 15;
-const PRELOAD_BEHIND = isJacobi ? 2 : 5;
-const MAX_CACHE = isJacobi ? 120 : 60;
-
-function preloadAround(center) {
-  const t = getTotal();
-  const lo = Math.max(0, center - PRELOAD_BEHIND);
-  const hi = Math.min(t - 1, center + PRELOAD_AHEAD);
-  if (isJacobi) {
-    for (let i = lo; i <= hi; i++) {
-      const layers = stepMap.get(steps[i]);
-      if (!layers) continue;
-      layers.forEach(l => {
-        if (!cache.has(l.path)) { const img = new Image(); img.src = l.path; cache.set(l.path, img); }
-      });
-    }
-  } else {
-    for (let i = lo; i <= hi; i++) {
-      if (!cache.has(images[i])) { const img = new Image(); img.src = images[i]; cache.set(images[i], img); }
-    }
+# ── jacobi.html template ──────────────────────────────────────────────
+JACOBI_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jacobi Field Slideshow</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#00d4aa;--accent2:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
+  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
+  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
+  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
+  button:hover{background:var(--accent);border-color:var(--accent)}
+  button.active{background:var(--accent2);border-color:var(--accent2)}
+  .speed-group{display:flex;gap:0.3rem}
+  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:200px;text-align:center}
+  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .layer-grid{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin:1rem 0}
+  .layer-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000}
+  .layer-card img{max-width:420px;max-height:420px;display:block}
+  .layer-card .layer-label{padding:0.4rem 0.8rem;font-size:0.75rem;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--card);border-top:1px solid var(--border);text-align:center}
+  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<h1>🌊 Jacobi Field History</h1>
+<div class="controls">
+  <button onclick="prev()">⏮ Prev</button>
+  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+  <button onclick="next()">Next ⏭</button>
+  <div class="speed-group">
+    <button onclick="setSpeed(2000)">🐢</button>
+    <button onclick="setSpeed(800)" class="active" id="speedMed">🐇</button>
+    <button onclick="setSpeed(200)">⚡</button>
+  </div>
+</div>
+<div class="slider-row"><input type="range" id="slider" min="0" max="{{ steps|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
+<div class="frame-info" id="info">Step 1 / {{ steps|length }}</div>
+<div class="layer-grid" id="layerGrid"></div>
+<a class="back" href="index.html">← Back to Dashboard</a>
+<script>
+const data = {{ data_json }};
+const steps = {{ steps_json }};
+let idx = 0, playing = false, timer = null, speed = 800;
+function show(i){
+  idx=i;
+  const step = steps[i];
+  const layers = data[step];
+  document.getElementById('slider').value=i;
+  document.getElementById('info').textContent=`Step ${step} (${i+1} / ${steps.length})`;
+  let html='';
+  for(const [layer, path] of layers){
+    html+=`<div class="layer-card"><img src="${path}"><div class="layer-label">Layer ${layer}</div></div>`;
   }
-  if (cache.size > MAX_CACHE) {
-    for (const [url] of cache) {
-      if (cache.size <= MAX_CACHE) break;
-      cache.delete(url);
-    }
-  }
+  document.getElementById('layerGrid').innerHTML=html;
 }
-
-let activeSlide = 'a'; // tracks which img element is currently visible
-
-function show(i) {
-  const t = getTotal();
-  if (t === 0) return;
-  idx = Math.max(0, Math.min(t - 1, i));
-  frameNum.textContent = idx + 1;
-
-  if (isJacobi) {
-    const step = steps[idx];
-    const layers = stepMap.get(step);
-    const label = document.getElementById('step-label');
-    if (label) label.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
-    container.querySelectorAll('.layer-img').forEach(el => el.remove());
-    container.classList.toggle('single-layer', layers.length === 1);
-    layers.forEach(l => {
-      const img = document.createElement('img');
-      img.className = 'layer-img'; img.src = l.path;
-      img.alt = 'Layer ' + l.layer; img.title = 'Step ' + step + ', Layer ' + l.layer;
-      container.appendChild(img);
-    });
-  } else {
-    const src = images[idx];
-    const front = document.getElementById('slide-img-' + activeSlide);
-    const backId = activeSlide === 'a' ? 'b' : 'a';
-    const back = document.getElementById('slide-img-' + backId);
-
-    // Check if already cached and fully decoded
-    const cached = cache.get(src);
-    if (cached && cached.complete && cached.naturalWidth > 0) {
-      // Image is ready — swap instantly
-      back.src = src;
-      back.style.opacity = '1';
-      front.style.opacity = '0';
-      activeSlide = backId;
-    } else {
-      // Load in background — keep the OLD image fully visible until ready
-      // Do NOT touch opacity of either element here
-      const loader = new Image();
-      const targetIdx = idx; // capture for closure
-      loader.onload = () => {
-        if (idx !== targetIdx) return; // user already moved on
-        back.src = src;
-        // Force the browser to have the image decoded before swapping
-        if (back.decode) {
-          back.decode().then(() => {
-            if (idx !== targetIdx) return;
-            back.style.opacity = '1';
-            front.style.opacity = '0';
-            activeSlide = backId;
-          }).catch(() => {
-            // Fallback if decode() fails
-            back.style.opacity = '1';
-            front.style.opacity = '0';
-            activeSlide = backId;
-          });
-        } else {
-          back.style.opacity = '1';
-          front.style.opacity = '0';
-          activeSlide = backId;
-        }
-      };
-      loader.src = src;
-      cache.set(src, loader);
-    }
-  }
-  updateScrubber();
-  preloadAround(idx);
-}
-
-// === SCRUBBER ===
-function updateScrubber() {
-  const t = getTotal();
-  const pct = t > 1 ? idx / (t - 1) : 0;
-  scrubberFill.style.width = (pct * 100) + '%';
-  const trackRect = scrubberTrack.getBoundingClientRect();
-  const left = trackRect.left - scrubber.getBoundingClientRect().left + pct * trackRect.width;
-  scrubberThumb.style.left = left + 'px';
-}
-
-let dragging = false;
-function scrubFromEvent(e) {
-  const trackRect = scrubberTrack.getBoundingClientRect();
-  let pct = (e.clientX - trackRect.left) / trackRect.width;
-  pct = Math.max(0, Math.min(1, pct));
-  show(Math.round(pct * (getTotal() - 1)));
-}
-scrubber.addEventListener('pointerdown', (e) => {
-  dragging = true; scrubber.classList.add('dragging');
-  scrubber.setPointerCapture(e.pointerId); scrubFromEvent(e);
-});
-scrubber.addEventListener('pointermove', (e) => { if (dragging) scrubFromEvent(e); });
-scrubber.addEventListener('pointerup', () => { dragging = false; scrubber.classList.remove('dragging'); });
-scrubber.addEventListener('pointercancel', () => { dragging = false; scrubber.classList.remove('dragging'); });
-
-function togglePlay() {
-  playing = !playing;
-  btnPlay.textContent = playing ? '⏸' : '▶';
-  btnPlay.classList.toggle('playing', playing);
-  if (playing) {
-    playInterval = setInterval(() => {
-      if (idx >= getTotal() - 1) { togglePlay(); return; }
-      show(idx + 1);
-    }, speed);
-  } else { clearInterval(playInterval); playInterval = null; }
-}
-function updateSpeed(s) {
-  speed = Math.max(30, Math.min(10000, s));
-  speedDisplay.textContent = speed + 'ms';
-  if (playing) { clearInterval(playInterval); playInterval = setInterval(() => {
-    if (idx >= getTotal() - 1) { togglePlay(); return; } show(idx + 1);
-  }, speed); }
-}
-function next() { show(idx + 1); }
-function prev() { show(idx - 1); }
-function goStart() { show(0); }
-function goEnd() { show(getTotal() - 1); }
-
-document.getElementById('btn-next').addEventListener('click', next);
-document.getElementById('btn-prev').addEventListener('click', prev);
-document.getElementById('btn-start').addEventListener('click', goStart);
-document.getElementById('btn-end').addEventListener('click', goEnd);
-document.getElementById('btn-play').addEventListener('click', togglePlay);
-document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
-document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
-
-document.addEventListener('keydown', (e) => {
-  // Number keys 0-9: jump to proportional position
-  if (e.key >= '0' && e.key <= '9') {
-    e.preventDefault();
-    const digit = parseInt(e.key, 10);
-    const t = getTotal();
-    if (t === 0) return;
-    if (digit === 0) { show(0); }
-    else if (digit === 9) { show(t - 1); }
-    else { show(Math.round((digit / 10) * (t - 1))); }
-    return;
-  }
-  switch (e.key) {
-    case 'ArrowLeft': case 'ArrowDown': e.preventDefault(); prev(); break;
-    case 'ArrowRight': case 'ArrowUp': e.preventDefault(); next(); break;
-    case 'Home': e.preventDefault(); goStart(); break;
-    case 'End': e.preventDefault(); goEnd(); break;
-    case ' ': e.preventDefault(); togglePlay(); break;
-    case '+': e.preventDefault(); updateSpeed(speed - 100); break;
-    case '-': e.preventDefault(); updateSpeed(speed + 100); break;
-    case 'PageDown': e.preventDefault(); show(idx + 50); break;
-    case 'PageUp': e.preventDefault(); show(idx - 50); break;
-  }
-});
-
-container.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  if (e.deltaY > 0 || e.deltaX > 0) next(); else prev();
-}, { passive: false });
-
-let touchStartX = 0;
-container.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
-container.addEventListener('touchend', (e) => {
-  const dx = e.changedTouches[0].clientX - touchStartX;
-  if (Math.abs(dx) > 40) { if (dx < 0) next(); else prev(); }
-}, { passive: true });
-
-window.addEventListener('resize', () => updateScrubber());
-preloadAround(0);
+function next(){show((idx+1)%steps.length)}
+function prev(){show((idx-1+steps.length)%steps.length)}
+function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
+function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
+function goTo(i){show(i)}
 show(0);
 </script>
 </body>
-</html>
-''')
+</html>''')
+
+
+# ── 4d_jacobi.html template ───────────────────────────────────────────
+JACOBI_4D_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4D Jacobi Slices Slideshow</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#f472b6;--accent2:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
+  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
+  .subtitle{color:var(--muted);font-size:0.85rem;margin-bottom:1rem}
+  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
+  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
+  button:hover{background:var(--accent);border-color:var(--accent)}
+  button.active{background:var(--accent2);border-color:var(--accent2)}
+  .speed-group{display:flex;gap:0.3rem}
+  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:200px;text-align:center}
+  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .step-group{margin:1rem 0;width:100%;max-width:1400px}
+  .step-group h2{font-size:1rem;font-weight:600;color:var(--accent);margin-bottom:0.8rem;font-family:'JetBrains Mono',monospace}
+  .layer-section{margin-bottom:1.5rem}
+  .layer-section h3{font-size:0.85rem;font-weight:600;color:var(--accent2);margin-bottom:0.5rem;font-family:'JetBrains Mono',monospace}
+  .slice-grid{display:flex;flex-wrap:wrap;gap:0.8rem;justify-content:center}
+  .slice-card{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#000;transition:transform 0.2s,box-shadow 0.2s}
+  .slice-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(244,114,182,0.15)}
+  .slice-card img{max-width:320px;max-height:320px;display:block}
+  .slice-card .slice-label{padding:0.35rem 0.7rem;font-size:0.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--card);border-top:1px solid var(--border);text-align:center}
+  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<h1>🔮 4D Jacobi Slices</h1>
+<div class="subtitle">Pairwise dimension slices of the 4D Jacobian, grouped by step and layer</div>
+<div class="controls">
+  <button onclick="prev()">⏮ Prev</button>
+  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
+  <button onclick="next()">Next ⏭</button>
+  <div class="speed-group">
+    <button onclick="setSpeed(3000)">🐢</button>
+    <button onclick="setSpeed(1200)" class="active" id="speedMed">🐇</button>
+    <button onclick="setSpeed(400)">⚡</button>
+  </div>
+</div>
+<div class="slider-row"><input type="range" id="slider" min="0" max="{{ steps|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
+<div class="frame-info" id="info">Step 1 / {{ steps|length }}</div>
+<div class="step-group" id="stepGroup"></div>
+<a class="back" href="index.html">← Back to Dashboard</a>
+<script>
+const data = {{ data_json }};
+const steps = {{ steps_json }};
+let idx = 0, playing = false, timer = null, speed = 1200;
+function show(i){
+  idx=i;
+  const step = steps[i];
+  const layers = data[step];
+  document.getElementById('slider').value=i;
+  document.getElementById('info').textContent=`Step ${step} (${i+1} / ${steps.length})`;
+  let html=`<h2>Step ${step}</h2>`;
+  // layers is {layer_num: [{dim_a, dim_b, path}, ...]}
+  const layerNums = Object.keys(layers).map(Number).sort((a,b)=>a-b);
+  for(const ln of layerNums){
+    html+=`<div class="layer-section"><h3>Layer ${ln}</h3><div class="slice-grid">`;
+    const slices = layers[ln];
+    for(const s of slices){
+      html+=`<div class="slice-card"><img src="${s.path}"><div class="slice-label">d${s.dim_a} × d${s.dim_b}</div></div>`;
+    }
+    html+=`</div></div>`;
+  }
+  document.getElementById('stepGroup').innerHTML=html;
+}
+function next(){show((idx+1)%steps.length)}
+function prev(){show((idx-1+steps.length)%steps.length)}
+function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
+function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
+function goTo(i){show(i)}
+show(0);
+</script>
+</body>
+</html>''')
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# 6. RENDER — put it all together
+# 6. MAIN — generate all HTML files
 # ═════════════════════════════════════════════════════════════════════════
 
-def render_dashboard(run_dir: Path, rf: RunFiles):
-    """Generate index.html."""
-    import html as html_mod
-    import json
-    import time
+import json
 
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S %Z')
-    elapsed = compute_elapsed(rf.started_at)
+MAX_SLIDESHOW_FRAMES = 300
+MAX_JACOBI_STEPS = 200
 
-    # Parse epoch files
-    overview, details = parse_epoch_files(run_dir, rf.epoch_txts)
-    latest_acc = f"{overview[-1]['pct']}%" if overview else "—"
-
-    # File previews (first 20-30 lines, HTML-escaped)
-    previews = {}
-    for rel in rf.other_csvs + rf.other_txts + rf.py_files:
-        try:
-            text = (run_dir / rel).read_text(errors='replace')
-            lines = text.splitlines()[:30]
-            previews[rel] = html_mod.escape('\n'.join(lines))
-        except Exception:
-            previews[rel] = '(could not read)'
-
-    # Basename filter for Jinja
-    JINJA_ENV.filters['basename'] = lambda s: Path(s).name
-
-    cache_bust = str(int(time.time()))
-
-    html_out = DASHBOARD_TEMPLATE.render(
-        timestamp=timestamp,
-        started_at=rf.started_at,
-        elapsed=elapsed,
-        epoch_count=len(rf.epoch_txts),
-        latest_acc=latest_acc,
-        n_plots=len(rf.summary_images),
-        total_files=(len(rf.summary_images) + len(rf.epoch_txts) + len(rf.epoch_csvs)
-                     + len(rf.other_csvs) + len(rf.other_txts) + len(rf.py_files)),
-        images=rf.summary_images,
-        cache_bust=cache_bust,
-        has_slideshow=len(rf.training_hist) > 0,
-        has_jacobi=len(rf.jacobi_images) > 0,
-        n_training_hist=len(rf.training_hist),
-        n_jacobi_steps=len(set(s for s, _, _ in rf.jacobi_images)),
-        overview=overview,
-        details=details,
-        epoch_txts=rf.epoch_txts,
-        epoch_csvs=rf.epoch_csvs,
-        other_csvs=rf.other_csvs,
-        other_txts=rf.other_txts,
-        py_files=rf.py_files,
-        previews=previews,
-    )
-
-    (run_dir / 'index.html').write_text(html_out)
-    print(f"  ✅ index.html ({len(rf.summary_images)} plots, {len(overview)} epochs)")
-
-
-def render_slideshow(run_dir: Path, rf: RunFiles, max_frames: int = 500):
-    """Generate slideshow.html for training plot history."""
-    import json
-
-    all_images = list(rf.training_hist)
-    if rf.has_current_plot:
-        all_images.append('training_plot.png')
-
-    if not all_images:
-        return
-
-    images = subsample(all_images, max_frames)
-    if len(images) < len(all_images):
-        print(f"  Training slideshow: subsampled {len(all_images)} → {len(images)} frames")
-
-    html_out = SLIDESHOW_TEMPLATE.render(
-        title="Training Plot History",
-        is_jacobi=False,
-        default_speed=500,
-        images_json=json.dumps(images),
-    )
-
-    (run_dir / 'slideshow.html').write_text(html_out)
-    print(f"  ✅ slideshow.html ({len(images)} frames)")
-
-
-def render_jacobi_slideshow(run_dir: Path, rf: RunFiles, max_steps: int = 200):
-    """Generate jacobi.html for Jacobi field history."""
-    import json
-
-    if not rf.jacobi_images:
-        return
-
-    # Get unique steps
-    all_steps = sorted(set(s for s, _, _ in rf.jacobi_images))
-
-    # Subsample steps
-    selected_steps = subsample(all_steps, max_steps)
-    if len(selected_steps) < len(all_steps):
-        print(f"  Jacobi slideshow: subsampled {len(all_steps)} → {len(selected_steps)} steps")
-
-    selected_set = set(selected_steps)
-
-    # Filter images to selected steps only
-    images = [path for step, layer, path in rf.jacobi_images if step in selected_set]
-
-    html_out = SLIDESHOW_TEMPLATE.render(
-        title="Jacobi Field History",
-        is_jacobi=True,
-        default_speed=300,
-        images_json=json.dumps(images),
-    )
-
-    (run_dir / 'jacobi.html').write_text(html_out)
-    print(f"  ✅ jacobi.html ({len(images)} images across {len(selected_steps)} steps)")
-
-
-# ═════════════════════════════════════════════════════════════════════════
-# 7. MAIN
-# ═════════════════════════════════════════════════════════════════════════
 
 def main():
-    """
-    Fast dashboard + slideshow generator.
-
-    Steps:
-      1. Parse CLI args (just the run directory path)
-      2. Scan the run directory ONCE with os.scandir (not find)
-         → classify into: summary plots, training_plot history,
-           jacobi images, epoch txts/csvs, other files
-         → skip: .npz, .html, hidden files, jacobi_step*.png in root
-      3. Generate index.html    — dashboard with summary plots only
-      4. Generate slideshow.html — training plot history (subsampled to ~500)
-      5. Generate jacobi.html   — jacobi field history (subsampled to ~200 steps)
-    """
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <run_directory>")
+        print("Usage: python generate_dashboard.py <run_dir>")
         sys.exit(1)
 
     run_dir = Path(sys.argv[1]).resolve()
@@ -1018,30 +723,133 @@ def main():
         print(f"Error: {run_dir} is not a directory")
         sys.exit(1)
 
-    print(f"📊 Generating dashboard for: {run_dir}")
-
-    # Step 2: Scan
     t0 = time.time()
+    print(f"[dashboard] Scanning {run_dir} ...")
     rf = scan_run_dir(run_dir)
-    scan_time = time.time() - t0
-    print(f"  Scanned in {scan_time:.2f}s: "
-          f"{len(rf.summary_images)} plots, "
-          f"{len(rf.training_hist)} training frames, "
-          f"{len(rf.jacobi_images)} jacobi images, "
-          f"{len(rf.epoch_txts)} epoch files")
 
-    # Step 3: Dashboard
-    render_dashboard(run_dir, rf)
+    # ── Parse epoch data ────────────────────────────────────────────
+    overview, details = parse_epoch_files(run_dir, rf.epoch_txts)
 
-    # Step 4: Training slideshow
-    render_slideshow(run_dir, rf)
+    # ── Compute stats ───────────────────────────────────────────────
+    latest_acc = "—"
+    if overview:
+        latest_acc = f"{overview[-1]['pct']}%"
 
-    # Step 5: Jacobi slideshow
-    render_jacobi_slideshow(run_dir, rf)
+    elapsed = compute_elapsed(rf.started_at)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cache_bust = int(time.time())
 
-    total_time = time.time() - t0
-    print(f"  🎉 Done in {total_time:.2f}s")
+    total_files = (len(rf.summary_images) + len(rf.training_hist) +
+                   len(rf.jacobi_images) + len(rf.jacobi_4d_images) +
+                   len(rf.epoch_txts) + len(rf.epoch_csvs) +
+                   len(rf.other_csvs) + len(rf.other_txts) + len(rf.py_files))
+
+    # ── Prepare images list (include current training_plot) ─────────
+    images = list(rf.summary_images)
+    if rf.has_current_plot and "training_plot.png" not in images:
+        images.insert(0, "training_plot.png")
+
+    # ── Generate index.html ─────────────────────────────────────────
+    # Determine unique jacobi 4D steps and slices
+    jacobi_4d_steps = sorted(set(s for s, _, _, _, _ in rf.jacobi_4d_images))
+    jacobi_4d_slices = sorted(set((da, db) for _, _, da, db, _ in rf.jacobi_4d_images))
+
+    index_html = DASHBOARD_TEMPLATE.render(
+        images=images,
+        overview=overview,
+        details=details,
+        started_at=rf.started_at,
+        elapsed=elapsed,
+        timestamp=timestamp,
+        cache_bust=cache_bust,
+        epoch_count=len(overview),
+        latest_acc=latest_acc,
+        n_plots=len(images),
+        total_files=total_files,
+        has_slideshow=len(rf.training_hist) > 1,
+        has_jacobi=len(rf.jacobi_images) > 0,
+        has_jacobi_4d=len(rf.jacobi_4d_images) > 0,
+        n_training_hist=len(rf.training_hist),
+        n_jacobi_steps=len(set(s for s, _, _ in rf.jacobi_images)),
+        n_jacobi_4d_steps=len(jacobi_4d_steps),
+        n_jacobi_4d_slices=len(jacobi_4d_slices),
+        other_csvs=rf.other_csvs,
+        other_txts=rf.other_txts,
+        py_files=rf.py_files,
+    )
+    (run_dir / "index.html").write_text(index_html)
+    print(f"  ✓ index.html")
+
+    # ── Generate slideshow.html ─────────────────────────────────────
+    if rf.training_hist:
+        frames = subsample(rf.training_hist, MAX_SLIDESHOW_FRAMES)
+        slideshow_html = SLIDESHOW_TEMPLATE.render(
+            frames=frames,
+            frames_json=json.dumps(frames),
+        )
+        (run_dir / "slideshow.html").write_text(slideshow_html)
+        print(f"  ✓ slideshow.html ({len(frames)} frames)")
+
+    # ── Generate jacobi.html (non-4D) ──────────────────────────────
+    if rf.jacobi_images:
+        # Group by step → [(layer, path), ...]
+        step_map = defaultdict(list)
+        for step, layer, path in rf.jacobi_images:
+            step_map[step].append((layer, path))
+        for step in step_map:
+            step_map[step].sort()
+
+        all_steps = sorted(step_map.keys())
+        sampled_steps = subsample(all_steps, MAX_JACOBI_STEPS)
+
+        # Build data: {step: [(layer, path), ...]}
+        data = {s: step_map[s] for s in sampled_steps}
+
+        jacobi_html = JACOBI_TEMPLATE.render(
+            steps=sampled_steps,
+            steps_json=json.dumps(sampled_steps),
+            data_json=json.dumps(data),
+        )
+        (run_dir / "jacobi.html").write_text(jacobi_html)
+        print(f"  ✓ jacobi.html ({len(sampled_steps)} steps)")
+
+    # ── Generate 4d_jacobi.html ─────────────────────────────────────
+    if rf.jacobi_4d_images:
+        # Group by step → layer → [{dim_a, dim_b, path}, ...]
+        step_layer_map = defaultdict(lambda: defaultdict(list))
+        for step, layer, dim_a, dim_b, path in rf.jacobi_4d_images:
+            step_layer_map[step][layer].append({
+                'dim_a': dim_a,
+                'dim_b': dim_b,
+                'path': path,
+            })
+
+        # Sort slices within each layer
+        for step in step_layer_map:
+            for layer in step_layer_map[step]:
+                step_layer_map[step][layer].sort(key=lambda x: (x['dim_a'], x['dim_b']))
+
+        all_steps_4d = sorted(step_layer_map.keys())
+        sampled_steps_4d = subsample(all_steps_4d, MAX_JACOBI_STEPS)
+
+        # Build data: {step: {layer: [{dim_a, dim_b, path}, ...]}}
+        data_4d = {}
+        for s in sampled_steps_4d:
+            data_4d[s] = {}
+            for layer in sorted(step_layer_map[s].keys()):
+                data_4d[s][layer] = step_layer_map[s][layer]
+
+        jacobi_4d_html = JACOBI_4D_TEMPLATE.render(
+            steps=sampled_steps_4d,
+            steps_json=json.dumps(sampled_steps_4d),
+            data_json=json.dumps(data_4d),
+        )
+        (run_dir / "4d_jacobi.html").write_text(jacobi_4d_html)
+        print(f"  ✓ 4d_jacobi.html ({len(sampled_steps_4d)} steps, {len(jacobi_4d_slices)} slice pairs)")
+
+    elapsed_gen = time.time() - t0
+    print(f"[dashboard] Done in {elapsed_gen:.2f}s")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
