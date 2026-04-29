@@ -737,8 +737,9 @@ class IntrospectionEngine:
         """Get top-k token probabilities."""
         top_probs, top_indices = torch.topk(probs, min(k, len(probs)))
         results = []
-        for prob, idx in zip(top_probs.tolist(), top_indices.tolist()):
-            idx_val = idx.item()  # ❌ ERROR: idx is already an int (from .tolist())
+        for i in range(len(top_probs)):
+            idx_val = top_indices[i].item()
+            prob_val = top_probs[i].item()
             try:
                 token_text = self.tokenizer.decode([idx_val])
             except:
@@ -746,7 +747,7 @@ class IntrospectionEngine:
             results.append({
                 'token_id': idx_val,
                 'token_text': token_text,
-                'probability': prob.item(),  # ❌ Same issue: prob is already a float
+                'probability': prob_val,
             })
         return results
 
