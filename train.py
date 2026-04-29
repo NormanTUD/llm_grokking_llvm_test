@@ -1478,7 +1478,11 @@ class LLVMGPTConfig:
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1):
         super().__init__()
-        assert d_model % n_heads == 0
+        assert d_model % n_heads == 0, (
+            f"Invalid configuration: d_model ({d_model}) must be divisible by n_heads ({n_heads}). "
+            f"Try setting d_model to a multiple of n_heads, such as {n_heads * ((d_model // n_heads) + 1)}."
+        )
+
         self.n_heads = n_heads
         self.head_dim = d_model // n_heads
         self.qkv = nn.Linear(d_model, 3 * d_model)
