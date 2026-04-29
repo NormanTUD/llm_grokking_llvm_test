@@ -197,14 +197,25 @@ def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
     if _sync_proc is not None:
         rc = _sync_proc.returncode
         if rc != 0:
-            console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
+            if rc == 11:
+                console.print(f"  [bold red]⚠ Previous sync failed: disk full on remote (rsync code 11)[/]")
+            elif rc == 23:
+                console.print(f"  [yellow]⚠ Previous sync: partial transfer (rsync code 23)[/]")
+            elif rc == 12:
+                console.print(f"  [yellow]⚠ Previous sync: rsync protocol error (code 12)[/]")
+            else:
+                console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
 
-    # Ensure trailing slash on source so rsync copies CONTENTS, not the dir itself
+    # Ensure trailing slash so rsync copies CONTENTS, not the dir itself
     source = run_dir_path.rstrip("/") + "/"
 
     cmd = [
-        "rsync", "-az", "--delete",
-        "--timeout=30",
+        "rsync",
+        "-az",
+        "--delete",
+        "--timeout=60",
+        "--exclude=*.tmp",
+        "--exclude=__pycache__/",
         source,
         sync_target,
     ]
@@ -214,11 +225,11 @@ def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
         _sync_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             start_new_session=True,
         )
     except FileNotFoundError:
-        console.print("  [yellow]⚠ rsync not found — install rsync or use watch_and_sync.sh manually[/]")
+        console.print("  [yellow]⚠ rsync not found — install rsync or use --sync manually[/]")
 
 
 def _wait_for_sync():
@@ -226,12 +237,33 @@ def _wait_for_sync():
     global _sync_proc
     if _sync_proc is not None and _sync_proc.poll() is None:
         console.print("[dim]🔄 Waiting for final sync to complete...[/]")
-        _sync_proc.wait()
+        try:
+            _sync_proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]⚠ Final sync timed out after 120s — killing.[/]")
+            try:
+                import signal as _signal
+                os.killpg(os.getpgid(_sync_proc.pid), _signal.SIGTERM)
+                _sync_proc.wait(timeout=5)
+            except Exception:
+                _sync_proc.kill()
+            return
+
         rc = _sync_proc.returncode
         if rc == 0:
             console.print("[green]✓ Final sync completed.[/]")
+        elif rc == 11:
+            stderr_out = ""
+            try:
+                stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
+            except Exception:
+                pass
+            console.print(f"[bold red]⚠ Final sync failed: disk full on remote (code 11)[/]")
+            if stderr_out:
+                console.print(f"  [dim red]{stderr_out[-200:]}[/]")
         else:
             console.print(f"[yellow]⚠ Final sync exited with code {rc}[/]")
+
 
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
