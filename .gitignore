@@ -8,3 +8,4 @@ llvm_gpt_model/
 batch_log.csv
 epoch_log.csv
 jacobi_analysis/
+structure_analysis/
