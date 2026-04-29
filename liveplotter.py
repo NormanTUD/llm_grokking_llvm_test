@@ -29,8 +29,9 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
     """
     Compute the Jacobi field of the space deformation itself at each layer.
     
-    For 2D hidden states, raw coordinates are used (no PCA).
-    For 3+D hidden states, PCA projection is used.
+    For 2D hidden states: returns raw coordinates and output positions for
+    direct morphed-space visualization (no PCA, no Jacobian decomposition).
+    For 3+D hidden states: PCA projection with full Jacobian analysis.
     """
     model.eval()
     output = model(input_ids=input_ids, output_hidden_states=True)
@@ -53,6 +54,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
 
     # ── Determine hidden dimension ──────────────────────────────────
     D = hidden_states[0].shape[-1]
+    is_2d = (D == 2)
     use_pca = (D > 2)
 
     if use_pca:
@@ -102,18 +104,135 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
 
         delta = h_out - h_in
 
-        # Project to 2D for visualization
+        # ── 2D coordinates ──────────────────────────────────────────
         if use_pca:
             h_in_2d = ((h_in.cpu() - mean) @ pca_basis.T).numpy()
-        else:
-            # 2D: use raw coordinates directly
-            h_in_2d = h_in.cpu().numpy()[:, :2]
-
-        # ── Per-token delta in 2D (for cumulative panel) ────────────
-        if use_pca:
+            h_out_2d = ((h_out.cpu() - mean) @ pca_basis.T).numpy()
             delta_2d = ((delta.cpu()) @ pca_basis.T).numpy()
         else:
+            h_in_2d = h_in.cpu().numpy()[:, :2]
+            h_out_2d = h_out.cpu().numpy()[:, :2]
             delta_2d = delta.cpu().numpy()[:, :2]
+
+        # ════════════════════════════════════════════════════════════
+        # 2D SPECIAL CASE: morphed-space visualization
+        # No PCA, no Jacobian decomposition, no RBF interpolation.
+        # Just build a grid, warp it through the layer, and store both.
+        # ════════════════════════════════════════════════════════════
+        if is_2d:
+            # Axis limits from input positions
+            pad_frac = 0.2
+            x_range = h_in_2d[:, 0]
+            y_range = h_in_2d[:, 1]
+            x_span = max(np.ptp(x_range), 0.1)
+            y_span = max(np.ptp(y_range), 0.1)
+            x_min = x_range.min() - pad_frac * x_span
+            x_max = x_range.max() + pad_frac * x_span
+            y_min = y_range.min() - pad_frac * y_span
+            y_max = y_range.max() + pad_frac * y_span
+
+            # Build a regular grid in the input space
+            grid_n = 24
+            gx = np.linspace(x_min, x_max, grid_n)
+            gy = np.linspace(y_min, y_max, grid_n)
+            grid_x_in, grid_y_in = np.meshgrid(gx, gy)
+
+            # Warp the grid through the layer using nearest-neighbor interpolation
+            # of the actual layer mapping (h_in -> h_out)
+            from scipy.interpolate import RBFInterpolator
+
+            # Interpolate the OUTPUT x and y coordinates as functions of INPUT x,y
+            try:
+                rbf_out_x = RBFInterpolator(
+                    h_in_2d, h_out_2d[:, 0],
+                    kernel='thin_plate_spline', smoothing=1.0
+                )
+                rbf_out_y = RBFInterpolator(
+                    h_in_2d, h_out_2d[:, 1],
+                    kernel='thin_plate_spline', smoothing=1.0
+                )
+
+                grid_pts_in = np.stack([grid_x_in.ravel(), grid_y_in.ravel()], axis=1)
+                grid_x_out = rbf_out_x(grid_pts_in).reshape(grid_n, grid_n)
+                grid_y_out = rbf_out_y(grid_pts_in).reshape(grid_n, grid_n)
+            except Exception:
+                # Fallback: just use identity (no warp)
+                grid_x_out = grid_x_in.copy()
+                grid_y_out = grid_y_in.copy()
+
+            # Compute per-token volume change (det of local Jacobian) for coloring dots
+            per_token_volume = np.ones(T)
+            for t in range(T):
+                dists = torch.norm(h_in - h_in[t], dim=1)
+                dists[t] = float('inf')
+                k = min(max(4, D + 2), T - 1)
+                nn_idx = torch.argsort(dists)[:k]
+                dh_in_local = (h_in[nn_idx] - h_in[t]).cpu().numpy()
+                dh_out_local = (h_out[nn_idx] - h_out[t]).cpu().numpy()
+                try:
+                    J_local, _, _, _ = np.linalg.lstsq(dh_in_local, dh_out_local, rcond=None)
+                    per_token_volume[t] = abs(np.linalg.det(J_local))
+                except Exception:
+                    per_token_volume[t] = 1.0
+
+            # Global Jacobian for aggregate metrics
+            h_in_c = h_in - h_in.mean(0)
+            delta_c = delta - delta.mean(0)
+            try:
+                J_residual = torch.linalg.lstsq(h_in_c.cpu(), delta_c.cpu()).solution
+                J_global = torch.eye(D) + J_residual
+            except Exception:
+                J_global = torch.eye(D)
+
+            try:
+                S_global = torch.linalg.svdvals(J_global)
+                singular_values = S_global.cpu().numpy()
+                anisotropy = (S_global.max() / S_global.min().clamp(min=1e-10)).item()
+                log_det = torch.log(S_global.clamp(min=1e-10)).sum().item()
+            except Exception:
+                singular_values = np.ones(D)
+                anisotropy = 1.0
+                log_det = 0.0
+
+            fields.append({
+                'layer': ell,
+                'is_2d': True,
+                'h_in_2d': h_in_2d,
+                'h_out_2d': h_out_2d,
+                'per_token_delta_2d': delta_2d,
+                'per_token_volume': per_token_volume,
+                # Grid: input and warped output
+                'grid_x_in': grid_x_in,
+                'grid_y_in': grid_y_in,
+                'grid_x_out': grid_x_out,
+                'grid_y_out': grid_y_out,
+                'grid_n': grid_n,
+                'x_lim': (x_min, x_max),
+                'y_lim': (y_min, y_max),
+                # Global metrics
+                'jacobian': J_global.cpu().numpy(),
+                'singular_values': singular_values,
+                'anisotropy': anisotropy,
+                'log_det': log_det,
+                'var_explained': 1.0,
+                'use_pca': False,
+                'token_strings': token_strings_layer,
+                # Compatibility keys (unused in 2D path but prevent KeyErrors)
+                'divergence': torch.trace(J_global).item(),
+                'curl': 0.0,
+                'shear': 0.0,
+                'per_token_divergence': per_token_volume,
+                'per_token_curl': np.zeros(T),
+                'per_token_shear': np.zeros(T),
+                'per_token_shear_mag': np.zeros(T),
+                'per_token_rotation': np.zeros(T),
+                'principal_directions': pca_basis.numpy(),
+            })
+            continue
+
+        # ════════════════════════════════════════════════════════════
+        # 3+D PATH: full Jacobian decomposition (existing code)
+        # ════════════════════════════════════════════════════════════
 
         # ── Per-token LOCAL Jacobian via neighbors ──────────────────
         per_token_J_2d = np.zeros((T, 2, 2))
@@ -246,12 +365,6 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
                 S_traceless = S_g - (S_trace / 2.0) * np.eye(2)
                 grid_shear[gi, gj] = np.linalg.norm(S_traceless, 'fro')
 
-        # ── Per-token delta in 2D (for cumulative panel) ────────────
-        if use_pca:
-            delta_2d = ((delta.cpu()) @ pca_basis.T).numpy()
-        else:
-            delta_2d = delta.cpu().numpy()[:, :2]
-
         # ── Global metrics ─────────────────────────────────────────
         try:
             S_global = torch.linalg.svdvals(J_global)
@@ -273,6 +386,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
 
         fields.append({
             'layer': ell,
+            'is_2d': False,
             'jacobian': J_global.cpu().numpy(),
             'divergence': divergence,
             'curl': curl,
@@ -286,7 +400,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
             'per_token_volume': per_token_volume,
             'per_token_rotation': per_token_rotation,
             'per_token_shear_mag': per_token_shear_mag,
-            'per_token_delta_2d': delta_2d,  # NEW: per-token displacement this layer
+            'per_token_delta_2d': delta_2d,
             # ── Grid data ───────────────────────────────────────
             'grid_x': grid_x,
             'grid_y': grid_y,
@@ -306,7 +420,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
             'x_lim': (x_min, x_max),
             'y_lim': (y_min, y_max),
             'var_explained': var_explained,
-            'use_pca': use_pca,  # NEW: flag for labeling
+            'use_pca': use_pca,
             # ── Compatibility ───────────────────────────────────
             'per_token_divergence': per_token_volume,
             'per_token_curl': per_token_rotation,
@@ -630,13 +744,10 @@ class LivePlotter:
 
     def _draw_jacobi_fields(self, ax, jacobi_data, draw_key):
         """
-        Render the Jacobi field as a colorful vector field image per layer.
+        Render the Jacobi field visualization per layer.
 
-        Each layer gets a SINGLE full-height panel showing the Jacobi field
-        visualization (per-layer deformation).
-
-        For 2D hidden states: raw coordinates (no PCA).
-        For 3+D hidden states: PCA projection.
+        For 2D models: shows the actual morphed space (warped grid).
+        For 3+D models: HSV-encoded deformation field with PCA projection.
         """
         if ax is None or jacobi_data is None:
             return
@@ -660,20 +771,28 @@ class LivePlotter:
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-        var_exp = fields[0].get('var_explained', 0) if fields else 0
-        use_pca = fields[0].get('use_pca', True) if fields else True
-        proj_label = f"PCA var={var_exp:.0%}" if use_pca else "raw 2D (exact)"
-        ax.set_title(
-            f"Jacobi Fields \u2014 Space Deformation (step {step}, "
-            f"{proj_label})",
-            fontsize=10, fontweight="bold", color="#c0d8e8",
-        )
-
         if n_layers == 0:
             ax.text(0.5, 0.5, "Waiting for hidden states...",
                     ha="center", va="center", fontsize=11, alpha=0.4,
                     color="#6a9ab8", transform=ax.transAxes)
             return
+
+        # Check if this is a 2D model
+        is_2d = fields[0].get('is_2d', False)
+
+        var_exp = fields[0].get('var_explained', 0)
+        use_pca = fields[0].get('use_pca', True)
+
+        if is_2d:
+            proj_label = "exact 2D — morphed space"
+        else:
+            proj_label = f"PCA var={var_exp:.0%}" if use_pca else "raw 2D (exact)"
+
+        ax.set_title(
+            f"Jacobi Fields — Space Deformation (step {step}, "
+            f"{proj_label})",
+            fontsize=10, fontweight="bold", color="#c0d8e8",
+        )
 
         try:
             self.fig.set_tight_layout(False)
@@ -683,8 +802,110 @@ class LivePlotter:
         from matplotlib.colors import hsv_to_rgb
 
         # ═══════════════════════════════════════════════════════════════
-        # Layout: single row (full height for Jacobi panels),
-        # reserve right edge for the color wheel legend
+        # 2D SPECIAL CASE: morphed-space visualization
+        # ═══════════════════════════════════════════════════════════════
+        if is_2d:
+            legend_width_frac = 0.10
+            field_width_frac = 1.0 - legend_width_frac
+            n_cols = min(n_layers, 6)
+
+            pad_x = 0.02
+            pad_y = 0.10
+            pad_bottom = 0.03
+
+            total_h = 1.0 - pad_y - pad_bottom
+            row_h = total_h
+
+            cell_w = (field_width_frac - 2 * pad_x) / n_cols
+            inset_margin = 0.005
+
+            parent_bbox = ax.get_position()
+            px0, py0 = parent_bbox.x0, parent_bbox.y0
+            pw, ph = parent_bbox.width, parent_bbox.height
+
+            for ell, f in enumerate(fields):
+                col = ell % n_cols
+
+                fx = px0 + pw * (pad_x + col * cell_w + inset_margin)
+                fy_top = py0 + ph * (pad_bottom + inset_margin)
+                fw = pw * (cell_w - 2 * inset_margin)
+                fh = ph * (row_h - 2 * inset_margin)
+
+                sub_ax = self.fig.add_axes([fx, fy_top, fw, fh])
+                sub_ax.set_facecolor("#0d1117")
+                sub_ax.set_in_layout(False)
+                self._jacobi_subaxes.append(sub_ax)
+
+                self._draw_single_jacobi_panel_2d(sub_ax, f, ell, jacobi_data)
+
+            # ── Simple text legend for 2D mode ─────────────────────
+            legend_x = px0 + pw * (field_width_frac + 0.01)
+            legend_w = pw * (legend_width_frac - 0.02)
+            legend_text_y = py0 + ph * 0.03
+            legend_text_h = ph * 0.94
+
+            legend_text_ax = self.fig.add_axes(
+                [legend_x, legend_text_y, legend_w, legend_text_h]
+            )
+            legend_text_ax.set_facecolor("#0a0a1a")
+            legend_text_ax.set_xlim(0, 1)
+            legend_text_ax.set_ylim(0, 1)
+            legend_text_ax.axis('off')
+            legend_text_ax.set_in_layout(False)
+            self._jacobi_subaxes.append(legend_text_ax)
+
+            legend_items_2d = [
+                ("2D MORPHED SPACE", "", "#c0d8e8", True),
+                ("", "", "#000000", False),
+                ("── gray grid", "original (input) space", "#888888", False),
+                ("── colored grid", "warped (output) space", "#44aaff", False),
+                ("", "", "#000000", False),
+                ("GRID COLORING", "", "#c0d8e8", True),
+                ("red tint", "local expansion", "#ff6666", False),
+                ("blue tint", "local contraction", "#6688ff", False),
+                ("green", "~volume preserving", "#66cc66", False),
+                ("", "", "#000000", False),
+                ("TOKENS", "", "#c0d8e8", True),
+                ("○ hollow", "input position", "#aaaaaa", False),
+                ("● filled", "output position", "#ffcc44", False),
+                ("── line", "displacement vector", "#ffffff", False),
+                ("red ring", "expanding (det J > 1)", "#ff4444", False),
+                ("blue ring", "contracting (det J < 1)", "#4488ff", False),
+                ("label", "token text", "#f0f0f0", False),
+            ]
+
+            n_items = len(legend_items_2d)
+            line_spacing = 0.95 / max(n_items, 1)
+
+            for i, (symbol, desc, color, is_header) in enumerate(legend_items_2d):
+                y = 0.97 - i * line_spacing
+                if not symbol and not desc:
+                    continue
+                if is_header:
+                    legend_text_ax.text(
+                        0.05, y, symbol,
+                        fontsize=7, fontweight='bold', color=color,
+                        fontfamily='sans-serif', va='top',
+                        transform=legend_text_ax.transAxes,
+                    )
+                else:
+                    legend_text_ax.text(
+                        0.05, y, symbol,
+                        fontsize=6, fontweight='bold', color=color,
+                        fontfamily='monospace', va='top',
+                        transform=legend_text_ax.transAxes,
+                    )
+                    legend_text_ax.text(
+                        0.55, y, desc,
+                        fontsize=5.5, color='#999999',
+                        fontfamily='sans-serif', va='top',
+                        transform=legend_text_ax.transAxes,
+                    )
+
+            return  # Done — skip the 3+D path entirely
+
+        # ═══════════════════════════════════════════════════════════════
+        # 3+D PATH: existing HSV deformation field visualization
         # ═══════════════════════════════════════════════════════════════
         legend_width_frac = 0.12
         field_width_frac = 1.0 - legend_width_frac
@@ -696,7 +917,7 @@ class LivePlotter:
         pad_bottom = 0.03
 
         total_h = 1.0 - pad_y - pad_bottom
-        row_h = total_h  # full height — no cumulative row
+        row_h = total_h
 
         cell_w = (field_width_frac - 2 * pad_x) / n_cols
         inset_margin = 0.005
@@ -726,142 +947,9 @@ class LivePlotter:
         # ═══════════════════════════════════════════════════════════════
         # COLOR WHEEL LEGEND (right side)
         # ═══════════════════════════════════════════════════════════════
-        legend_x = px0 + pw * (field_width_frac + 0.01)
-        legend_w = pw * (legend_width_frac - 0.02)
-
-        wheel_size = min(legend_w, ph * 0.18)
-        wheel_y = py0 + ph * 0.78
-        wheel_ax = self.fig.add_axes(
-            [legend_x + (legend_w - wheel_size) * 0.5, wheel_y,
-             wheel_size, wheel_size]
-        )
-        wheel_ax.set_facecolor("#0a0a1a")
-        wheel_ax.set_in_layout(False)
-        self._jacobi_subaxes.append(wheel_ax)
-
-        # Build the color wheel as a Cartesian RGBA image
-        wheel_res = 128
-        wx = np.linspace(-1, 1, wheel_res)
-        wy = np.linspace(-1, 1, wheel_res)
-        WX, WY = np.meshgrid(wx, wy)
-        W_angle = np.arctan2(WY, WX)
-        W_radius = np.sqrt(WX**2 + WY**2)
-
-        W_H = (W_angle + np.pi) / (2 * np.pi)
-        W_S = np.ones_like(W_H) * 0.85
-        W_V = 0.15 + 0.85 * np.clip(W_radius, 0, 1)
-
-        mask = W_radius > 1.0
-        W_S[mask] = 0.0
-        W_V[mask] = 0.0
-
-        hsv_wheel = np.stack([W_H, W_S, W_V], axis=-1)
-        rgb_wheel = hsv_to_rgb(hsv_wheel)
-
-        alpha_channel = np.ones((wheel_res, wheel_res))
-        alpha_channel[mask] = 0.0
-        rgba_wheel = np.concatenate(
-            [rgb_wheel, alpha_channel[:, :, np.newaxis]], axis=-1
-        )
-
-        wheel_ax.imshow(
-            rgba_wheel,
-            extent=[-1.0, 1.0, -1.0, 1.0],
-            origin='lower',
-            aspect='equal',
-            interpolation='bilinear',
-        )
-
-        # Direction labels
-        if use_pca:
-            lbl_right, lbl_left = '+PC1\n\u2192', '\u2190\n\u2212PC1'
-            lbl_up, lbl_down = '\u2191 +PC2', '\u2193 \u2212PC2'
-        else:
-            lbl_right, lbl_left = '+dim0\n\u2192', '\u2190\n\u2212dim0'
-            lbl_up, lbl_down = '\u2191 +dim1', '\u2193 \u2212dim1'
-
-        lbl_cfg = dict(fontsize=6.5, fontweight='bold', color='white',
-                       ha='center', va='center')
-        wheel_ax.text(1.35, 0.0, lbl_right, **lbl_cfg)
-        wheel_ax.text(-1.35, 0.0, lbl_left, **lbl_cfg)
-        wheel_ax.text(0.0, 1.35, lbl_up, **lbl_cfg)
-        wheel_ax.text(0.0, -1.35, lbl_down, **lbl_cfg)
-
-        wheel_ax.text(0.0, 0.0, 'weak', fontsize=5, color='#666666',
-                      ha='center', va='center', fontstyle='italic')
-
-        wheel_ax.set_xlim(-1.7, 1.7)
-        wheel_ax.set_ylim(-1.7, 1.7)
-        wheel_ax.axis('off')
-
-        wheel_ax.set_title("Deformation\nDirection & Strength",
-                           fontsize=8, fontweight='bold', color='#c0d8e8',
-                           pad=8)
-
-        # ═══════════════════════════════════════════════════════════════
-        # TEXT LEGEND below the color wheel
-        # ═══════════════════════════════════════════════════════════════
-        legend_text_y = py0 + ph * 0.03
-        legend_text_h = ph * 0.73
-        legend_text_ax = self.fig.add_axes(
-            [legend_x, legend_text_y, legend_w, legend_text_h]
-        )
-        legend_text_ax.set_facecolor("#0a0a1a")
-        legend_text_ax.set_xlim(0, 1)
-        legend_text_ax.set_ylim(0, 1)
-        legend_text_ax.axis('off')
-        legend_text_ax.set_in_layout(False)
-        self._jacobi_subaxes.append(legend_text_ax)
-
-        legend_items = [
-            ("JACOBI FIELD", "", "#c0d8e8", True),
-            ("\u2588\u2588 Hue", "deformation direction", "#ffffff", False),
-            ("\u2588\u2588 Bright", "strong deformation", "#dddddd", False),
-            ("\u2588\u2588 Dark", "weak / no deformation", "#555555", False),
-            ("\u2588\u2588 Red tint", "expanding (det J > 1)", "#ff6666", False),
-            ("\u2588\u2588 Blue tint", "contracting (det J < 1)", "#6688ff", False),
-            ("", "", "#000000", False),
-            ("OVERLAYS", "", "#c0d8e8", True),
-            ("\u2500\u2500 white", "streamlines (flow)", "#ffffff", False),
-            ("\u2500\u2500 yellow", "mild anisotropic stretch", "#ffff44", False),
-            ("\u2500\u2500 orange", "moderate stretch", "#ff8800", False),
-            ("\u2500\u2500 red", "extreme stretch", "#ff2222", False),
-            ("", "", "#000000", False),
-            ("TOKENS", "", "#c0d8e8", True),
-            ("\u25cf dot", "shear magnitude (magma)", "#dd6644", False),
-            ("\u25cb red ring", "expanding (det J high)", "#ff4444", False),
-            ("\u25cb blue ring", "contracting (det J low)", "#4488ff", False),
-            ("label", "token text (sparse)", "#f0f0f0", False),
-        ]
-
-        n_items = len(legend_items)
-        line_spacing = 0.95 / max(n_items, 1)
-
-        for i, (symbol, desc, color, is_header) in enumerate(legend_items):
-            y = 0.97 - i * line_spacing
-            if not symbol and not desc:
-                continue
-
-            if is_header:
-                legend_text_ax.text(
-                    0.05, y, symbol,
-                    fontsize=7, fontweight='bold', color=color,
-                    fontfamily='sans-serif', va='top',
-                    transform=legend_text_ax.transAxes,
-                )
-            else:
-                legend_text_ax.text(
-                    0.05, y, symbol,
-                    fontsize=6, fontweight='bold', color=color,
-                    fontfamily='monospace', va='top',
-                    transform=legend_text_ax.transAxes,
-                )
-                legend_text_ax.text(
-                    0.55, y, desc,
-                    fontsize=5.5, color='#999999',
-                    fontfamily='sans-serif', va='top',
-                    transform=legend_text_ax.transAxes,
-                )
+        self._draw_jacobi_legend(ax, px0, py0, pw, ph,
+                                 field_width_frac, legend_width_frac,
+                                 hsv_to_rgb, use_pca)
 
     def _draw_single_jacobi_panel(self, sub_ax, f, ell, jacobi_data, hsv_to_rgb):
         """Draw a single layer's Jacobi field panel (top row)."""
@@ -2868,6 +2956,260 @@ class LivePlotter:
         max_nr = 200
         every_nth = 2
         return min(max(n_tokens // every_nth, min_nr), max_nr)
+
+    def _draw_single_jacobi_panel_2d(self, sub_ax, f, ell, jacobi_data):
+        """
+        Draw a single layer's Jacobi field panel for the 2D special case.
+        
+        Instead of PCA + HSV deformation encoding, this draws:
+          1. The original (input) grid in gray
+          2. The warped (output) grid colored by local volume change
+          3. Token dots at input and output positions with displacement lines
+          4. Token labels
+        """
+        h_in_2d = f['h_in_2d']
+        h_out_2d = f['h_out_2d']
+        delta_2d = f['per_token_delta_2d']
+        per_token_volume = f['per_token_volume']
+        grid_x_in = f['grid_x_in']
+        grid_y_in = f['grid_y_in']
+        grid_x_out = f['grid_x_out']
+        grid_y_out = f['grid_y_out']
+        grid_n = f['grid_n']
+        x_lim = f['x_lim']
+        y_lim = f['y_lim']
+
+        # ── Compute axis limits that encompass both input and output grids ──
+        all_x = np.concatenate([grid_x_in.ravel(), grid_x_out.ravel(),
+                                h_in_2d[:, 0], h_out_2d[:, 0]])
+        all_y = np.concatenate([grid_y_in.ravel(), grid_y_out.ravel(),
+                                h_in_2d[:, 1], h_out_2d[:, 1]])
+        pad_frac = 0.05
+        x_span = max(np.ptp(all_x), 0.1)
+        y_span = max(np.ptp(all_y), 0.1)
+        view_x_min = all_x.min() - pad_frac * x_span
+        view_x_max = all_x.max() + pad_frac * x_span
+        view_y_min = all_y.min() - pad_frac * y_span
+        view_y_max = all_y.max() + pad_frac * y_span
+
+        # ════════════════════════════════════════════════════════════════
+        # 1. ORIGINAL (INPUT) GRID — gray, thin lines
+        # ════════════════════════════════════════════════════════════════
+        for i in range(grid_n):
+            # Horizontal lines (constant row)
+            sub_ax.plot(grid_x_in[i, :], grid_y_in[i, :],
+                        color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
+            # Vertical lines (constant column)
+            sub_ax.plot(grid_x_in[:, i], grid_y_in[:, i],
+                        color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
+
+        # ════════════════════════════════════════════════════════════════
+        # 2. WARPED (OUTPUT) GRID — colored by local volume change
+        # ════════════════════════════════════════════════════════════════
+        # Compute local volume change at each grid cell from the warped grid
+        # using finite differences of the warped coordinates
+        grid_local_vol = np.ones((grid_n, grid_n))
+        for i in range(grid_n - 1):
+            for j in range(grid_n - 1):
+                # Input cell vectors
+                dx_in = grid_x_in[i, j+1] - grid_x_in[i, j]
+                dy_in = grid_y_in[i, j+1] - grid_y_in[i, j]
+                dx_in2 = grid_x_in[i+1, j] - grid_x_in[i, j]
+                dy_in2 = grid_y_in[i+1, j] - grid_y_in[i, j]
+                area_in = abs(dx_in * dy_in2 - dy_in * dx_in2)
+
+                # Output cell vectors
+                dx_out = grid_x_out[i, j+1] - grid_x_out[i, j]
+                dy_out = grid_y_out[i, j+1] - grid_y_out[i, j]
+                dx_out2 = grid_x_out[i+1, j] - grid_x_out[i, j]
+                dy_out2 = grid_y_out[i+1, j] - grid_y_out[i, j]
+                area_out = abs(dx_out * dy_out2 - dy_out * dx_out2)
+
+                if area_in > 1e-12:
+                    grid_local_vol[i, j] = area_out / area_in
+                else:
+                    grid_local_vol[i, j] = 1.0
+
+        # Map volume change to color:
+        #   expansion (vol > 1) → red
+        #   contraction (vol < 1) → blue
+        #   ~preserving (vol ≈ 1) → green/cyan
+        log_vol = np.log(np.clip(grid_local_vol, 1e-6, None))
+        lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+
+        def _vol_to_color(lv):
+            """Map log-volume-change to RGB color."""
+            t = np.clip(lv / lv_absmax, -1, 1)
+            if t > 0.05:
+                # Expansion → red tint
+                r = 0.3 + 0.7 * t
+                g = 0.25 * (1 - t)
+                b = 0.2 * (1 - t)
+            elif t < -0.05:
+                # Contraction → blue tint
+                at = abs(t)
+                r = 0.2 * (1 - at)
+                g = 0.25 * (1 - at)
+                b = 0.3 + 0.7 * at
+            else:
+                # ~Volume preserving → green/cyan
+                r, g, b = 0.2, 0.55, 0.45
+            return (r, g, b)
+
+        for i in range(grid_n):
+            for j in range(grid_n - 1):
+                lv = log_vol[min(i, grid_n - 2), j]
+                color = _vol_to_color(lv)
+                # Horizontal warped lines (constant row)
+                sub_ax.plot(
+                    [grid_x_out[i, j], grid_x_out[i, j+1]],
+                    [grid_y_out[i, j], grid_y_out[i, j+1]],
+                    color=color, linewidth=0.8, alpha=0.85, zorder=2,
+                )
+            for j in range(grid_n):
+                if i < grid_n - 1:
+                    lv = log_vol[i, min(j, grid_n - 2)]
+                    color = _vol_to_color(lv)
+                    # Vertical warped lines (constant column)
+                    sub_ax.plot(
+                        [grid_x_out[i, j], grid_x_out[i+1, j]],
+                        [grid_y_out[i, j], grid_y_out[i+1, j]],
+                        color=color, linewidth=0.8, alpha=0.85, zorder=2,
+                    )
+
+        # ════════════════════════════════════════════════════════════════
+        # 3. TOKEN DISPLACEMENT LINES + DOTS
+        # ════════════════════════════════════════════════════════════════
+        T = h_in_2d.shape[0]
+
+        # Displacement lines (input → output)
+        for t in range(T):
+            mag = np.sqrt(delta_2d[t, 0]**2 + delta_2d[t, 1]**2)
+            if mag < 1e-8:
+                continue
+            sub_ax.plot(
+                [h_in_2d[t, 0], h_out_2d[t, 0]],
+                [h_in_2d[t, 1], h_out_2d[t, 1]],
+                color='#ffffff', linewidth=0.6, alpha=0.4, zorder=3,
+            )
+
+        # Input positions — hollow circles
+        sub_ax.scatter(
+            h_in_2d[:, 0], h_in_2d[:, 1],
+            s=18, facecolors='none', edgecolors='#aaaaaa',
+            linewidths=0.7, zorder=5, alpha=0.9,
+        )
+
+        # Output positions — filled circles
+        sub_ax.scatter(
+            h_out_2d[:, 0], h_out_2d[:, 1],
+            s=14, color='#ffcc44', edgecolors='none',
+            zorder=6, alpha=0.9,
+        )
+
+        # Expanding / contracting rings on OUTPUT positions
+        vol_hi = np.percentile(per_token_volume, 80)
+        vol_lo = np.percentile(per_token_volume, 20)
+        expanding = per_token_volume > vol_hi
+        contracting = per_token_volume < vol_lo
+
+        if expanding.any():
+            sub_ax.scatter(
+                h_out_2d[expanding, 0], h_out_2d[expanding, 1],
+                s=32, facecolors='none', edgecolors='#ff4444',
+                linewidths=0.9, zorder=7, alpha=0.85,
+            )
+        if contracting.any():
+            sub_ax.scatter(
+                h_out_2d[contracting, 0], h_out_2d[contracting, 1],
+                s=32, facecolors='none', edgecolors='#4488ff',
+                linewidths=0.9, zorder=7, alpha=0.85,
+            )
+
+        # ════════════════════════════════════════════════════════════════
+        # 4. SPARSE TOKEN LABELS
+        # ════════════════════════════════════════════════════════════════
+        token_strings_f = f.get('token_strings', None)
+        n_tokens = T
+
+        fig_dpi = self.fig.dpi
+        fig_w_in, fig_h_in = self.fig.get_size_inches()
+        pos = sub_ax.get_position()
+        panel_w_px = pos.width * fig_w_in * fig_dpi
+        panel_h_px = pos.height * fig_h_in * fig_dpi
+        panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
+
+        base_font = panel_diag_px * 0.020
+        token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
+        label_fontsize = max(7.0, min(18.0, base_font * token_scale))
+
+        n_labels = self._get_n_labels(n_tokens)
+        if panel_diag_px < 200:
+            n_labels = min(n_labels, 6)
+
+        draw_key = jacobi_data.get('draw_key', 0)
+        rng = np.random.RandomState(
+            seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
+        )
+        label_idx = rng.choice(
+            n_tokens, size=min(n_labels, n_tokens), replace=False
+        )
+
+        offset_px = max(3.0, label_fontsize * 0.7)
+
+        for li in label_idx:
+            # Label at the OUTPUT position (where the token ended up)
+            tx, ty = h_out_2d[li, 0], h_out_2d[li, 1]
+
+            if token_strings_f is not None and li < len(token_strings_f):
+                label_text = token_strings_f[li]
+                if len(label_text) > 14:
+                    label_text = label_text[:13] + "\u2026"
+            else:
+                label_text = f"t{li}"
+
+            if not label_text.strip():
+                label_text = "\u2423"
+
+            sub_ax.annotate(
+                label_text,
+                (tx, ty),
+                fontsize=label_fontsize,
+                color='#f0f0f0',
+                alpha=0.92,
+                fontweight='bold',
+                fontfamily='monospace',
+                xytext=(offset_px, offset_px),
+                textcoords='offset points',
+                zorder=8,
+                bbox=dict(
+                    boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                    facecolor='#0d1117',
+                    edgecolor='#3a5a7a',
+                    alpha=0.75,
+                    linewidth=0.4,
+                ),
+            )
+
+        # ════════════════════════════════════════════════════════════════
+        # 5. LAYER LABEL / TITLE
+        # ════════════════════════════════════════════════════════════════
+        layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
+        mean_vol = per_token_volume.mean()
+        aniso_val = f['anisotropy']
+
+        sub_ax.set_title(
+            f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2082={aniso_val:.1f}",
+            fontsize=7, fontweight="bold", color="#aaccee", pad=2,
+        )
+
+        sub_ax.set_xlim(view_x_min, view_x_max)
+        sub_ax.set_ylim(view_y_min, view_y_max)
+        sub_ax.set_aspect('auto')
+        sub_ax.tick_params(labelsize=0, length=0)
+        for spine in sub_ax.spines.values():
+            spine.set_color('#2a3a4a')
+            spine.set_linewidth(0.5)
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
