@@ -790,7 +790,7 @@ document.getElementById('frame-total').textContent = getTotal();
 
 // === PRELOAD CACHE ===
 const cache = new Map();
-const PRELOAD_AHEAD = 15, PRELOAD_BEHIND = 5, MAX_CACHE = 60;
+const PRELOAD_AHEAD = 30, PRELOAD_BEHIND = 10, MAX_CACHE = 100;
 function preloadAround(center) {
   const t = getTotal();
   const lo = Math.max(0, center - PRELOAD_BEHIND);
@@ -814,12 +814,14 @@ function show(i) {
   const backId = activeSlide === 'a' ? 'b' : 'a';
   const back = document.getElementById('slide-img-' + backId);
 
+  function swap() { back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId; }
+
   const cached = cache.get(src);
   if (cached && cached.complete && cached.naturalWidth > 0) {
     back.src = src;
-    back.style.opacity = '1';
-    front.style.opacity = '0';
-    activeSlide = backId;
+    if (back.decode) {
+      back.decode().then(swap).catch(swap);
+    } else { swap(); }
   } else {
     const loader = new Image();
     const targetIdx = idx;
@@ -827,11 +829,8 @@ function show(i) {
       if (idx !== targetIdx) return;
       back.src = src;
       if (back.decode) {
-        back.decode().then(() => {
-          if (idx !== targetIdx) return;
-          back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId;
-        }).catch(() => { back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId; });
-      } else { back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId; }
+        back.decode().then(() => { if (idx === targetIdx) swap(); }).catch(() => { if (idx === targetIdx) swap(); });
+      } else { swap(); }
     };
     loader.src = src;
     cache.set(src, loader);
