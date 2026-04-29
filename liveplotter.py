@@ -2172,7 +2172,11 @@ class LivePlotter:
             try:
                 pred_val = int(pred_cleaned)
             except (ValueError, TypeError):
-                scores.append(1.0)  # unparseable → 1.0
+                # Garbage, but shorter garbage is slightly less wrong
+                garbage_len = len(pred_cleaned)
+                # Exponential decay: short → ~0.93, long → ~1.0
+                length_discount = min(0.07, 0.07 * math.exp(-0.3 * max(garbage_len, 0)))
+                scores.append(1.0 - length_discount)
                 continue
 
             scores.append(_prediction_error_score(exp_val, pred_val))

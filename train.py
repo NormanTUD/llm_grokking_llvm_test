@@ -2599,6 +2599,26 @@ except ImportError:
 # 7.  LIVE PLOTTER
 # ════════════════════════════════════════════════════════════════════════════
 
+def _prediction_error_score_turnstile(exp_val: int, pred_val: int) -> float:
+    """
+    Turnstile binary task scoring.
+
+    Score range [0, 0.9] for valid binary outputs:
+        0.0  — correct (pred == exp, both in {0, 1})
+        0.9  — wrong binary (pred in {0, 1} but pred != exp)
+
+    For non-binary integers: 1.0 (totally wrong)
+    Unparseable strings are handled by the caller (also 1.0).
+    """
+    if pred_val == exp_val and pred_val in (0, 1):
+        return 0.0
+
+    if pred_val in (0, 1):
+        return 0.9
+
+    # Any other integer (2, -5, 137, etc.) is garbage
+    return 1.0
+
 def _prediction_error_score(exp_val: int, pred_val: int) -> float:
     """
     Score in [0, 0.9] where 0 = perfect, higher = worse.
@@ -4170,6 +4190,11 @@ def train(args: argparse.Namespace):
         loss_kwargs["structure_loss_alpha"] = 0.0
         loss_kwargs["length_loss_alpha"] = 0.0
         loss_kwargs["value_loss_alpha"] = 0.0
+        # ── Swap prediction error scorer for binary turnstile scoring ───
+        _lp_module._prediction_error_score = _prediction_error_score_turnstile
+    else:
+        # Ensure default scorer is active (matters if module was reused)
+        _lp_module._prediction_error_score = _prediction_error_score
 
     # ── State variables ─────────────────────────────────────────────────
     best_val_loss = resumed["best_val_loss"]
