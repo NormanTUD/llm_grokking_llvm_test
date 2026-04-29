@@ -488,9 +488,9 @@ generate_slideshow_html() {
     <button id="btn-next" title="Next (→/↑)">▶▶</button>
     <button id="btn-end" title="Last (End)">⏭</button>
     <span class="speed-label">Speed:</span>
-    <button id="btn-slower" title="Slower (−)">−</button>
+    <button id="btn-faster" title="Slower (−)">−</button>
     <span id="speed-display" class="counter" style="min-width:50px;">500ms</span>
-    <button id="btn-faster" title="Faster (+)">+</button>
+    <button id="btn-slower" title="Faster (+)">+</button>
     <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">?</span></div>
   </div>
 </div>
@@ -873,7 +873,7 @@ HEADER
 
     _slideshow_common_toolbar_html \
         "Jacobi Field History" \
-        "1000" \
+        "300" \
         "<div class=\"counter\">Step <span class=\"current\" id=\"step-num\">?</span> — <span id=\"step-pos\">1</span> / <span id=\"step-total\">?</span></div>" \
         >> "$OUT"
 
@@ -1028,7 +1028,7 @@ function goStart() { show(0); }
 function goEnd() { show(steps.length - 1); }
 JACOBI_LOGIC
 
-    _slideshow_common_controls_js "200" "1000" "100" "10000" >> "$OUT"
+    _slideshow_common_controls_js "200" "300" "100" "10000" >> "$OUT"
 
     cat >> "$OUT" <<'INIT'
 
