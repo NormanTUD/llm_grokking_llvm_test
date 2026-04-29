@@ -10,3 +10,4 @@ epoch_log.csv
 jacobi_analysis/
 structure_analysis/
 spectral_analysis/
+topology_extraction/
