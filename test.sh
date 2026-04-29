@@ -121,6 +121,12 @@ if [ "$rc_pytest" -ne 0 ]; then
 fi
 echo "✓ pytest passed"
 
+if ! ./tiny_turnstile --epochs=1; then
+	echo "tiny_turnstile failed"
+	exit 1
+fi
+
+
 # ── Summary ─────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════"
