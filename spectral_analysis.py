@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
@@ -7,6 +6,7 @@
 #   "scipy",
 #   "scikit-learn",
 #   "rich",
+#   "PyWavelets",
 # ]
 # ///
 
@@ -74,7 +74,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.fft import fft, fft2, fftfreq, fftshift
-from scipy.signal import cwt, morlet2
+import pywt
 from scipy.linalg import svd, eigvals
 from scipy.spatial.distance import pdist, squareform
 from scipy.sparse.csgraph import laplacian
@@ -231,7 +231,7 @@ def explore_spectral_structures(filepath, output_dir="spectral_analysis"):
             # Continuous wavelet transform (multi-scale analysis)
             if len(signal) > 10:
                 widths = np.arange(1, min(N//2, 30))
-                cwt_matrix = cwt(signal, morlet2, widths)
+                cwt_matrix, freqs = pywt.cwt(signal, widths, 'morl')
                 
                 ax = axes[idx, 2]
                 ax.set_facecolor('#0d1117')
