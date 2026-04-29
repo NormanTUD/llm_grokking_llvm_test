@@ -158,6 +158,7 @@ warnings.filterwarnings("ignore", message="No artists with labels found to put i
 warnings.filterwarnings("ignore", message="This figure includes Axes that are not compatible with tight_layout")
 
 csv_log = None
+_sync_proc: Optional[subprocess.Popen] = None
 
 OPTIMIZERS = {
     "adam": torch.optim.Adam,
@@ -175,6 +176,51 @@ import numpy as np
 from collections import deque
 from typing import Optional, Tuple, List
 
+def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
+    """
+    Launch `bash watch_and_sync.sh <run_dir> --copy-to <target>` in the
+    background — but only if no previous sync process is still running.
+    At most one sync process is alive at any time.
+    """
+    global _sync_proc
+
+    if sync_target is None or run_dir_path is None:
+        return
+
+    # If a previous sync is still running, skip this invocation
+    if _sync_proc is not None and _sync_proc.poll() is None:
+        console.print("  [dim]🔄 Sync already running (pid={}) — skipping[/]".format(_sync_proc.pid))
+        return
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sync_script = os.path.join(script_dir, "watch_and_sync.sh")
+
+    if not os.path.isfile(sync_script):
+        console.print(f"  [yellow]⚠ watch_and_sync.sh not found at {sync_script}[/]")
+        return
+
+    cmd = [
+        "bash", sync_script,
+        run_dir_path,
+        "--copy-to", sync_target,
+    ]
+
+    console.print(f"  [dim]🔄 Launching sync → {sync_target} (background)[/]")
+    _sync_proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # detach from terminal signals
+    )
+
+
+def _wait_for_sync():
+    """Wait for the last sync process to finish (called at the end of training)."""
+    global _sync_proc
+    if _sync_proc is not None and _sync_proc.poll() is None:
+        console.print("[dim]🔄 Waiting for final sync to complete...[/]")
+        _sync_proc.wait()
+        console.print("[green]✓ Final sync completed.[/]")
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
@@ -805,6 +851,11 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--wait-pid", type=int, default=None,
                    help="Wait for this PID to exit before starting training "
                    "(useful for queueing CUDA jobs)")
+    g.add_argument("--sync", type=str, default=None, metavar="USER@SERVER:/PATH",
+                   help="After each epoch, run watch_and_sync.sh in the background "
+                   "to sync the run directory to a remote server. "
+                   "Example: --sync root@myserver.de:/var/www/grok_test/  "
+                   "Only one sync process runs at a time.")
 
     g = p.add_argument_group("Topology")
     g.add_argument("--topo", action="store_true", default=False,
@@ -4301,6 +4352,9 @@ def train(args: argparse.Namespace):
             plotter, replay_buffer, tokenizer, save_path, is_best, args,
         )
 
+        # ── Sync to remote (at most one process at a time) ─────────────
+        _maybe_run_sync(run_dir_path, args.sync)
+
         # ── Graceful stop ───────────────────────────────────────────────
         if _interrupt_count >= 1:
             console.print("[bold yellow]Graceful stop after epoch.[/]")
@@ -4313,6 +4367,10 @@ def train(args: argparse.Namespace):
     _save_final_model(model, tokenizer, save_path, train_losses_hist,
                       val_losses_hist, best_val_loss, total_samples,
                       actual_params, epoch, timer, args)
+
+    # ── Final sync (run once more, then wait for it to finish) ──────
+    _maybe_run_sync(run_dir_path, args.sync)
+    _wait_for_sync()
 
     return model, tokenizer
 
