@@ -1296,6 +1296,9 @@ Examples:
                         help="Max points for persistent homology (default: 300)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed for reproducibility")
+    parser.add_argument("--max-files", type=int, default=None,
+                        help="If set, subsample to this many equidistant files "
+                             "(e.g., --max-files 10 on 1000 files picks every 100th)")
 
     args = parser.parse_args()
 
@@ -1323,7 +1326,23 @@ Examples:
         console.print("[bold red]No jacobi files found in any of the provided paths.[/]")
         sys.exit(1)
 
+    # ── Subsample to equidistant files if --max-files is set ────────────
+    if args.max_files is not None and args.max_files > 0:
+        all_keys = sorted(all_data_maps.keys())  # sorted by (step, layer)
+        total = len(all_keys)
+        if args.max_files < total:
+            # Pick every Nth file so we get exactly max_files equidistant samples
+            step_size = total / args.max_files
+            selected_indices = [int(round(i * step_size)) for i in range(args.max_files)]
+            # Clamp to valid range
+            selected_indices = [min(idx, total - 1) for idx in selected_indices]
+            selected_keys = [all_keys[i] for i in selected_indices]
+            all_data_maps = {k: all_data_maps[k] for k in selected_keys}
+            console.print(f"[yellow]Subsampled to {len(all_data_maps)} equidistant files "
+                          f"(every ~{total // args.max_files}th file from {total} total)[/]")
+
     console.print(f"\n[bold green]Total files to analyze: {len(all_data_maps)}[/]")
+
 
     # ── Run the tracker ─────────────────────────────────────────────────
     tracker = StructureTracker(output_dir=args.output_dir)
