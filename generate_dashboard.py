@@ -774,6 +774,17 @@ document.getElementById('btn-slower').addEventListener('click', () => updateSpee
 document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
 
 document.addEventListener('keydown', (e) => {
+  // Number keys 0-9: jump to proportional position
+  if (e.key >= '0' && e.key <= '9') {
+    e.preventDefault();
+    const digit = parseInt(e.key, 10);
+    const t = getTotal();
+    if (t === 0) return;
+    if (digit === 0) { show(0); }
+    else if (digit === 9) { show(t - 1); }
+    else { show(Math.round((digit / 10) * (t - 1))); }
+    return;
+  }
   switch (e.key) {
     case 'ArrowLeft': case 'ArrowDown': e.preventDefault(); prev(); break;
     case 'ArrowRight': case 'ArrowUp': e.preventDefault(); next(); break;
