@@ -874,7 +874,16 @@ class LivePlotter:
             if suppress_window:
                 matplotlib.use("Agg")
             else:
-                matplotlib.use("TkAgg")
+                try:
+                    matplotlib.use("TkAgg")
+                except ImportError:
+                    matplotlib.use("Agg")
+                    self.suppress_window = True
+                    console.print(
+                        "[bold yellow]⚠ Could not load TkAgg backend (no display available). "
+                        "Falling back to Agg (headless mode). Plots will be saved to file only.[/]"
+                    )
+
             self.plt = plt
         finally:
             _restore_c_stderr()
