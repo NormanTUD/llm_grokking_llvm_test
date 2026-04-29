@@ -4135,7 +4135,7 @@ def _do_checkpointing(
             global_batch=plotter._global_batch if plotter.enabled else 0,
         )
 
-        best_hf_path = f"{save_path}_best"
+        best_hf_path = f"{save_path}/best"
         model.save_pretrained(best_hf_path)
         tokenizer.save_pretrained(best_hf_path)
         console.print(
