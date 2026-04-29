@@ -193,25 +193,29 @@ def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
         console.print("  [dim]🔄 Sync still transferring (pid={}) — skipping[/]".format(_sync_proc.pid))
         return
 
-    # Log exit code of previous sync (if any)
+    # Log exit code + stderr of previous sync (if any)
     if _sync_proc is not None:
         rc = _sync_proc.returncode
+        stderr_out = ""
+        try:
+            stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
+        except Exception:
+            pass
+
         if rc != 0:
-            if rc == 11:
-                console.print(f"  [bold red]⚠ Previous sync failed: disk full on remote (rsync code 11)[/]")
-            elif rc == 23:
-                console.print(f"  [yellow]⚠ Previous sync: partial transfer (rsync code 23)[/]")
-            elif rc == 12:
-                console.print(f"  [yellow]⚠ Previous sync: rsync protocol error (code 12)[/]")
-            else:
-                console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
+            console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
+            if stderr_out:
+                # Show last 500 chars of stderr for diagnosis
+                console.print(f"  [dim red]{stderr_out[-500:]}[/]")
+        else:
+            console.print("  [dim green]✓ Previous sync completed successfully[/]")
 
     # Ensure trailing slash so rsync copies CONTENTS, not the dir itself
     source = run_dir_path.rstrip("/") + "/"
 
     cmd = [
         "rsync",
-        "-az",
+        "-avz",           # archive + verbose + compress (verbose so stderr has details)
         "--delete",
         "--timeout=60",
         "--exclude=*.tmp",
@@ -225,11 +229,11 @@ def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
         _sync_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.PIPE,       # ← capture stderr for diagnostics
             start_new_session=True,
         )
     except FileNotFoundError:
-        console.print("  [yellow]⚠ rsync not found — install rsync or use --sync manually[/]")
+        console.print("  [yellow]⚠ rsync not found — install rsync[/]")
 
 
 def _wait_for_sync():
@@ -242,29 +246,25 @@ def _wait_for_sync():
         except subprocess.TimeoutExpired:
             console.print("[yellow]⚠ Final sync timed out after 120s — killing.[/]")
             try:
-                import signal as _signal
-                os.killpg(os.getpgid(_sync_proc.pid), _signal.SIGTERM)
+                os.killpg(os.getpgid(_sync_proc.pid), signal.SIGTERM)
                 _sync_proc.wait(timeout=5)
             except Exception:
                 _sync_proc.kill()
             return
 
         rc = _sync_proc.returncode
+        stderr_out = ""
+        try:
+            stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
+        except Exception:
+            pass
+
         if rc == 0:
             console.print("[green]✓ Final sync completed.[/]")
-        elif rc == 11:
-            stderr_out = ""
-            try:
-                stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
-            except Exception:
-                pass
-            console.print(f"[bold red]⚠ Final sync failed: disk full on remote (code 11)[/]")
-            if stderr_out:
-                console.print(f"  [dim red]{stderr_out[-200:]}[/]")
         else:
             console.print(f"[yellow]⚠ Final sync exited with code {rc}[/]")
-
-
+            if stderr_out:
+                console.print(f"  [dim red]{stderr_out[-500:]}[/]")
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
