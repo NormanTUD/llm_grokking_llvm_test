@@ -2036,10 +2036,10 @@ document.querySelectorAll('.tabs .tab').forEach(tab => {
 // ═══════════════════════════════════════════════════════════════════════════
 const plotlyConfig = {responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d']};
 
-function renderPlot(divId, jsonStr) {
-  if (!jsonStr || jsonStr === '{}') return;
+function renderPlot(divId, figData) {
+  if (!figData || figData === '{}') return;
   try {
-    const fig = JSON.parse(jsonStr);
+    const fig = (typeof figData === 'string') ? JSON.parse(figData) : figData;
     if (fig.data) {
       Plotly.newPlot(divId, fig.data, fig.layout || {}, plotlyConfig);
     }
