@@ -7,3 +7,4 @@ jacobian_persistent_homology.png
 llvm_gpt_model/
 batch_log.csv
 epoch_log.csv
+jacobi_analysis/
