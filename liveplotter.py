@@ -1088,9 +1088,12 @@ class LivePlotter:
             self._jacobi_drawn_step = -1
 
             # Draw the new fields
-            self._draw_jacobi_fields(
-                self.ax_kelp, self._jacobi_data, draw_key
-            )
+            try:
+                self._draw_jacobi_fields(
+                    self.ax_kelp, self._jacobi_data, draw_key
+                )
+            except:
+                pass
 
             # Force a synchronous repaint so the new sub-axes actually appear
             self._flush_canvas()
