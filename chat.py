@@ -11,6 +11,47 @@
 #   "kaleido",
 # ]
 # ///
+
+import os
+import sys
+
+from datetime import datetime, timedelta  # Add this line back!
+
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
+
+current_epoch = 0
+
+def compute_exclude_newer_date(days_back=8):
+    return (datetime.now(UTC) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def should_set_exclude_newer():
+    return not os.environ.get("UV_EXCLUDE_NEWER")
+
+
+def restart_with_uv(script_path, args, env):
+    try:
+        os.execvpe("uv", ["uv", "run", "--quiet", script_path] + args, env)
+    except FileNotFoundError:
+        print("uv is not installed. Try:")
+        print("curl -LsSf https://astral.sh/uv/install.sh | sh")
+        sys.exit(1)
+
+
+def ensure_safe_env():
+    if not should_set_exclude_newer():
+        return
+    past_date = compute_exclude_newer_date(8)
+    os.environ["UV_EXCLUDE_NEWER"] = past_date
+    restart_with_uv(sys.argv[0], sys.argv[1:], os.environ)
+
+
+# Must run BEFORE heavy imports
+ensure_safe_env()
+
 """
 Interactive chat with a trained TinyGPT model, with full internal state inspection.
 
