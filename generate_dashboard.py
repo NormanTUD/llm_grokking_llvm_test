@@ -34,6 +34,8 @@ What it does (in order):
 
 from __future__ import annotations
 
+import html as html_mod
+import json
 import os
 import re
 import sys
@@ -291,13 +293,250 @@ def compute_elapsed(started_at: str) -> str:
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# 5. HTML TEMPLATES (Jinja2, embedded)
+# 5. FILE PREVIEWS — read first N lines of text files for inline display
+# ═════════════════════════════════════════════════════════════════════════
+
+def build_previews(run_dir: Path, file_list: list[str], max_lines: int = 30) -> dict[str, str]:
+    """Read first max_lines of each file, HTML-escaped, for inline preview."""
+    previews = {}
+    for rel in file_list:
+        try:
+            text = (run_dir / rel).read_text(errors='replace')
+            lines = text.splitlines()[:max_lines]
+            previews[rel] = html_mod.escape('\n'.join(lines))
+        except Exception:
+            previews[rel] = '(could not read)'
+    return previews
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# 6. HTML TEMPLATES (Jinja2, embedded)
 # ═════════════════════════════════════════════════════════════════════════
 
 JINJA_ENV = Environment(loader=BaseLoader(), autoescape=False)
 
 # Register custom filters BEFORE compiling any templates
 JINJA_ENV.filters['basename'] = lambda s: Path(s).name
+
+# ── Shared slideshow CSS+JS (old version's polished UI) ─────────────────
+# This is injected into each slideshow template. It provides:
+# - Custom scrubber bar with gradient fill + draggable thumb
+# - Double-buffered image transitions (for non-jacobi slideshows)
+# - Full keyboard navigation (arrows, 0-9, Home/End, PageUp/Down, +/-, Space)
+# - Scroll wheel + touch swipe support
+# - Preload cache with sliding window
+
+SLIDESHOW_SHARED_CSS = r'''
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08090d; color: #e8eaf6;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; user-select: none;
+  }
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.5rem 1.5rem; background: #12152a;
+    border-bottom: 1px solid #1e2340; flex-shrink: 0; z-index: 10;
+  }
+  .toolbar .title {
+    font-size: 1rem; font-weight: 700;
+    background: linear-gradient(135deg, #7c5cfc, #00d4aa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .toolbar .controls { display: flex; align-items: center; gap: 0.6rem; }
+  .toolbar button {
+    background: #1e2340; border: 1px solid #2a2f55; color: #e8eaf6;
+    padding: 0.35rem 0.9rem; border-radius: 6px; cursor: pointer;
+    font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .toolbar button:hover { background: #2a2f55; border-color: #7c5cfc; }
+  .toolbar button:active { background: #7c5cfc; color: #fff; }
+  .toolbar button.playing { background: #00d4aa; color: #08090d; border-color: #00d4aa; }
+  .counter {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+    color: #6b70a0; min-width: 140px; text-align: center;
+  }
+  .counter .current { color: #7c5cfc; font-weight: 700; }
+  .scrubber-container {
+    flex-shrink: 0; height: 28px; background: #0d0f16;
+    cursor: pointer; position: relative; display: flex;
+    align-items: center; border-bottom: 1px solid #1e2340;
+  }
+  .scrubber-track {
+    position: absolute; left: 12px; right: 12px; height: 6px;
+    background: #1e2340; border-radius: 3px; overflow: hidden;
+  }
+  .scrubber-track:hover, .scrubber-container.dragging .scrubber-track { height: 10px; }
+  .scrubber-fill {
+    height: 100%; background: linear-gradient(90deg, #7c5cfc, #00d4aa);
+    border-radius: 3px; pointer-events: none; will-change: width;
+  }
+  .scrubber-thumb {
+    position: absolute; width: 16px; height: 16px;
+    background: #e8eaf6; border: 2px solid #7c5cfc;
+    border-radius: 50%; top: 50%; transform: translate(-50%, -50%);
+    pointer-events: none; will-change: left;
+    box-shadow: 0 0 8px rgba(124,92,252,0.4); transition: transform 0.1s;
+  }
+  .scrubber-container.dragging .scrubber-thumb {
+    transform: translate(-50%, -50%) scale(1.3); background: #7c5cfc;
+  }
+  .slide-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative; background: #000;
+  }
+  .slide-container img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    will-change: opacity; transition: opacity 0.08s ease;
+  }
+  .hint {
+    position: absolute; bottom: 0.5rem; left: 50%; transform: translateX(-50%);
+    font-size: 0.7rem; color: #4a4f78; pointer-events: none; opacity: 0.7; z-index: 5;
+  }
+  .speed-label { font-size: 0.7rem; color: #6b70a0; }
+  a.back-link {
+    position: absolute; top: 0.5rem; left: 0.8rem; z-index: 20;
+    color: #7c5cfc; text-decoration: none; font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace; opacity: 0.7;
+  }
+  a.back-link:hover { opacity: 1; }
+'''
+
+SLIDESHOW_SHARED_JS = r'''
+// === SCRUBBER ===
+const scrubber = document.getElementById('scrubber');
+const scrubberTrack = document.getElementById('scrubber-track');
+const scrubberFill = document.getElementById('scrubber-fill');
+const scrubberThumb = document.getElementById('scrubber-thumb');
+const frameNum = document.getElementById('frame-num');
+const frameTotal = document.getElementById('frame-total');
+const btnPlay = document.getElementById('btn-play');
+const speedDisplay = document.getElementById('speed-display');
+const container = document.getElementById('slide-container');
+
+function updateScrubber() {
+  const t = getTotal();
+  const pct = t > 1 ? idx / (t - 1) : 0;
+  scrubberFill.style.width = (pct * 100) + '%';
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  const left = trackRect.left - scrubber.getBoundingClientRect().left + pct * trackRect.width;
+  scrubberThumb.style.left = left + 'px';
+}
+
+let dragging = false;
+function scrubFromEvent(e) {
+  const trackRect = scrubberTrack.getBoundingClientRect();
+  let pct = (e.clientX - trackRect.left) / trackRect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  show(Math.round(pct * (getTotal() - 1)));
+}
+scrubber.addEventListener('pointerdown', (e) => {
+  dragging = true; scrubber.classList.add('dragging');
+  scrubber.setPointerCapture(e.pointerId); scrubFromEvent(e);
+});
+scrubber.addEventListener('pointermove', (e) => { if (dragging) scrubFromEvent(e); });
+scrubber.addEventListener('pointerup', () => { dragging = false; scrubber.classList.remove('dragging'); });
+scrubber.addEventListener('pointercancel', () => { dragging = false; scrubber.classList.remove('dragging'); });
+
+function togglePlay() {
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸' : '▶';
+  btnPlay.classList.toggle('playing', playing);
+  if (playing) {
+    playInterval = setInterval(() => {
+      if (idx >= getTotal() - 1) { togglePlay(); return; }
+      show(idx + 1);
+    }, speed);
+  } else { clearInterval(playInterval); playInterval = null; }
+}
+function updateSpeed(s) {
+  speed = Math.max(30, Math.min(10000, s));
+  speedDisplay.textContent = speed + 'ms';
+  if (playing) { clearInterval(playInterval); playInterval = setInterval(() => {
+    if (idx >= getTotal() - 1) { togglePlay(); return; } show(idx + 1);
+  }, speed); }
+}
+function next() { show(Math.min(idx + 1, getTotal() - 1)); }
+function prev() { show(Math.max(idx - 1, 0)); }
+function goStart() { show(0); }
+function goEnd() { show(getTotal() - 1); }
+
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-start').addEventListener('click', goStart);
+document.getElementById('btn-end').addEventListener('click', goEnd);
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.getElementById('btn-slower').addEventListener('click', () => updateSpeed(speed + 100));
+document.getElementById('btn-faster').addEventListener('click', () => updateSpeed(speed - 100));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key >= '0' && e.key <= '9') {
+    e.preventDefault();
+    const digit = parseInt(e.key, 10);
+    const t = getTotal();
+    if (t === 0) return;
+    if (digit === 0) { show(0); }
+    else if (digit === 9) { show(t - 1); }
+    else { show(Math.round((digit / 10) * (t - 1))); }
+    return;
+  }
+  switch (e.key) {
+    case 'ArrowLeft': case 'ArrowDown': e.preventDefault(); prev(); break;
+    case 'ArrowRight': case 'ArrowUp': e.preventDefault(); next(); break;
+    case 'Home': e.preventDefault(); goStart(); break;
+    case 'End': e.preventDefault(); goEnd(); break;
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case '+': e.preventDefault(); updateSpeed(speed - 100); break;
+    case '-': e.preventDefault(); updateSpeed(speed + 100); break;
+    case 'PageDown': e.preventDefault(); show(Math.min(idx + 50, getTotal() - 1)); break;
+    case 'PageUp': e.preventDefault(); show(Math.max(idx - 50, 0)); break;
+  }
+});
+
+container.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.deltaY > 0 || e.deltaX > 0) next(); else prev();
+}, { passive: false });
+
+let touchStartX = 0;
+container.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+container.addEventListener('touchend', (e) => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 40) { if (dx < 0) next(); else prev(); }
+}, { passive: true });
+
+window.addEventListener('resize', () => updateScrubber());
+'''
+
+# ── Shared toolbar + scrubber HTML fragment ─────────────────────────────
+SLIDESHOW_TOOLBAR_HTML = r'''
+<a class="back-link" href="index.html">← Dashboard</a>
+<div class="toolbar">
+  <div class="title">{{ title }}</div>
+  <div class="controls">
+    <button id="btn-start" title="First (Home)">⏮</button>
+    <button id="btn-prev" title="Previous">◀</button>
+    <button id="btn-play" title="Play/Pause (Space)">▶</button>
+    <button id="btn-next" title="Next">▶▶</button>
+    <button id="btn-end" title="Last (End)">⏭</button>
+    <span class="speed-label">Speed:</span>
+    <button id="btn-slower">−</button>
+    <span id="speed-display" class="counter" style="min-width:50px;">{{ default_speed }}ms</span>
+    <button id="btn-faster">+</button>
+    <div class="counter"><span class="current" id="frame-num">1</span> / <span id="frame-total">{{ frame_count }}</span></div>
+  </div>
+</div>
+<div class="scrubber-container" id="scrubber">
+  <div class="scrubber-track" id="scrubber-track">
+    <div class="scrubber-fill" id="scrubber-fill" style="width:0%"></div>
+  </div>
+  <div class="scrubber-thumb" id="scrubber-thumb" style="left:12px"></div>
+</div>
+'''
+
 
 # ── index.html template ────────────────────────────────────────────────
 DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
@@ -475,14 +714,46 @@ DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <div class="empty-state">No epoch data found yet.</div>
 {% endif %}
 
-<!-- Other files -->
+<!-- File previews -->
 {% if other_csvs or other_txts or py_files %}
 <div class="section-title">📁 Files <span class="badge">{{ (other_csvs|length) + (other_txts|length) + (py_files|length) }}</span></div>
-<div class="file-link-grid">
-  {% for f in other_csvs %}<a class="file-link file-link-green" href="{{ f }}" target="_blank">📄 {{ f | basename }}</a>{% endfor %}
-  {% for f in other_txts %}<a class="file-link" href="{{ f }}" target="_blank">📝 {{ f | basename }}</a>{% endfor %}
-  {% for f in py_files %}<a class="file-link file-link-pink" href="{{ f }}" target="_blank">🐍 {{ f | basename }}</a>{% endfor %}
+
+{% if other_csvs %}
+<div class="file-grid">
+  {% for csv in other_csvs %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-csv"></span>{{ csv | basename }}</div>
+    <pre>{{ previews.get(csv, '') }}</pre>
+    <a class="file-open" href="{{ csv }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
 </div>
+{% endif %}
+
+{% if other_txts %}
+<div class="file-grid" style="margin-top:1rem">
+  {% for txt in other_txts %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-txt"></span>{{ txt | basename }}</div>
+    <pre>{{ previews.get(txt, '') }}</pre>
+    <a class="file-open" href="{{ txt }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if py_files %}
+<div class="file-grid" style="margin-top:1rem">
+  {% for py in py_files %}
+  <div class="file-card">
+    <div class="file-header"><span class="dot dot-py"></span>{{ py | basename }}</div>
+    <pre>{{ previews.get(py, '') }}</pre>
+    <a class="file-open" href="{{ py }}" target="_blank">Open full file →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% endif %}
 
 </div>
@@ -491,7 +762,7 @@ DASHBOARD_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 </html>''')
 
 
-# ── slideshow.html template ────────────────────────────────────────────
+# ── slideshow.html template (old UI: scrubber + preload + keyboard) ────
 SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -499,55 +770,85 @@ SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Training Plot Slideshow</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
-  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
-  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
-  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
-  button:hover{background:var(--accent);border-color:var(--accent)}
-  button.active{background:var(--accent);border-color:var(--accent)}
-  .speed-group{display:flex;gap:0.3rem}
-  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:120px;text-align:center}
-  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
-  input[type=range]{width:100%;accent-color:var(--accent)}
-  .img-container{margin:1rem 0;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000}
-  .img-container img{max-width:90vw;max-height:70vh;display:block}
-  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
+''' + SLIDESHOW_SHARED_CSS + r'''
 </style>
 </head>
 <body>
-<h1>📈 Training Plot History</h1>
-<div class="controls">
-  <button onclick="prev()">⏮ Prev</button>
-  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
-  <button onclick="next()">Next ⏭</button>
-  <div class="speed-group">
-    <button onclick="setSpeed(2000)">🐢</button>
-    <button onclick="setSpeed(800)" class="active" id="speedMed">🐇</button>
-    <button onclick="setSpeed(200)">⚡</button>
-  </div>
+''' + SLIDESHOW_TOOLBAR_HTML + r'''
+<div class="slide-container" id="slide-container">
+  <img id="slide-img-a" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;">
+  <img id="slide-img-b" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;opacity:0;">
+  <div class="hint">← → navigate · 0-9 jump · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
 </div>
-<div class="slider-row"><input type="range" id="slider" min="0" max="{{ frames|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
-<div class="frame-info" id="info">Frame 1 / {{ frames|length }}</div>
-<div class="img-container"><img id="mainImg" src="{{ frames[0] }}"></div>
-<a class="back" href="index.html">← Back to Dashboard</a>
 <script>
-const frames = {{ frames_json }};
-let idx = 0, playing = false, timer = null, speed = 800;
-function show(i){idx=i;document.getElementById('mainImg').src=frames[i];document.getElementById('slider').value=i;document.getElementById('info').textContent=`Frame ${i+1} / ${frames.length}`;}
-function next(){show((idx+1)%frames.length)}
-function prev(){show((idx-1+frames.length)%frames.length)}
-function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
-function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
-function goTo(i){show(i)}
+const images = {{ frames_json }};
+let idx = 0, playing = false, playInterval = null, speed = {{ default_speed }};
+let activeSlide = 'a';
+
+function getTotal() { return images.length; }
+document.getElementById('frame-total').textContent = getTotal();
+
+// === PRELOAD CACHE ===
+const cache = new Map();
+const PRELOAD_AHEAD = 15, PRELOAD_BEHIND = 5, MAX_CACHE = 60;
+function preloadAround(center) {
+  const t = getTotal();
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(t - 1, center + PRELOAD_AHEAD);
+  for (let i = lo; i <= hi; i++) {
+    if (!cache.has(images[i])) { const img = new Image(); img.src = images[i]; cache.set(images[i], img); }
+  }
+  if (cache.size > MAX_CACHE) {
+    for (const [url] of cache) { if (cache.size <= MAX_CACHE) break; cache.delete(url); }
+  }
+}
+
+function show(i) {
+  const t = getTotal();
+  if (t === 0) return;
+  idx = Math.max(0, Math.min(t - 1, i));
+  document.getElementById('frame-num').textContent = idx + 1;
+
+  const src = images[idx];
+  const front = document.getElementById('slide-img-' + activeSlide);
+  const backId = activeSlide === 'a' ? 'b' : 'a';
+  const back = document.getElementById('slide-img-' + backId);
+
+  const cached = cache.get(src);
+  if (cached && cached.complete && cached.naturalWidth > 0) {
+    back.src = src;
+    back.style.opacity = '1';
+    front.style.opacity = '0';
+    activeSlide = backId;
+  } else {
+    const loader = new Image();
+    const targetIdx = idx;
+    loader.onload = () => {
+      if (idx !== targetIdx) return;
+      back.src = src;
+      if (back.decode) {
+        back.decode().then(() => {
+          if (idx !== targetIdx) return;
+          back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId;
+        }).catch(() => { back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId; });
+      } else { back.style.opacity = '1'; front.style.opacity = '0'; activeSlide = backId; }
+    };
+    loader.src = src;
+    cache.set(src, loader);
+  }
+  updateScrubber();
+  preloadAround(idx);
+}
+
+''' + SLIDESHOW_SHARED_JS + r'''
+preloadAround(0);
+show(0);
 </script>
 </body>
 </html>''')
 
 
-# ── jacobi.html template ──────────────────────────────────────────────
+# ── jacobi.html template (old UI: scrubber + preload + keyboard) ───────
 JACOBI_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -555,70 +856,91 @@ JACOBI_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jacobi Field Slideshow</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#00d4aa;--accent2:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
-  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
-  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
-  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
-  button:hover{background:var(--accent);border-color:var(--accent)}
-  button.active{background:var(--accent2);border-color:var(--accent2)}
-  .speed-group{display:flex;gap:0.3rem}
-  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:200px;text-align:center}
-  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
-  input[type=range]{width:100%;accent-color:var(--accent)}
-  .layer-grid{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin:1rem 0}
-  .layer-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#000}
-  .layer-card img{max-width:420px;max-height:420px;display:block}
-  .layer-card .layer-label{padding:0.4rem 0.8rem;font-size:0.75rem;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--card);border-top:1px solid var(--border);text-align:center}
-  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
+''' + SLIDESHOW_SHARED_CSS + r'''
+  .slide-container {
+    flex-wrap: wrap; align-content: center; gap: 6px; padding: 8px; overflow: auto;
+  }
+  .slide-container .layer-img {
+    max-height: 48%; max-width: 48%; object-fit: contain;
+    border: 1px solid #1e2340; border-radius: 4px; flex-shrink: 1;
+  }
+  .slide-container.single-layer .layer-img { max-height: 95%; max-width: 95%; }
+  .step-label {
+    position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%);
+    font-size: 0.9rem; font-weight: 700; color: #7c5cfc;
+    background: rgba(8,9,13,0.85); padding: 0.2rem 1rem;
+    border-radius: 6px; border: 1px solid #2a2f55; z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
+  }
 </style>
 </head>
 <body>
-<h1>🌊 Jacobi Field History</h1>
-<div class="controls">
-  <button onclick="prev()">⏮ Prev</button>
-  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
-  <button onclick="next()">Next ⏭</button>
-  <div class="speed-group">
-    <button onclick="setSpeed(2000)">🐢</button>
-    <button onclick="setSpeed(800)" class="active" id="speedMed">🐇</button>
-    <button onclick="setSpeed(200)">⚡</button>
-  </div>
+''' + SLIDESHOW_TOOLBAR_HTML + r'''
+<div class="slide-container" id="slide-container">
+  <div class="step-label" id="step-label">Step ?</div>
+  <div class="hint">← → navigate · 0-9 jump · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
 </div>
-<div class="slider-row"><input type="range" id="slider" min="0" max="{{ steps|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
-<div class="frame-info" id="info">Step 1 / {{ steps|length }}</div>
-<div class="layer-grid" id="layerGrid"></div>
-<a class="back" href="index.html">← Back to Dashboard</a>
 <script>
 const data = {{ data_json }};
 const steps = {{ steps_json }};
-let idx = 0, playing = false, timer = null, speed = 800;
-function show(i){
-  idx=i;
-  const step = steps[i];
-  const layers = data[step];
-  document.getElementById('slider').value=i;
-  document.getElementById('info').textContent=`Step ${step} (${i+1} / ${steps.length})`;
-  let html='';
-  for(const [layer, path] of layers){
-    html+=`<div class="layer-card"><img src="${path}"><div class="layer-label">Layer ${layer}</div></div>`;
+let idx = 0, playing = false, playInterval = null, speed = {{ default_speed }};
+
+function getTotal() { return steps.length; }
+document.getElementById('frame-total').textContent = getTotal();
+
+// === PRELOAD CACHE ===
+const cache = new Map();
+const PRELOAD_AHEAD = 5, PRELOAD_BEHIND = 2, MAX_CACHE = 120;
+function preloadAround(center) {
+  const t = getTotal();
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(t - 1, center + PRELOAD_AHEAD);
+  for (let i = lo; i <= hi; i++) {
+    const layers = data[steps[i]];
+    if (!layers) continue;
+    layers.forEach(([layer, path]) => {
+      if (!cache.has(path)) { const img = new Image(); img.src = path; cache.set(path, img); }
+    });
   }
-  document.getElementById('layerGrid').innerHTML=html;
+  if (cache.size > MAX_CACHE) {
+    for (const [url] of cache) { if (cache.size <= MAX_CACHE) break; cache.delete(url); }
+  }
 }
-function next(){show((idx+1)%steps.length)}
-function prev(){show((idx-1+steps.length)%steps.length)}
-function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
-function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
-function goTo(i){show(i)}
+
+function show(i) {
+  const t = getTotal();
+  if (t === 0) return;
+  idx = Math.max(0, Math.min(t - 1, i));
+  document.getElementById('frame-num').textContent = idx + 1;
+
+  const step = steps[idx];
+  const layers = data[step];
+  const container = document.getElementById('slide-container');
+  const label = document.getElementById('step-label');
+  if (label) label.textContent = 'Step ' + step + ' — ' + layers.length + ' layer' + (layers.length !== 1 ? 's' : '');
+
+  container.querySelectorAll('.layer-img').forEach(el => el.remove());
+  container.classList.toggle('single-layer', layers.length === 1);
+  layers.forEach(([layer, path]) => {
+    const img = document.createElement('img');
+    img.className = 'layer-img'; img.src = path;
+    img.alt = 'Layer ' + layer; img.title = 'Step ' + step + ', Layer ' + layer;
+    container.appendChild(img);
+  });
+
+  updateScrubber();
+  preloadAround(idx);
+}
+
+''' + SLIDESHOW_SHARED_JS + r'''
+preloadAround(0);
 show(0);
 </script>
 </body>
 </html>''')
 
 
-# ── 4d_jacobi.html template ───────────────────────────────────────────
+# ── 4d_jacobi.html template (old UI: scrubber + preload + keyboard) ────
 JACOBI_4D_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -626,77 +948,106 @@ JACOBI_4D_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>4D Jacobi Slices Slideshow</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-  :root{--bg:#08090d;--card:#12152a;--border:#1e2340;--accent:#f472b6;--accent2:#7c5cfc;--text:#e8eaf6;--muted:#6b70a0}
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:1rem}
-  h1{font-size:1.5rem;margin:1rem 0 0.5rem;font-weight:700}
-  .subtitle{color:var(--muted);font-size:0.85rem;margin-bottom:1rem}
-  .controls{display:flex;align-items:center;gap:1rem;margin:1rem 0;flex-wrap:wrap;justify-content:center}
-  button{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.5rem 1.2rem;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:background 0.15s}
-  button:hover{background:var(--accent);border-color:var(--accent)}
-  button.active{background:var(--accent2);border-color:var(--accent2)}
-  .speed-group{display:flex;gap:0.3rem}
-  .frame-info{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--muted);min-width:200px;text-align:center}
-  .slider-row{width:100%;max-width:900px;margin:0.5rem 0}
-  input[type=range]{width:100%;accent-color:var(--accent)}
-  .step-group{margin:1rem 0;width:100%;max-width:1400px}
-  .step-group h2{font-size:1rem;font-weight:600;color:var(--accent);margin-bottom:0.8rem;font-family:'JetBrains Mono',monospace}
-  .layer-section{margin-bottom:1.5rem}
-  .layer-section h3{font-size:0.85rem;font-weight:600;color:var(--accent2);margin-bottom:0.5rem;font-family:'JetBrains Mono',monospace}
-  .slice-grid{display:flex;flex-wrap:wrap;gap:0.8rem;justify-content:center}
-  .slice-card{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#000;transition:transform 0.2s,box-shadow 0.2s}
-  .slice-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(244,114,182,0.15)}
-  .slice-card img{max-width:320px;max-height:320px;display:block}
-  .slice-card .slice-label{padding:0.35rem 0.7rem;font-size:0.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--card);border-top:1px solid var(--border);text-align:center}
-  a.back{color:var(--accent);text-decoration:none;font-size:0.85rem;margin-top:1rem}
+''' + SLIDESHOW_SHARED_CSS + r'''
+  .slide-container {
+    flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 12px; overflow: auto;
+  }
+  .layer-section { width: 100%; }
+  .layer-section h3 {
+    font-size: 0.85rem; font-weight: 600; color: #f472b6;
+    margin: 0.5rem 0; font-family: 'JetBrains Mono', monospace;
+  }
+  .slice-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .slice-card { border: 1px solid #1e2340; border-radius: 8px; overflow: hidden; background: #000; }
+  .slice-card img { max-width: 280px; max-height: 280px; display: block; }
+  .slice-card .slice-label {
+    padding: 0.3rem 0.6rem; font-size: 0.7rem; color: #6b70a0;
+    font-family: 'JetBrains Mono', monospace; background: #12152a;
+    border-top: 1px solid #1e2340; text-align: center;
+  }
+  .step-label {
+    position: absolute; top: 0.5rem; left: 50%; transform: translateX(-50%);
+    font-size: 0.9rem; font-weight: 700; color: #f472b6;
+    background: rgba(8,9,13,0.85); padding: 0.2rem 1rem;
+    border-radius: 6px; border: 1px solid #2a2f55; z-index: 5;
+    font-family: 'JetBrains Mono', monospace;
+  }
 </style>
 </head>
 <body>
-<h1>🔮 4D Jacobi Slices</h1>
-<div class="subtitle">Pairwise dimension slices of the 4D Jacobian, grouped by step and layer</div>
-<div class="controls">
-  <button onclick="prev()">⏮ Prev</button>
-  <button id="playBtn" onclick="togglePlay()">▶ Play</button>
-  <button onclick="next()">Next ⏭</button>
-  <div class="speed-group">
-    <button onclick="setSpeed(3000)">🐢</button>
-    <button onclick="setSpeed(1200)" class="active" id="speedMed">🐇</button>
-    <button onclick="setSpeed(400)">⚡</button>
-  </div>
+''' + SLIDESHOW_TOOLBAR_HTML + r'''
+<div class="slide-container" id="slide-container">
+  <div class="step-label" id="step-label">Step ?</div>
+  <div class="hint">← → navigate · 0-9 jump · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
 </div>
-<div class="slider-row"><input type="range" id="slider" min="0" max="{{ steps|length - 1 }}" value="0" oninput="goTo(+this.value)"></div>
-<div class="frame-info" id="info">Step 1 / {{ steps|length }}</div>
-<div class="step-group" id="stepGroup"></div>
-<a class="back" href="index.html">← Back to Dashboard</a>
 <script>
 const data = {{ data_json }};
 const steps = {{ steps_json }};
-let idx = 0, playing = false, timer = null, speed = 1200;
-function show(i){
-  idx=i;
-  const step = steps[i];
-  const layers = data[step];
-  document.getElementById('slider').value=i;
-  document.getElementById('info').textContent=`Step ${step} (${i+1} / ${steps.length})`;
-  let html=`<h2>Step ${step}</h2>`;
-  // layers is {layer_num: [{dim_a, dim_b, path}, ...]}
-  const layerNums = Object.keys(layers).map(Number).sort((a,b)=>a-b);
-  for(const ln of layerNums){
-    html+=`<div class="layer-section"><h3>Layer ${ln}</h3><div class="slice-grid">`;
-    const slices = layers[ln];
-    for(const s of slices){
-      html+=`<div class="slice-card"><img src="${s.path}"><div class="slice-label">d${s.dim_a} × d${s.dim_b}</div></div>`;
+let idx = 0, playing = false, playInterval = null, speed = {{ default_speed }};
+
+function getTotal() { return steps.length; }
+document.getElementById('frame-total').textContent = getTotal();
+
+// === PRELOAD CACHE ===
+const cache = new Map();
+const PRELOAD_AHEAD = 3, PRELOAD_BEHIND = 1, MAX_CACHE = 200;
+function preloadAround(center) {
+  const t = getTotal();
+  const lo = Math.max(0, center - PRELOAD_BEHIND);
+  const hi = Math.min(t - 1, center + PRELOAD_AHEAD);
+  for (let i = lo; i <= hi; i++) {
+    const layers = data[steps[i]];
+    if (!layers) continue;
+    const layerNums = Object.keys(layers).map(Number).sort((a,b)=>a-b);
+    for (const ln of layerNums) {
+      layers[ln].forEach(s => {
+        if (!cache.has(s.path)) { const img = new Image(); img.src = s.path; cache.set(s.path, img); }
+      });
     }
-    html+=`</div></div>`;
   }
-  document.getElementById('stepGroup').innerHTML=html;
+  if (cache.size > MAX_CACHE) {
+    for (const [url] of cache) { if (cache.size <= MAX_CACHE) break; cache.delete(url); }
+  }
 }
-function next(){show((idx+1)%steps.length)}
-function prev(){show((idx-1+steps.length)%steps.length)}
-function togglePlay(){playing=!playing;document.getElementById('playBtn').textContent=playing?'⏸ Pause':'▶ Play';if(playing){timer=setInterval(next,speed)}else{clearInterval(timer)}}
-function setSpeed(s){speed=s;if(playing){clearInterval(timer);timer=setInterval(next,speed)}document.querySelectorAll('.speed-group button').forEach(b=>b.classList.remove('active'));event.target.classList.add('active')}
-function goTo(i){show(i)}
+
+function show(i) {
+  const t = getTotal();
+  if (t === 0) return;
+  idx = Math.max(0, Math.min(t - 1, i));
+  document.getElementById('frame-num').textContent = idx + 1;
+
+  const step = steps[idx];
+  const layers = data[step];
+  const container = document.getElementById('slide-container');
+  const label = document.getElementById('step-label');
+  if (label) label.textContent = 'Step ' + step;
+
+  // Remove old content (keep step-label and hint)
+  container.querySelectorAll('.layer-section').forEach(el => el.remove());
+
+  const layerNums = Object.keys(layers).map(Number).sort((a,b)=>a-b);
+  for (const ln of layerNums) {
+    const section = document.createElement('div');
+    section.className = 'layer-section';
+    section.innerHTML = `<h3>Layer ${ln}</h3>`;
+    const grid = document.createElement('div');
+    grid.className = 'slice-grid';
+    layers[ln].forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'slice-card';
+      card.innerHTML = `<img src="${s.path}"><div class="slice-label">d${s.dim_a} × d${s.dim_b}</div>`;
+      grid.appendChild(card);
+    });
+    section.appendChild(grid);
+    container.appendChild(section);
+  }
+
+  updateScrubber();
+  preloadAround(idx);
+}
+
+''' + SLIDESHOW_SHARED_JS + r'''
+preloadAround(0);
 show(0);
 </script>
 </body>
@@ -704,7 +1055,7 @@ show(0);
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# 6. MAIN — generate all HTML files
+# 7. MAIN — generate all HTML files
 # ═════════════════════════════════════════════════════════════════════════
 
 import json
@@ -749,8 +1100,10 @@ def main():
     if rf.has_current_plot and "training_plot.png" not in images:
         images.insert(0, "training_plot.png")
 
+    # ── Build file previews ─────────────────────────────────────────
+    previews = build_previews(run_dir, rf.other_csvs + rf.other_txts + rf.py_files)
+
     # ── Generate index.html ─────────────────────────────────────────
-    # Determine unique jacobi 4D steps and slices
     jacobi_4d_steps = sorted(set(s for s, _, _, _, _ in rf.jacobi_4d_images))
     jacobi_4d_slices = sorted(set((da, db) for _, _, da, db, _ in rf.jacobi_4d_images))
 
@@ -776,15 +1129,24 @@ def main():
         other_csvs=rf.other_csvs,
         other_txts=rf.other_txts,
         py_files=rf.py_files,
+        previews=previews,
     )
     (run_dir / "index.html").write_text(index_html)
-    print(f"  ✓ index.html")
+    print(f"  ✓ index.html ({len(images)} plots, {len(overview)} epochs)")
 
     # ── Generate slideshow.html ─────────────────────────────────────
     if rf.training_hist:
-        frames = subsample(rf.training_hist, MAX_SLIDESHOW_FRAMES)
+        all_frames = list(rf.training_hist)
+        if rf.has_current_plot:
+            all_frames.append('training_plot.png')
+        frames = subsample(all_frames, MAX_SLIDESHOW_FRAMES)
+        if len(frames) < len(all_frames):
+            print(f"  Training slideshow: subsampled {len(all_frames)} → {len(frames)} frames")
+
         slideshow_html = SLIDESHOW_TEMPLATE.render(
-            frames=frames,
+            title="Training Plot History",
+            default_speed=500,
+            frame_count=len(frames),
             frames_json=json.dumps(frames),
         )
         (run_dir / "slideshow.html").write_text(slideshow_html)
@@ -801,12 +1163,16 @@ def main():
 
         all_steps = sorted(step_map.keys())
         sampled_steps = subsample(all_steps, MAX_JACOBI_STEPS)
+        if len(sampled_steps) < len(all_steps):
+            print(f"  Jacobi slideshow: subsampled {len(all_steps)} → {len(sampled_steps)} steps")
 
         # Build data: {step: [(layer, path), ...]}
         data = {s: step_map[s] for s in sampled_steps}
 
         jacobi_html = JACOBI_TEMPLATE.render(
-            steps=sampled_steps,
+            title="Jacobi Field History",
+            default_speed=300,
+            frame_count=len(sampled_steps),
             steps_json=json.dumps(sampled_steps),
             data_json=json.dumps(data),
         )
@@ -831,6 +1197,8 @@ def main():
 
         all_steps_4d = sorted(step_layer_map.keys())
         sampled_steps_4d = subsample(all_steps_4d, MAX_JACOBI_STEPS)
+        if len(sampled_steps_4d) < len(all_steps_4d):
+            print(f"  4D Jacobi slideshow: subsampled {len(all_steps_4d)} → {len(sampled_steps_4d)} steps")
 
         # Build data: {step: {layer: [{dim_a, dim_b, path}, ...]}}
         data_4d = {}
@@ -840,7 +1208,9 @@ def main():
                 data_4d[s][layer] = step_layer_map[s][layer]
 
         jacobi_4d_html = JACOBI_4D_TEMPLATE.render(
-            steps=sampled_steps_4d,
+            title="4D Jacobi Slices",
+            default_speed=800,
+            frame_count=len(sampled_steps_4d),
             steps_json=json.dumps(sampled_steps_4d),
             data_json=json.dumps(data_4d),
         )
