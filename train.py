@@ -4429,7 +4429,6 @@ def train(args: argparse.Namespace):
     original_print(f"LOSS: {train_losses_hist[-1]:.6f}")
     original_print(f"VAL_LOSS: {val_losses_hist[-1]:.6f}")
     original_print(f"BEST_VAL_LOSS: {best_val_loss:.6f}")
-    original_print(f"EPOCHS: {epoch}")
     original_print(f"TOTAL_SAMPLES: {total_samples}")
     original_print(f"PARAMS: {actual_params}")
     original_print(f"LR_FINAL: {optimizer.param_groups[0]['lr']:.2e}")
