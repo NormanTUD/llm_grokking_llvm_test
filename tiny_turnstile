@@ -13,7 +13,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Defaults ────────────────────────────────────────────────────────────
-BATCH_SIZE=32
+BATCH_SIZE=1
 TOPO=true
 TOPO_EVERY=1
 KELP_EVERY=1
@@ -22,8 +22,8 @@ D_MODEL=4
 N_HEADS=2
 TOKENIZER_INITIAL_NR=10000
 LR=0.005
-BATCHES_PER_EPOCH=32
-VAL_BATCHES=32
+BATCHES_PER_EPOCH=1
+VAL_BATCHES=1
 TASK=turnstile
 MAX_SEQ_LEN=128
 EPOCHS=10000

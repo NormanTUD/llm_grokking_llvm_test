@@ -158,7 +158,6 @@ warnings.filterwarnings("ignore", message="No artists with labels found to put i
 warnings.filterwarnings("ignore", message="This figure includes Axes that are not compatible with tight_layout")
 
 csv_log = None
-_sync_proc: Optional[subprocess.Popen] = None
 
 OPTIMIZERS = {
     "adam": torch.optim.Adam,
@@ -176,42 +175,50 @@ import numpy as np
 from collections import deque
 from typing import Optional, Tuple, List
 
+_sync_proc: Optional[subprocess.Popen] = None
+
 def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
     """
-    Launch `bash watch_and_sync.sh <run_dir> --copy-to <target>` in the
-    background — but only if no previous sync process is still running.
-    At most one sync process is alive at any time.
+    Run a ONE-SHOT rsync of the run directory to the remote server.
+    At most one rsync process is alive at any time — if the previous
+    one is still transferring, this call is skipped.
     """
     global _sync_proc
 
     if sync_target is None or run_dir_path is None:
         return
 
-    # If a previous sync is still running, skip this invocation
+    # If a previous sync is still running, skip
     if _sync_proc is not None and _sync_proc.poll() is None:
-        console.print("  [dim]🔄 Sync already running (pid={}) — skipping[/]".format(_sync_proc.pid))
+        console.print("  [dim]🔄 Sync still transferring (pid={}) — skipping[/]".format(_sync_proc.pid))
         return
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    sync_script = os.path.join(script_dir, "watch_and_sync.sh")
+    # Log exit code of previous sync (if any)
+    if _sync_proc is not None:
+        rc = _sync_proc.returncode
+        if rc != 0:
+            console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
 
-    if not os.path.isfile(sync_script):
-        console.print(f"  [yellow]⚠ watch_and_sync.sh not found at {sync_script}[/]")
-        return
+    # Ensure trailing slash on source so rsync copies CONTENTS, not the dir itself
+    source = run_dir_path.rstrip("/") + "/"
 
     cmd = [
-        "bash", sync_script,
-        run_dir_path,
-        "--copy-to", sync_target,
+        "rsync", "-az", "--delete",
+        "--timeout=30",
+        source,
+        sync_target,
     ]
 
-    console.print(f"  [dim]🔄 Launching sync → {sync_target} (background)[/]")
-    _sync_proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,  # detach from terminal signals
-    )
+    console.print(f"  [dim]🔄 Syncing {source} → {sync_target} (background)[/]")
+    try:
+        _sync_proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        console.print("  [yellow]⚠ rsync not found — install rsync or use watch_and_sync.sh manually[/]")
 
 
 def _wait_for_sync():
@@ -220,7 +227,12 @@ def _wait_for_sync():
     if _sync_proc is not None and _sync_proc.poll() is None:
         console.print("[dim]🔄 Waiting for final sync to complete...[/]")
         _sync_proc.wait()
-        console.print("[green]✓ Final sync completed.[/]")
+        rc = _sync_proc.returncode
+        if rc == 0:
+            console.print("[green]✓ Final sync completed.[/]")
+        else:
+            console.print(f"[yellow]⚠ Final sync exited with code {rc}[/]")
+
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
