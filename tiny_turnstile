@@ -102,6 +102,7 @@ CMD=(python3 train.py
     --tokenizer_initial_nr="$TOKENIZER_INITIAL_NR"
     --lr="$LR"
     --batches-per-epoch="$BATCHES_PER_EPOCH"
+    --dont-plot
     --val-batches="$VAL_BATCHES"
     --task="$TASK"
     --max-seq-len="$MAX_SEQ_LEN"
