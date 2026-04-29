@@ -176,95 +176,97 @@ from collections import deque
 from typing import Optional, Tuple, List
 
 _sync_proc: Optional[subprocess.Popen] = None
+_sync_started: bool = False
 
 def _maybe_run_sync(run_dir_path: Optional[str], sync_target: Optional[str]):
     """
-    Run a ONE-SHOT rsync of the run directory to the remote server.
-    At most one rsync process is alive at any time — if the previous
-    one is still transferring, this call is skipped.
+    Launch watch_and_sync.sh ONCE in the background.
+    It loops internally (while true + sleep), so we only ever start it once.
+    If it died unexpectedly, restart it.
     """
-    global _sync_proc
+    global _sync_proc, _sync_started
 
     if sync_target is None or run_dir_path is None:
         return
 
-    # If a previous sync is still running, skip
+    # Already running? Nothing to do.
     if _sync_proc is not None and _sync_proc.poll() is None:
-        console.print("  [dim]🔄 Sync still transferring (pid={}) — skipping[/]".format(_sync_proc.pid))
         return
 
-    # Log exit code + stderr of previous sync (if any)
-    if _sync_proc is not None:
+    # If it was started before but died, log it
+    if _sync_started and _sync_proc is not None:
         rc = _sync_proc.returncode
         stderr_out = ""
         try:
             stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
         except Exception:
             pass
+        console.print(f"  [yellow]⚠ watch_and_sync.sh died (exit code {rc}) — restarting...[/]")
+        if stderr_out:
+            console.print(f"  [dim red]{stderr_out[-500:]}[/]")
 
-        if rc != 0:
-            console.print(f"  [yellow]⚠ Previous sync exited with code {rc}[/]")
-            if stderr_out:
-                # Show last 500 chars of stderr for diagnosis
-                console.print(f"  [dim red]{stderr_out[-500:]}[/]")
-        else:
-            console.print("  [dim green]✓ Previous sync completed successfully[/]")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sync_script = os.path.join(script_dir, "watch_and_sync.sh")
 
-    # Ensure trailing slash so rsync copies CONTENTS, not the dir itself
+    if not os.path.isfile(sync_script):
+        console.print(f"  [yellow]⚠ watch_and_sync.sh not found at {sync_script}[/]")
+        return
+
+    # Ensure trailing slash on run_dir for consistency with the script
     source = run_dir_path.rstrip("/") + "/"
 
     cmd = [
-        "rsync",
-        "-avz",           # archive + verbose + compress (verbose so stderr has details)
-        "--delete",
-        "--timeout=60",
-        "--exclude=*.tmp",
-        "--exclude=__pycache__/",
+        "bash", sync_script,
         source,
-        sync_target,
+        "--copy-to", sync_target,
     ]
 
-    console.print(f"  [dim]🔄 Syncing {source} → {sync_target} (background)[/]")
+    console.print(f"  [dim]🔄 Launching watch_and_sync.sh → {sync_target} (background, loops internally)[/]")
     try:
         _sync_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,       # ← capture stderr for diagnostics
-            start_new_session=True,
+            stderr=subprocess.PIPE,
+            start_new_session=True,  # detach from Ctrl+C
         )
-    except FileNotFoundError:
-        console.print("  [yellow]⚠ rsync not found — install rsync[/]")
+        _sync_started = True
+    except Exception as e:
+        console.print(f"  [yellow]⚠ Failed to launch watch_and_sync.sh: {e}[/]")
 
 
 def _wait_for_sync():
-    """Wait for the last sync process to finish (called at the end of training)."""
+    """
+    At the end of training, let watch_and_sync.sh do ONE final cycle,
+    then kill it gracefully.
+    """
     global _sync_proc
-    if _sync_proc is not None and _sync_proc.poll() is None:
-        console.print("[dim]🔄 Waiting for final sync to complete...[/]")
-        try:
-            _sync_proc.wait(timeout=120)
-        except subprocess.TimeoutExpired:
-            console.print("[yellow]⚠ Final sync timed out after 120s — killing.[/]")
-            try:
-                os.killpg(os.getpgid(_sync_proc.pid), signal.SIGTERM)
-                _sync_proc.wait(timeout=5)
-            except Exception:
-                _sync_proc.kill()
-            return
 
-        rc = _sync_proc.returncode
-        stderr_out = ""
+    if _sync_proc is None or _sync_proc.poll() is not None:
+        return
+
+    console.print("[dim]🔄 Letting watch_and_sync.sh finish one last sync cycle...[/]")
+
+    # Give it time to complete one cycle (its internal INTERVAL + processing)
+    try:
+        _sync_proc.wait(timeout=120)
+        console.print("[green]✓ watch_and_sync.sh exited on its own.[/]")
+        return
+    except subprocess.TimeoutExpired:
+        pass
+
+    # It's still looping (expected) — kill it gracefully
+    console.print("[dim]🔄 Stopping watch_and_sync.sh...[/]")
+    try:
+        os.killpg(os.getpgid(_sync_proc.pid), signal.SIGTERM)
+        _sync_proc.wait(timeout=15)
+        console.print("[green]✓ watch_and_sync.sh stopped.[/]")
+    except Exception:
         try:
-            stderr_out = _sync_proc.stderr.read().decode(errors="replace").strip()
+            _sync_proc.kill()
+            _sync_proc.wait(timeout=5)
+            console.print("[yellow]⚠ watch_and_sync.sh force-killed.[/]")
         except Exception:
-            pass
-
-        if rc == 0:
-            console.print("[green]✓ Final sync completed.[/]")
-        else:
-            console.print(f"[yellow]⚠ Final sync exited with code {rc}[/]")
-            if stderr_out:
-                console.print(f"  [dim red]{stderr_out[-500:]}[/]")
+            console.print("[yellow]⚠ Could not stop watch_and_sync.sh — it may still be running.[/]")
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
