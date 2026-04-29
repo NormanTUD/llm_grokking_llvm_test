@@ -515,6 +515,13 @@ SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
     height: 100vh; display: flex; flex-direction: column;
     overflow: hidden; user-select: none;
   }
+
+    .slide-container img {
+      max-width: 100%; max-height: 100%; object-fit: contain;
+      will-change: opacity;
+      transition: opacity 0.08s ease;
+    }
+
   .toolbar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 0.5rem 1.5rem; background: #12152a;
@@ -623,7 +630,7 @@ SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
     <img id="slide-img-a" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;">
     <img id="slide-img-b" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;opacity:0;">
   {% endif %}
-  <div class="hint">← → navigate · Drag slider · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
+  <div class="hint">← → navigate · 0-9 jump to % · Drag slider · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
 </div>
 <script>
 const images = {{ images_json }};
@@ -694,6 +701,8 @@ function preloadAround(center) {
   }
 }
 
+let activeSlide = 'a'; // tracks which img element is currently visible
+
 function show(i) {
   const t = getTotal();
   if (t === 0) return;
@@ -714,7 +723,34 @@ function show(i) {
       container.appendChild(img);
     });
   } else {
-    document.getElementById('slide-img').src = images[idx];
+    const front = document.getElementById('slide-img-' + activeSlide);
+    const backId = activeSlide === 'a' ? 'b' : 'a';
+    const back = document.getElementById('slide-img-' + backId);
+    const src = images[idx];
+
+    // Check if already cached in browser
+    const cached = cache.get(src);
+    if (cached && cached.complete && cached.naturalWidth > 0) {
+      // Image is ready — swap instantly
+      back.src = src;
+      back.style.opacity = '1';
+      front.style.opacity = '0';
+      activeSlide = backId;
+    } else {
+      // Load in background, keep old image visible until ready
+      back.style.opacity = '0';
+      const loader = new Image();
+      const targetIdx = idx; // capture for closure
+      loader.onload = () => {
+        if (idx !== targetIdx) return; // user already moved on
+        back.src = src;
+        back.style.opacity = '1';
+        front.style.opacity = '0';
+        activeSlide = backId;
+      };
+      loader.src = src;
+      cache.set(src, loader);
+    }
   }
   updateScrubber();
   preloadAround(idx);
