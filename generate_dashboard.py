@@ -390,7 +390,7 @@ SLIDESHOW_SHARED_CSS = r'''
   }
   .slide-container img {
     max-width: 100%; max-height: 100%; object-fit: contain;
-    will-change: opacity; transition: opacity 0.08s ease;
+    will-change: opacity;
   }
   .hint {
     position: absolute; bottom: 0.5rem; left: 50%; transform: translateX(-50%);
