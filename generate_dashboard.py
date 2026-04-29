@@ -619,7 +619,10 @@ SLIDESHOW_TEMPLATE = JINJA_ENV.from_string(r'''<!DOCTYPE html>
 </div>
 <div class="slide-container" id="slide-container">
   {% if is_jacobi %}<div class="step-label" id="step-label">Step ?</div>{% endif %}
-  {% if not is_jacobi %}<img id="slide-img" src="" alt="frame">{% endif %}
+  {% if not is_jacobi %}
+    <img id="slide-img-a" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;">
+    <img id="slide-img-b" src="" alt="frame" style="position:absolute;max-width:100%;max-height:100%;object-fit:contain;opacity:0;">
+  {% endif %}
   <div class="hint">← → navigate · Drag slider · Scroll wheel · Space play/pause · Home/End · +/− speed</div>
 </div>
 <script>
