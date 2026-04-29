@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# ═══════════════════════════════════════════════════════════════════════════
+# tiny_turnstile.sh — Dynamic wrapper for train.py (turnstile task)
+#
+# All parameters have defaults matching the original hardcoded values.
+# Override any parameter by passing it as an argument:
+#
+#   ./tiny_turnstile.sh --epochs 5000 --lr 0.01 --sync user@server:/path
+#   ./tiny_turnstile.sh --batch-size 64 --d-model 8
+#
+# Any unrecognized arguments are passed through to train.py as-is.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Defaults ────────────────────────────────────────────────────────────
+BATCH_SIZE=32
+TOPO=true
+TOPO_EVERY=1
+KELP_EVERY=1
+N_LAYERS=1
+D_MODEL=4
+N_HEADS=2
+TOKENIZER_INITIAL_NR=10000
+LR=0.005
+BATCHES_PER_EPOCH=32
+VAL_BATCHES=32
+TASK=turnstile
+MAX_SEQ_LEN=128
+EPOCHS=10000
+SYNC=""
+
+# Collect extra args to pass through verbatim
+EXTRA_ARGS=()
+
+# ── Parse arguments ─────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --batch-size|--batch-size=*)
+            [[ "$1" == *=* ]] && BATCH_SIZE="${1#*=}" || { shift; BATCH_SIZE="$1"; }
+            ;;
+        --topo)
+            TOPO=true
+            ;;
+        --no-topo)
+            TOPO=false
+            ;;
+        --topo-every|--topo-every=*)
+            [[ "$1" == *=* ]] && TOPO_EVERY="${1#*=}" || { shift; TOPO_EVERY="$1"; }
+            ;;
+        --kelp-every|--kelp-every=*)
+            [[ "$1" == *=* ]] && KELP_EVERY="${1#*=}" || { shift; KELP_EVERY="$1"; }
+            ;;
+        --n-layers|--n-layers=*)
+            [[ "$1" == *=* ]] && N_LAYERS="${1#*=}" || { shift; N_LAYERS="$1"; }
+            ;;
+        --d-model|--d-model=*)
+            [[ "$1" == *=* ]] && D_MODEL="${1#*=}" || { shift; D_MODEL="$1"; }
+            ;;
+        --n-heads|--n-heads=*)
+            [[ "$1" == *=* ]] && N_HEADS="${1#*=}" || { shift; N_HEADS="$1"; }
+            ;;
+        --tokenizer-initial-nr|--tokenizer_initial_nr|--tokenizer-initial-nr=*|--tokenizer_initial_nr=*)
+            [[ "$1" == *=* ]] && TOKENIZER_INITIAL_NR="${1#*=}" || { shift; TOKENIZER_INITIAL_NR="$1"; }
+            ;;
+        --lr|--lr=*)
+            [[ "$1" == *=* ]] && LR="${1#*=}" || { shift; LR="$1"; }
+            ;;
+        --batches-per-epoch|--batches-per-epoch=*)
+            [[ "$1" == *=* ]] && BATCHES_PER_EPOCH="${1#*=}" || { shift; BATCHES_PER_EPOCH="$1"; }
+            ;;
+        --val-batches|--val-batches=*)
+            [[ "$1" == *=* ]] && VAL_BATCHES="${1#*=}" || { shift; VAL_BATCHES="$1"; }
+            ;;
+        --task|--task=*)
+            [[ "$1" == *=* ]] && TASK="${1#*=}" || { shift; TASK="$1"; }
+            ;;
+        --max-seq-len|--max-seq-len=*)
+            [[ "$1" == *=* ]] && MAX_SEQ_LEN="${1#*=}" || { shift; MAX_SEQ_LEN="$1"; }
+            ;;
+        --epochs|--epochs=*)
+            [[ "$1" == *=* ]] && EPOCHS="${1#*=}" || { shift; EPOCHS="$1"; }
+            ;;
+        --sync|--sync=*)
+            [[ "$1" == *=* ]] && SYNC="${1#*=}" || { shift; SYNC="$1"; }
+            ;;
+        *)
+            # Pass through any unrecognized argument to train.py
+            EXTRA_ARGS+=("$1")
+            ;;
+    esac
+    shift
+done
+
+# ── Build command ───────────────────────────────────────────────────────
+CMD=(python3 train.py
+    --batch-size="$BATCH_SIZE"
+    --topo-every "$TOPO_EVERY"
+    --kelp-every="$KELP_EVERY"
+    --n-layers="$N_LAYERS"
+    --d-model="$D_MODEL"
+    --n-heads="$N_HEADS"
+    --tokenizer_initial_nr="$TOKENIZER_INITIAL_NR"
+    --lr="$LR"
+    --batches-per-epoch="$BATCHES_PER_EPOCH"
+    --val-batches="$VAL_BATCHES"
+    --task="$TASK"
+    --max-seq-len="$MAX_SEQ_LEN"
+    --epochs "$EPOCHS"
+)
+
+# Conditionally add --topo flag
+if [[ "$TOPO" == "true" ]]; then
+    CMD+=(--topo)
+fi
+
+# Conditionally add --sync
+if [[ -n "$SYNC" ]]; then
+    CMD+=(--sync "$SYNC")
+fi
+
+# Append any extra pass-through arguments
+if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
+    CMD+=("${EXTRA_ARGS[@]}")
+fi
+
+# ── Execute ─────────────────────────────────────────────────────────────
+echo "┌─────────────────────────────────────────────────────────────"
+echo "│ tiny_turnstile.sh"
+echo "│ Command: ${CMD[*]}"
+echo "└─────────────────────────────────────────────────────────────"
+
+exec "${CMD[@]}"
