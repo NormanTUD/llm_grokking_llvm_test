@@ -1,8 +1,73 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "numpy",
+#   "matplotlib",
+#   "scipy",
+#   "scikit-learn",
+#   "rich",
+# ]
+# ///
+
 """
 Spectral Structure Explorer for Jacobi NPZ files
+==================================================
+
 Explores FFT, wavelet, and spectral graph interpretations of the stored data.
+
+Probes:
+  A. 2D FFT of the Jacobian matrix (power/phase spectrum, eigenvalue spectrum)
+  B. FFT + wavelet scalograms of per-token signals (volume, rotation, shear)
+  C. Graph Laplacian spectrum of the point cloud (Fiedler vector, spectral gap)
+  D. Helmholtz decomposition of the grid deformation field (curl/divergence spectra)
+  E. Singular value distribution analysis (Marchenko-Pastur, participation ratio)
+  F. Deep structure probes (autocorrelation, NMF, ICA, recurrence, symbolic dynamics)
+
+Usage:
+    python3 spectral_analysis.py runs/0/jacobi_data/jacobi_step000100_layer02.npz
+    python3 spectral_analysis.py runs/0/jacobi_data/
+    python3 spectral_analysis.py runs/0/jacobi_data/ --deep
+    python3 spectral_analysis.py runs/0/jacobi_data/ --deep --output-dir my_analysis
 """
+
+import os
+import sys
+from datetime import datetime, timedelta
+
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
+
+
+def compute_exclude_newer_date(days_back=8):
+    return (datetime.now(UTC) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def should_set_exclude_newer():
+    return not os.environ.get("UV_EXCLUDE_NEWER")
+
+
+def restart_with_uv(script_path, args, env):
+    try:
+        os.execvpe("uv", ["uv", "run", "--quiet", script_path] + args, env)
+    except FileNotFoundError:
+        print("uv is not installed. Try:")
+        print("curl -LsSf https://astral.sh/uv/install.sh | sh")
+        sys.exit(1)
+
+
+def ensure_safe_env():
+    if not should_set_exclude_newer():
+        return
+    past_date = compute_exclude_newer_date(8)
+    os.environ["UV_EXCLUDE_NEWER"] = past_date
+    restart_with_uv(sys.argv[0], sys.argv[1:], os.environ)
+
+
+ensure_safe_env()
 
 import numpy as np
 import matplotlib
