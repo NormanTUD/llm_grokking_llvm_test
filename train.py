@@ -3551,15 +3551,12 @@ def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
 
     console.print(config_table)
 
-
 def _build_optimizer(args, model: TinyGPT) -> torch.optim.Optimizer:
-    """Create the optimizer from args."""
     opt_cls = OPTIMIZERS[args.optimizer]
     opt_kwargs = {"lr": args.lr, "weight_decay": args.weight_decay}
     if args.optimizer == "sgd":
         opt_kwargs["momentum"] = args.momentum
     return opt_cls(model.parameters(), **opt_kwargs)
-
 
 def _build_scheduler(args, optimizer, model=None):
     """Create the LR scheduler from args. Returns (scheduler, is_plateau)."""
