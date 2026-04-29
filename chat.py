@@ -12,6 +12,8 @@
 # ]
 # ///
 
+from __future__ import annotations
+
 import os
 import sys
 
@@ -86,8 +88,6 @@ The HTML dashboard lets you:
     - Compare layer-to-layer transformations
     - View deformation grids showing how space is bent
 """
-
-from __future__ import annotations
 
 import os
 import sys
