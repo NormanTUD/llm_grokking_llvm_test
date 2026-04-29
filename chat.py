@@ -9,6 +9,7 @@
 #   "scipy",
 #   "jinja2",
 #   "kaleido",
+#   "tokenizers",
 # ]
 # ///
 
