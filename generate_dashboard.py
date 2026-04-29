@@ -918,7 +918,7 @@ def render_jacobi_slideshow(run_dir: Path, rf: RunFiles, max_steps: int = 200):
     html_out = SLIDESHOW_TEMPLATE.render(
         title="Jacobi Field History",
         is_jacobi=True,
-        default_speed=1000,
+        default_speed=300,
         images_json=json.dumps(images),
     )
 
