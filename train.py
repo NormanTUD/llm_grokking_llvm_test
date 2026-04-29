@@ -20,7 +20,12 @@
 
 import os
 import sys
-from datetime import datetime, timedelta, UTC
+
+try:
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
 
 current_epoch = 0
 
