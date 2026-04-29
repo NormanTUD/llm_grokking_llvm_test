@@ -21,6 +21,8 @@
 import os
 import sys
 
+from datetime import datetime, timedelta  # Add this line back!
+
 try:
     from datetime import UTC
 except ImportError:
@@ -31,7 +33,6 @@ current_epoch = 0
 
 def compute_exclude_newer_date(days_back=8):
     return (datetime.now(UTC) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def should_set_exclude_newer():
     return not os.environ.get("UV_EXCLUDE_NEWER")
