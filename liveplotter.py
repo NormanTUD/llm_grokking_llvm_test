@@ -654,7 +654,6 @@ class LivePlotter:
                     pass
         self._jacobi_subaxes = []
 
-
     @torch.no_grad()
     def update_jacobi_fields(self, model: nn.Module, input_ids: torch.Tensor, tokenizer=None):
         """
@@ -703,9 +702,13 @@ class LivePlotter:
             # Force a synchronous repaint so the new sub-axes actually appear
             self._flush_canvas()
 
+            # ── Save Jacobi data and images ─────────────────────────────
             try:
-                if run_dir is not None:
-                    jacobi_dir = os.path.join(run_dir, "jacobi_data")
+                import liveplotter as _lp_self
+                _run_dir = getattr(_lp_self, 'run_dir', None)
+
+                if _run_dir is not None:
+                    jacobi_dir = os.path.join(_run_dir, "jacobi_data")
                     os.makedirs(jacobi_dir, exist_ok=True)
                     step = self._kelp_step
 
