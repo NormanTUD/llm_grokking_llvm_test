@@ -270,6 +270,74 @@ def _wait_for_sync():
         except Exception:
             console.print("[yellow]⚠ Could not stop watch_and_sync.sh — it may still be running.[/]")
 
+class RotaryPositionEmbedding(nn.Module):
+    """
+    Rotary Position Embedding (RoPE).
+
+    Precomputes cos/sin frequencies for all positions up to max_seq_len,
+    then applies rotation to query/key pairs in attention.
+    """
+
+    def __init__(self, dim: int, max_seq_len: int = 2048, base: float = 10000.0):
+        super().__init__()
+        self.dim = dim
+        self.max_seq_len = max_seq_len
+        self.base = base
+
+        # Precompute the frequency bands: theta_i = base^(-2i/dim) for i in [0, dim//2)
+        inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        # Precompute cos/sin for all positions
+        self._build_cache(max_seq_len)
+
+    def _build_cache(self, seq_len: int):
+        """Build cos/sin cache for positions [0, seq_len)."""
+        t = torch.arange(seq_len, dtype=self.inv_freq.dtype)
+        # Outer product: (seq_len,) x (dim//2,) -> (seq_len, dim//2)
+        freqs = torch.outer(t, self.inv_freq)
+        # Duplicate to cover full dim: (seq_len, dim)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        # Register as buffers (not parameters, but move with .to(device))
+        self.register_buffer("cos_cached", emb.cos(), persistent=False)
+        self.register_buffer("sin_cached", emb.sin(), persistent=False)
+
+    def forward(self, seq_len: int):
+        """
+        Returns (cos, sin) each of shape (seq_len, dim) for the given sequence length.
+        """
+        if seq_len > self.max_seq_len:
+            # Dynamically extend cache if needed
+            self._build_cache(seq_len)
+            self.max_seq_len = seq_len
+        return self.cos_cached[:seq_len], self.sin_cached[:seq_len]
+
+
+def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """
+    Apply RoPE rotation to a tensor x of shape (B, n_heads, T, head_dim).
+
+    cos, sin: (T, head_dim) — precomputed from RotaryPositionEmbedding.
+
+    The rotation formula for each pair (x_2i, x_{2i+1}):
+        x_2i'    = x_2i * cos - x_{2i+1} * sin
+        x_{2i+1}' = x_{2i+1} * cos + x_2i * sin
+
+    Implemented efficiently by splitting into two halves and rotating.
+    """
+    # x: (B, n_heads, T, head_dim)
+    # cos, sin: (T, head_dim) -> reshape to (1, 1, T, head_dim) for broadcasting
+    cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim)
+    sin = sin.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim)
+
+    # Rotate: split x into two halves along last dim, swap and negate
+    x1 = x[..., : x.shape[-1] // 2]  # first half
+    x2 = x[..., x.shape[-1] // 2 :]  # second half
+    # "Rotated" version: [-x2, x1]
+    x_rotated = torch.cat((-x2, x1), dim=-1)
+
+    return (x * cos) + (x_rotated * sin)
+
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
     A learning rate scheduler that:
@@ -1611,17 +1679,32 @@ class CausalSelfAttention(nn.Module):
         self.proj = nn.Linear(d_model, d_model)
         self.attn_drop = nn.Dropout(dropout)
         self.proj_drop = nn.Dropout(dropout)
+
+        # RoPE instead of learned/absolute positional embeddings
+        self.rotary_emb = RotaryPositionEmbedding(
+            dim=self.head_dim,
+            max_seq_len=max_seq_len,
+        )
+
+        # Causal mask
         self.register_buffer(
-                "mask",
-                torch.tril(torch.ones(max_seq_len, max_seq_len)).unsqueeze(0).unsqueeze(0),
-                )
+            "mask",
+            torch.tril(torch.ones(max_seq_len, max_seq_len)).unsqueeze(0).unsqueeze(0),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         try:
             B, T, C = x.shape
             qkv = self.qkv(x).reshape(B, T, 3, self.n_heads, self.head_dim)
-            qkv = qkv.permute(2, 0, 3, 1, 4)
+            qkv = qkv.permute(2, 0, 3, 1, 4)  # (3, B, n_heads, T, head_dim)
             q, k, v = qkv[0], qkv[1], qkv[2]
+
+            # Apply RoPE to queries and keys
+            cos, sin = self.rotary_emb(T)
+            q = apply_rotary_pos_emb(q, cos, sin)
+            k = apply_rotary_pos_emb(k, cos, sin)
+
+            # Standard scaled dot-product attention
             scale = math.sqrt(self.head_dim)
             attn = (q @ k.transpose(-2, -1)) / scale
             attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
@@ -1630,9 +1713,11 @@ class CausalSelfAttention(nn.Module):
             out = (attn @ v).transpose(1, 2).reshape(B, T, C)
             return self.proj_drop(self.proj(out))
         except torch.cuda.OutOfMemoryError:
-            console.print(f"[bold red]❌ Memory error. This can be caused by having a too large batch size or too little parameters.[/]")
+            console.print(
+                f"[bold red]❌ Memory error. This can be caused by having a too large "
+                f"batch size or too little parameters.[/]"
+            )
             sys.exit(1)
-
 
 class TransformerBlock(nn.Module):
     def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1):
@@ -1658,8 +1743,10 @@ class TinyClassifierGPT(nn.Module):
         super().__init__()
         self.config = config
         self.max_seq_len = config.max_seq_len
+
+        # Token embedding only — NO positional embedding (RoPE is in attention)
         self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
-        self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
+
         self.blocks = nn.ModuleList(
             [TransformerBlock(config.d_model, config.n_heads,
                               config.max_seq_len, dropout=0.0)
@@ -1672,8 +1759,9 @@ class TinyClassifierGPT(nn.Module):
     def forward(self, input_ids, labels=None, output_hidden_states=False,
                 value_positions=None, **kwargs):
         B, T = input_ids.shape
-        pos = torch.arange(T, device=input_ids.device).unsqueeze(0)
-        x = self.tok_emb(input_ids) + self.pos_emb(pos)
+
+        # Only token embeddings — position is encoded via RoPE in each attention layer
+        x = self.tok_emb(input_ids)
 
         hidden_states = [x] if output_hidden_states else None
 
@@ -2523,11 +2611,15 @@ class _ModelOutput(dict):
 # ════════════════════════════════════════════════════════════════════════════
 
 def estimate_params(vocab_size: int, d_model: int, n_layers: int, max_seq_len: int) -> int:
-    emb = vocab_size * d_model + max_seq_len * d_model
+    # Token embedding only (no positional embedding with RoPE)
+    emb = vocab_size * d_model
+    # Transformer blocks (unchanged — RoPE adds no learnable params)
     blocks = n_layers * (12 * d_model ** 2 + 13 * d_model)
+    # Final layer norm
     ln_f = 2 * d_model
-    return emb + blocks + ln_f
-
+    # Classification head
+    cls_head = d_model * 2 + 2  # Linear(d_model, 2)
+    return emb + blocks + ln_f + cls_head
 
 def find_model_config(
         vocab_size: int,
