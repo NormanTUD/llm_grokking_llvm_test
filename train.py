@@ -1326,54 +1326,71 @@ def generate_batch(
     return samples
 
 def collate_batch(batch, pad_id=0, tokenizer=None):
-    max_len = max(len(s) for s, _ in batch)
-    input_ids, target_ids = [], []
-    value_positions = []
-    value_targets = []
-    answer_parseable = []
+    """
+    Classification collation for the turnstile task.
 
-    eos_id = None
-    if tokenizer is not None:
-        eos_id = tokenizer.eos_token_id
+    Each sample is (token_ids, prompt_len) where:
+      - token_ids = [bos] + encoded(prompt + answer) + [eos]
+      - prompt_len = number of tokens up to and including the prompt
 
-    for s, prompt_len in batch:
-        padded = s + [pad_id] * (max_len - len(s))
-        inp = padded[:-1]
-        tgt = padded[1:]
+    We extract:
+      - input_ids: just the prompt portion (padded), NO answer tokens
+      - labels: integer 0 or 1 parsed from the answer portion
 
-        for i in range(min(prompt_len - 1, len(tgt))):
-            tgt[i] = pad_id
+    Returns:
+        input_ids:  (B, T)  LongTensor — prompt tokens only, padded
+        labels:     (B,)    LongTensor — 0 or 1
+    """
+    eos_id = tokenizer.eos_token_id if tokenizer else None
 
-        input_ids.append(inp)
-        target_ids.append(tgt)
+    input_seqs = []
+    labels = []
 
-        vp = max(0, prompt_len - 1)
-        vt = 0.0  # ← default sentinel instead of NaN
-        parseable = False
+    for token_ids, prompt_len in batch:
+        # ── Extract prompt tokens (including <bos>) ─────────────────
+        prompt_ids = token_ids[:prompt_len]
+        input_seqs.append(prompt_ids)
 
-        if prompt_len > 0:
-            answer_start = prompt_len
-            answer_end = len(s) - 1
-            answer_ids = s[answer_start:answer_end]
+        # ── Extract answer from the token sequence ──────────────────
+        # Answer tokens are between prompt_len and <eos>
+        answer_end = len(token_ids)
+        for i in range(prompt_len, len(token_ids)):
+            if token_ids[i] == eos_id:
+                answer_end = i
+                break
 
+        answer_ids = token_ids[prompt_len:answer_end]
+
+        # Decode answer to get the label
+        label = 0  # default
+        if tokenizer and answer_ids:
+            answer_str = tokenizer.decode(answer_ids).strip()
+            # Clean any special token artifacts
+            for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
+                answer_str = answer_str.replace(special, "")
+            answer_str = ''.join(
+                c for c in answer_str if c.isascii() and c.isprintable()
+            ).strip()
             try:
-                answer_str = tokenizer.decode(answer_ids).strip()
-                vt = float(int(answer_str))
-                parseable = True
+                label = int(answer_str)
+                # Clamp to valid range for safety
+                if label not in (0, 1):
+                    label = 0
             except (ValueError, TypeError):
-                vt = 0.0  # explicit sentinel
-                parseable = False
+                label = 0
 
-        value_positions.append(vp)
-        value_targets.append(vt)
-        answer_parseable.append(parseable)
+        labels.append(label)
+
+    # ── Pad input sequences ─────────────────────────────────────────
+    max_len = max(len(s) for s in input_seqs)
+    padded_inputs = []
+    for s in input_seqs:
+        padded = s + [pad_id] * (max_len - len(s))
+        padded_inputs.append(padded)
 
     return (
-        torch.tensor(input_ids, dtype=torch.long),
-        torch.tensor(target_ids, dtype=torch.long),
-        torch.tensor(value_positions, dtype=torch.long),
-        torch.tensor(value_targets, dtype=torch.float),
-        torch.tensor(answer_parseable, dtype=torch.bool),
+        torch.tensor(padded_inputs, dtype=torch.long),
+        torch.tensor(labels, dtype=torch.long),
     )
 
 def build_tokenizer_from_samples(n_programs=1000, allowed_ops=None,
@@ -1636,34 +1653,55 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class TinyGPT(nn.Module):
-    def __init__(self, config: LLVMGPTConfig):
+class TinyClassifierGPT(nn.Module):
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.max_seq_len = config.max_seq_len
         self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
         self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
-        self.drop = nn.Dropout(config.dropout)
-        self.blocks = nn.Sequential(
-                *[
-                    TransformerBlock(config.d_model, config.n_heads, config.max_seq_len, config.dropout)
-                    for _ in range(config.n_layers)
-                    ]
-                )
+        self.blocks = nn.ModuleList(
+            [TransformerBlock(config.d_model, config.n_heads,
+                              config.max_seq_len, dropout=0.0)
+             for _ in range(config.n_layers)]
+        )
         self.ln_f = nn.LayerNorm(config.d_model)
-        self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
-        self.head.weight = self.tok_emb.weight
-
-        # ── Value regression head ───────────────────────────────────────
-        # Projects the last hidden state at a chosen position to a scalar
-        # predicted integer value. This is fully differentiable.
-        self.value_head = nn.Sequential(
-                nn.Linear(config.d_model, config.d_model),
-                nn.GELU(),
-                nn.Linear(config.d_model, 1),
-                )
-
+        self.cls_head = nn.Linear(config.d_model, 2)
         self.apply(self._init_weights)
+
+    def forward(self, input_ids, labels=None, output_hidden_states=False,
+                value_positions=None, **kwargs):
+        B, T = input_ids.shape
+        pos = torch.arange(T, device=input_ids.device).unsqueeze(0)
+        x = self.tok_emb(input_ids) + self.pos_emb(pos)
+
+        hidden_states = [x] if output_hidden_states else None
+
+        for blk in self.blocks:
+            x = blk(x)
+            if output_hidden_states:
+                hidden_states.append(x)
+
+        x = self.ln_f(x)
+
+        # Pool: last token's hidden state
+        pooled = x[:, -1, :]  # (B, d_model)
+        logits = self.cls_head(pooled)  # (B, 2)
+
+        loss = None
+        if labels is not None:
+            loss = F.cross_entropy(logits, labels)
+
+        if output_hidden_states:
+            return _ModelOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=tuple(hidden_states),
+                last_hidden_state=x,
+                value_preds=None,
+            )
+
+        return loss, logits
 
     @staticmethod
     def _init_weights(module):
@@ -1674,71 +1712,6 @@ class TinyGPT(nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(
-            self,
-            input_ids: Optional[torch.Tensor] = None,
-            labels: Optional[torch.Tensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            value_positions: Optional[torch.Tensor] = None,
-            output_hidden_states: bool = False,
-            **kwargs,
-            ):
-        """
-        Args:
-            input_ids:       (B, T) token indices
-            labels:          (B, T) target token indices (for CE loss)
-            attention_mask:  unused, kept for API compat
-            value_positions: (B,) int tensor — index into the sequence at which
-                             to read the hidden state for the value head.
-                             Typically the position of the last <sep> token
-                             (i.e. the position just before the answer starts).
-                             If None, value_preds will be None.
-            output_hidden_states: if True, return all intermediate hidden states
-        """
-        idx = input_ids
-        B, T = idx.shape
-        assert T <= self.max_seq_len, f"Sequence length {T} > max {self.max_seq_len}"
-        pos = torch.arange(0, T, device=idx.device).unsqueeze(0)
-        x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
-
-        hidden_states_list = [x] if output_hidden_states else None
-        for blk in self.blocks:
-            x = blk(x)
-            if output_hidden_states:
-                hidden_states_list.append(x)
-
-        x = self.ln_f(x)
-        logits = self.head(x)
-
-        # ── Cross-entropy loss (token-level) ────────────────────────────
-        loss = None
-        if labels is not None:
-            loss = F.cross_entropy(
-                    logits.view(-1, logits.size(-1)),
-                    labels.view(-1),
-                    ignore_index=0,
-                    )
-
-        # ── Value head prediction ───────────────────────────────────────
-        # Gather the hidden state at the specified position for each sample
-        value_preds = None
-        if value_positions is not None:
-            # value_positions: (B,) — index into T dimension
-            # x shape: (B, T, D)
-            # We want x[b, value_positions[b], :] for each b
-            gather_idx = value_positions.unsqueeze(-1).unsqueeze(-1)  # (B, 1, 1)
-            gather_idx = gather_idx.expand(-1, -1, x.shape[-1])       # (B, 1, D)
-            pooled = x.gather(1, gather_idx).squeeze(1)               # (B, D)
-            value_preds = self.value_head(pooled).squeeze(-1)         # (B,)
-
-        return _ModelOutput(
-                loss=loss,
-                logits=logits,
-                hidden_states=tuple(hidden_states_list) if output_hidden_states else None,
-                last_hidden_state=x,
-                value_preds=value_preds,
-                )
-
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
@@ -1748,22 +1721,22 @@ class TinyGPT(nn.Module):
         torch.save(self.state_dict(), os.path.join(path, "pytorch_model.bin"))
 
     @classmethod
-    def from_pretrained(cls, path: str, **kwargs) -> "TinyGPT":
+    def from_pretrained(cls, path: str, **kwargs) -> "TinyClassifierGPT":
         config = LLVMGPTConfig.from_pretrained(path)
         for k, v in kwargs.items():
             if hasattr(config, k):
                 setattr(config, k, v)
         model = cls(config)
         state_dict = torch.load(
-                os.path.join(path, "pytorch_model.bin"),
-                map_location="cpu",
-                weights_only=True,
-                )
+            os.path.join(path, "pytorch_model.bin"),
+            map_location="cpu",
+            weights_only=True,
+        )
         model.load_state_dict(state_dict)
         return model
 
 def compute_structured_loss(
-        model: 'TinyGPT',
+        model: 'TinyClassifierGPT',
         inp: torch.Tensor,
         tgt: torch.Tensor,
         value_positions: torch.Tensor,
@@ -1967,7 +1940,7 @@ def _compute_length_penalty(
     return torch.stack(length_losses).mean()
 
 def _compute_generation_reward_loss(
-        model: 'TinyGPT',
+        model: 'TinyClassifierGPT',
         inp: torch.Tensor,
         value_positions: torch.Tensor,
         value_targets: torch.Tensor,
@@ -2946,92 +2919,52 @@ _lp_module._HAS_GUDHI = _HAS_GUDHI
 
 @torch.no_grad()
 def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20, task="infix"):
+    """
+    Classification prediction: run the prompt through the model,
+    argmax the 2-class logits, compare to expected label.
+    """
     model.eval()
     predictions = []
 
-    for token_ids, prompt_len in batch[:8]:
-        eos_id = tokenizer.eos_token_id
+    eos_id = tokenizer.eos_token_id
 
-        # ── Find answer boundaries ──────────────────────────────────
+    for token_ids, prompt_len in batch[:8]:
+        # ── Extract expected answer ─────────────────────────────────
         answer_end = len(token_ids)
         for i in range(prompt_len, len(token_ids)):
             if token_ids[i] == eos_id:
                 answer_end = i
                 break
 
-        # ── Extract expected answer ─────────────────────────────────
         expected_ids = token_ids[prompt_len:answer_end]
-
         if expected_ids:
             expected_answer = tokenizer.decode(expected_ids).strip()
         else:
             expected_answer = ""
 
-        # Clean BPE artifacts
+        # Clean
         for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
             expected_answer = expected_answer.replace(special, "")
         expected_answer = ''.join(
             c for c in expected_answer if c.isascii() and c.isprintable()
         ).strip()
 
-        # ── FIX: If still empty, recover from the full token sequence ──
         if not expected_answer:
-            all_content_ids = token_ids[1:answer_end]  # skip <bos>
-            full_text = tokenizer.decode(all_content_ids).strip()
-            for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
-                full_text = full_text.replace(special, "")
-            full_text = ''.join(
-                c for c in full_text if c.isascii() and c.isprintable()
-            ).strip()
+            continue
 
-            if task == "turnstile":
-                # Turnstile format: "⊢⊢x=⊢x 0" — answer is after the last space
-                last_space = full_text.rfind(" ")
-                if last_space != -1:
-                    expected_answer = full_text[last_space + 1:].strip()
-            else:
-                # Infix format: "f(x, y) = expr, f(1, 2) = ANSWER"
-                last_eq_pos = full_text.rfind("= ")
-                if last_eq_pos != -1:
-                    expected_answer = full_text[last_eq_pos + 2:].strip()
-
-            if not expected_answer:
-                continue
-
-        # ── Greedy decode ───────────────────────────────────────────
+        # ── Classification: feed prompt, argmax logits ──────────────
         prompt_ids = token_ids[:prompt_len]
-        generated = list(prompt_ids)
-        for _ in range(max_gen_len):
-            inp = torch.tensor(
-                [generated[-model.max_seq_len:]],
-                dtype=torch.long, device=device,
-            )
-            output = model(input_ids=inp)
-            logits = output.logits[0, -1, :]
-            next_token = logits.argmax().item()
-
-            if next_token == eos_id:
-                break
-            generated.append(next_token)
-
-        generated_ids = generated[prompt_len:]
-        generated_answer = tokenizer.decode(generated_ids).strip()
-
-        for special in ["<eos>", "<pad>", "<bos>", "<sep>"]:
-            generated_answer = generated_answer.replace(special, "")
-        generated_answer = ''.join(
-            c for c in generated_answer if c.isascii() and c.isprintable()
-        ).strip()
-
-        if not generated_answer:
-            generated_answer = "(empty)"
+        inp = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+        _, logits = model(inp)
+        predicted_class = logits.argmax(dim=-1).item()
+        predicted_answer = str(predicted_class)
 
         try:
-            is_correct = int(generated_answer.strip()) == int(expected_answer.strip())
+            is_correct = int(predicted_answer) == int(expected_answer)
         except (ValueError, TypeError):
-            is_correct = generated_answer.strip() == expected_answer.strip()
+            is_correct = predicted_answer == expected_answer
 
-        predictions.append((expected_answer, generated_answer, is_correct))
+        predictions.append((expected_answer, predicted_answer, is_correct))
 
     model.train()
     return predictions
@@ -3099,8 +3032,8 @@ def _prepare_batch(
     max_seq_len: int,
     device: str,
     replay_buffer: Optional['ReplayBuffer'] = None,
-    task: str = "infix",               # ← NEW
-    max_turnstiles: int = 10,          # ← NEW
+    task: str = "infix",
+    max_turnstiles: int = 10,
 ) -> Optional[Tuple]:
     sprinkled = []
     if replay_buffer is not None:
@@ -3111,8 +3044,8 @@ def _prepare_batch(
     batch = generate_batch(
         tokenizer, n_fresh, max_params, max_ops,
         allowed_ops, param_range, max_seq_len,
-        task=task,                      # ← PASS THROUGH
-        max_turnstiles=max_turnstiles,  # ← PASS THROUGH
+        task=task,
+        max_turnstiles=max_turnstiles,
     )
 
     if len(batch) < 2 and not sprinkled:
@@ -3122,63 +3055,54 @@ def _prepare_batch(
     if replay_buffer is not None and batch:
         replay_buffer.maybe_save(batch)
 
-    # Combine fresh + sprinkled (shuffle so the model can't learn position bias)
+    # Combine fresh + sprinkled
     combined = batch + sprinkled
     random.shuffle(combined)
 
     if len(combined) < 2:
         return None
 
-    inp, tgt, val_pos, val_tgt, ans_parseable = collate_batch(
-            combined,
-            pad_id=tokenizer.SPECIAL["<pad>"],
-            tokenizer=tokenizer,
-            )
+    inp, labels = collate_batch(
+        combined,
+        pad_id=tokenizer.SPECIAL["<pad>"],
+        tokenizer=tokenizer,
+    )
+
     return (
-            combined,
-            inp.to(device),
-            tgt.to(device),
-            val_pos.to(device),
-            val_tgt.to(device),
-            ans_parseable.to(device),
-            )
+        combined,
+        inp.to(device),
+        labels.to(device),
+    )
 
 def _compute_batch_loss(
-        model: TinyGPT,
-        inp: torch.Tensor,
-        tgt: torch.Tensor,
-        val_pos: torch.Tensor,
-        val_tgt: torch.Tensor,
-        ans_parseable: torch.Tensor,
-        tokenizer: BPETokenizer,
-        device: str,
-        value_loss_alpha: float,
-        structure_loss_alpha: float,
-        length_loss_alpha: float,
-        ) -> Tuple[torch.Tensor, float, float, float, float]:
+    model: TinyClassifierGPT,
+    inp: torch.Tensor,
+    labels: torch.Tensor,
+    tokenizer: BPETokenizer,
+    device: str,
+    value_loss_alpha: float = 0.0,
+    structure_loss_alpha: float = 0.0,
+    length_loss_alpha: float = 0.0,
+) -> Tuple[torch.Tensor, float, float]:
     """
-    Thin wrapper around compute_structured_loss with standard args.
+    Classification loss for the turnstile task.
 
     Returns:
-        (loss_tensor, ce_val, vloss_val, struct_val, parse_rate)
+        (loss_tensor, loss_scalar, accuracy)
     """
+    loss, logits = model(inp, labels=labels)
 
-    return compute_structured_loss(
-            model, inp, tgt, val_pos, val_tgt, ans_parseable,
-            tokenizer=tokenizer,
-            device=device,
-            alpha_value=value_loss_alpha,
-            alpha_structure=structure_loss_alpha,
-            alpha_length=length_loss_alpha,
-            use_log_scale=True,
-            )
+    with torch.no_grad():
+        preds = logits.argmax(dim=-1)
+        accuracy = (preds == labels).float().mean().item()
 
+    return loss, loss.item(), accuracy
 
 def _save_checkpoint(
         path: str,
         filename: str,
         epoch: int,
-        model: TinyGPT,
+        model: TinyClassifierGPT,
         optimizer,
         scheduler,
         train_loss: float,
@@ -3203,10 +3127,10 @@ def _save_checkpoint(
     # Capture RNG states if not provided
     if rng_state is None:
         rng_state = {
-            "python": random.getstate(),
-            "numpy": np.random.get_state(),
-            "torch": torch.random.get_rng_state(),
-        }
+                "python": random.getstate(),
+                "numpy": np.random.get_state(),
+                "torch": torch.random.get_rng_state(),
+                }
         if torch.cuda.is_available():
             rng_state["torch_cuda"] = torch.cuda.get_rng_state_all()
 
@@ -3270,9 +3194,9 @@ def _find_latest_checkpoint(run_path: str) -> Optional[str]:
         except Exception as e:
             epoch_n = _epoch_num(ckpt)
             console.print(
-                f"  [yellow]⚠ Checkpoint model_epoch_{epoch_n}.pt is corrupt "
-                f"(likely interrupted save), skipping...[/]"
-            )
+                    f"  [yellow]⚠ Checkpoint model_epoch_{epoch_n}.pt is corrupt "
+                    f"(likely interrupted save), skipping...[/]"
+                    )
             try:
                 os.remove(ckpt)
                 console.print(f"  [dim]🗑️  Removed corrupt checkpoint: {os.path.basename(ckpt)}[/]")
@@ -3383,12 +3307,12 @@ def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTC
     return cfg, model_config
 
 
-def _create_model(model_config: LLVMGPTConfig, device: str) -> TinyGPT:
+def _create_model(model_config: LLVMGPTConfig, device: str) -> TinyClassifierGPT:
     """Instantiate the model and move to device."""
-    return TinyGPT(model_config).to(device)
+    return TinyClassifierGPT(model_config).to(device)
 
 
-def _print_model_summary(model: TinyGPT):
+def _print_model_summary(model: TinyClassifierGPT):
     """Print a Rich panel with the torchinfo model summary."""
     from torchinfo import summary as torchinfo_summary
 
@@ -3408,7 +3332,7 @@ def _print_model_summary(model: TinyGPT):
     console.print(summary_panel)
 
 
-def _load_checkpoint_for_continue(args, model: TinyGPT, device: str) -> Optional[dict]:
+def _load_checkpoint_for_continue(args, model: TinyClassifierGPT, device: str) -> Optional[dict]:
     """
     Load checkpoint weights and state for --continue or --resume.
     Returns the checkpoint dict (or None if no resume).
@@ -3561,7 +3485,7 @@ def _create_plotter(args, cfg: dict, actual_params: int, tokenizer: BPETokenizer
     return plotter
 
 
-def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
+def _setup_run_logger(args, cfg: dict, model: TinyClassifierGPT, tokenizer: BPETokenizer,
                       actual_params: int) -> Tuple[Optional[RunLogger], Optional[str]]:
     """Set up the run logger and run directory. Returns (logger, run_dir)."""
     global run_dir, _lp_module
@@ -3583,7 +3507,7 @@ def _setup_run_logger(args, cfg: dict, model: TinyGPT, tokenizer: BPETokenizer,
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
         run_logger.log_config(args)
         run_logger.log_model_summary(
-            model_name="TinyGPT",
+            model_name="TinyClassifierGPT",
             param_count=actual_params,
             config_dict={
                 "d_model": cfg["d_model"],
@@ -3660,7 +3584,7 @@ def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
 
     console.print(config_table)
 
-def _build_optimizer(args, model: TinyGPT) -> torch.optim.Optimizer:
+def _build_optimizer(args, model: TinyClassifierGPT) -> torch.optim.Optimizer:
     opt_cls = OPTIMIZERS[args.optimizer]
     opt_kwargs = {"lr": args.lr, "weight_decay": args.weight_decay}
     if args.optimizer == "sgd":
@@ -3752,58 +3676,56 @@ def _validate_allowed_ops(allowed_ops: List[str]):
 # ════════════════════════════════════════════════════════════════════════════
 
 def _run_train_epoch(
-        epoch: int,
-        total_epochs: int,
-        model: TinyGPT,
-        optimizer,
-        args,
-        batch_gen_kwargs: dict,
-        loss_kwargs: dict,
-        tokenizer: BPETokenizer,
-        device: str,
-        plotter: LivePlotter,
-        run_logger: Optional[RunLogger],
-        csv_log: CSVTrainingLogger,
-        timer: TimeEstimator,
-        epoch_ctrl: EpochController,
-        total_samples: int,
-        scheduler=None,            # ← ADD THIS
+    epoch: int,
+    total_epochs: int,
+    model: TinyClassifierGPT,
+    optimizer,
+    args,
+    batch_gen_kwargs: dict,
+    loss_kwargs: dict,
+    tokenizer: BPETokenizer,
+    device: str,
+    plotter: LivePlotter,
+    run_logger: Optional[RunLogger],
+    csv_log: CSVTrainingLogger,
+    timer: TimeEstimator,
+    epoch_ctrl: EpochController,
+    total_samples: int,
+    scheduler=None,
 ) -> Tuple[float, float, int]:
     """
-    Run one training epoch.
+    Run one training epoch (classification mode).
 
     Returns:
-        (avg_train_loss, avg_value_loss, updated_total_samples)
+        (avg_train_loss, avg_accuracy, updated_total_samples)
     """
     model.train()
     epoch_loss = 0.0
-    epoch_value_loss = 0.0
+    epoch_accuracy = 0.0
     n_batches = 0
 
     plotter.clear_predictions()
 
     with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
-            BarColumn(bar_width=30),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]vloss={task.fields[vloss]:.4f}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]parse={task.fields[parse]:.0%}[/]"),
-            TextColumn("•"),
-            TextColumn("[dim]eta={task.fields[eta]}[/]"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
+        SpinnerColumn(),
+        TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Train"),
+        BarColumn(bar_width=30),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TextColumn("[cyan]loss={task.fields[loss]:.4f}[/]"),
+        TextColumn("•"),
+        TextColumn("[dim]ema={task.fields[ema]:.4f}[/]"),
+        TextColumn("•"),
+        TextColumn("[dim]acc={task.fields[acc]:.0%}[/]"),
+        TextColumn("•"),
+        TextColumn("[dim]eta={task.fields[eta]}[/]"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
     ) as progress:
         task = progress.add_task(
             "train", total=args.batches_per_epoch,
-            loss=0.0, ema=0.0, vloss=0.0, parse=0.0, eta="...",
+            loss=0.0, ema=0.0, acc=0.0, eta="...",
         )
 
         ema_loss = None
@@ -3814,16 +3736,15 @@ def _run_train_epoch(
             prepared = _prepare_batch(**batch_gen_kwargs)
             if prepared is None:
                 progress.update(task, advance=1, loss=0.0,
-                                ema=ema_loss or 0.0, vloss=0.0,
+                                ema=ema_loss or 0.0, acc=0.0,
                                 eta=timer.eta(epoch - 1, epoch_ctrl.epochs))
                 continue
 
-            batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
+            batch, inp, labels = prepared
             total_samples += len(batch)
 
-            loss, ce_val, vloss_val, struct_val, parse_rate = _compute_batch_loss(
-                model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                **loss_kwargs,
+            loss, loss_val, accuracy = _compute_batch_loss(
+                model, inp, labels, **loss_kwargs,
             )
 
             optimizer.zero_grad()
@@ -3838,7 +3759,7 @@ def _run_train_epoch(
 
             bl = loss.item()
             epoch_loss += bl
-            epoch_value_loss += vloss_val
+            epoch_accuracy += accuracy
             n_batches += 1
 
             if ema_loss is None:
@@ -3851,9 +3772,9 @@ def _run_train_epoch(
 
             csv_log.log_train_batch(
                 epoch=epoch, batch_idx=batch_idx,
-                total_loss=bl, ce_loss=ce_val,
-                value_loss=vloss_val, structure_loss=struct_val,
-                parse_rate=parse_rate, predictions=preds,
+                total_loss=bl, ce_loss=bl,
+                value_loss=0.0, structure_loss=0.0,
+                parse_rate=accuracy, predictions=preds,
                 lr=current_lr,
                 grad_norm=grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm),
                 n_samples_in_batch=len(batch),
@@ -3872,31 +3793,30 @@ def _run_train_epoch(
 
             progress.update(
                 task, advance=1, loss=bl, ema=ema_loss,
-                vloss=vloss_val, parse=parse_rate,
+                acc=accuracy,
                 eta=timer.eta(epoch - 1, epoch_ctrl.epochs),
             )
 
     avg_train_loss = epoch_loss / max(n_batches, 1)
-    avg_value_loss = epoch_value_loss / max(n_batches, 1)
-    return avg_train_loss, avg_value_loss, total_samples
-
+    avg_accuracy = epoch_accuracy / max(n_batches, 1)
+    return avg_train_loss, avg_accuracy, total_samples
 
 def _run_val_epoch(
-        epoch: int,
-        total_epochs: int,
-        model: TinyGPT,
-        args,
-        batch_gen_kwargs: dict,
-        loss_kwargs: dict,
-        tokenizer: BPETokenizer,
-        device: str,
-        optimizer,
-        plotter: LivePlotter,
-        run_logger: Optional[RunLogger],
-        csv_log: CSVTrainingLogger,
+    epoch: int,
+    total_epochs: int,
+    model: TinyClassifierGPT,
+    args,
+    batch_gen_kwargs: dict,
+    loss_kwargs: dict,
+    tokenizer: BPETokenizer,
+    device: str,
+    optimizer,
+    plotter: LivePlotter,
+    run_logger: Optional[RunLogger],
+    csv_log: CSVTrainingLogger,
 ) -> float:
     """
-    Run one validation epoch.
+    Run one validation epoch (classification mode).
 
     Returns:
         avg_val_loss
@@ -3906,17 +3826,19 @@ def _run_val_epoch(
     val_batches = 0
 
     with Progress(
-            SpinnerColumn(),
-            TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
-            BarColumn(bar_width=30),
-            MofNCompleteColumn(),
-            TextColumn("•"),
-            TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
-            TimeElapsedColumn(),
-            console=console,
-            transient=True,
+        SpinnerColumn(),
+        TextColumn(f"[bold blue]Epoch {epoch}/{total_epochs}[/] Val  "),
+        BarColumn(bar_width=30),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TextColumn("[magenta]loss={task.fields[loss]:.4f}[/]"),
+        TextColumn("•"),
+        TextColumn("[dim]acc={task.fields[acc]:.0%}[/]"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
     ) as progress:
-        task = progress.add_task("val", total=args.val_batches, loss=0.0)
+        task = progress.add_task("val", total=args.val_batches, loss=0.0, acc=0.0)
 
         with torch.no_grad():
             for val_batch_idx in range(args.val_batches):
@@ -3924,17 +3846,16 @@ def _run_val_epoch(
 
                 prepared = _prepare_batch(**batch_gen_kwargs)
                 if prepared is None:
-                    progress.update(task, advance=1, loss=0.0)
+                    progress.update(task, advance=1, loss=0.0, acc=0.0)
                     continue
 
-                batch, inp, tgt, val_pos, val_tgt, ans_parseable = prepared
+                batch, inp, labels = prepared
 
-                vl_total, vl_ce, vl_value, vl_struct, vl_parse_rate = _compute_batch_loss(
-                    model, inp, tgt, val_pos, val_tgt, ans_parseable,
-                    **loss_kwargs,
+                vl_loss, vl_scalar, vl_accuracy = _compute_batch_loss(
+                    model, inp, labels, **loss_kwargs,
                 )
 
-                vl = vl_total.item()
+                vl = vl_loss.item()
                 val_loss += vl
                 val_batches += 1
 
@@ -3942,9 +3863,9 @@ def _run_val_epoch(
 
                 csv_log.log_val_batch(
                     epoch=epoch, batch_idx=val_batch_idx,
-                    total_loss=vl, ce_loss=vl_ce,
-                    value_loss=vl_value, structure_loss=vl_struct,
-                    parse_rate=vl_parse_rate, predictions=preds,
+                    total_loss=vl, ce_loss=vl,
+                    value_loss=0.0, structure_loss=0.0,
+                    parse_rate=vl_accuracy, predictions=preds,
                     lr=optimizer.param_groups[0]["lr"],
                 )
 
@@ -3959,11 +3880,10 @@ def _run_val_epoch(
                 if run_logger:
                     run_logger.log_batch_loss_val(epoch, val_batches, vl)
 
-                progress.update(task, advance=1, loss=vl)
+                progress.update(task, advance=1, loss=vl, acc=vl_accuracy)
 
     plotter.finish_val_epoch()
     return val_loss / max(val_batches, 1)
-
 
 def _step_scheduler(scheduler, is_plateau: bool, avg_val_loss: float):
     """Advance the LR scheduler by one step."""
@@ -3975,15 +3895,16 @@ def _step_scheduler(scheduler, is_plateau: bool, avg_val_loss: float):
         scheduler.step()
 
 def _print_epoch_summary(
-        epoch: int,
-        total_epochs: int,
-        avg_train_loss: float,
-        avg_val_loss: float,
-        current_lr: float,
-        total_samples: int,
-        elapsed: float,
-        timer: TimeEstimator,
-        is_best: bool,
+    epoch: int,
+    total_epochs: int,
+    avg_train_loss: float,
+    avg_val_loss: float,
+    current_lr: float,
+    total_samples: int,
+    elapsed: float,
+    timer: TimeEstimator,
+    is_best: bool,
+    avg_accuracy: float = 0.0,
 ):
     """Print the Rich epoch summary panel."""
     eta_str = timer.eta(epoch, total_epochs)
@@ -3991,12 +3912,13 @@ def _print_epoch_summary(
     best_marker = " [bold green]★ best[/]" if is_best else ""
 
     epoch_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    for _ in range(12):
+    for _ in range(14):
         epoch_table.add_column()
 
     epoch_table.add_row(
         "[bold]train:[/]", f"[cyan]{avg_train_loss:.4f}[/]",
         "[bold]val:[/]", f"[magenta]{avg_val_loss:.4f}[/]",
+        "[bold]acc:[/]", f"[green]{avg_accuracy:.1%}[/]",
         "[bold]lr:[/]", f"[green]{current_lr:.2e}[/]",
         "[bold]samples:[/]", f"[yellow]{total_samples:,}[/]",
         "[bold]time:[/]", f"{elapsed:.1f}s",
@@ -4008,10 +3930,9 @@ def _print_epoch_summary(
             epoch_table,
             title=f"[bold]Epoch {epoch}/{total_epochs}  │  elapsed: {elapsed_str}[/]",
             border_style="green" if is_best else "blue",
-            width=min(console.width, 120),
+            width=min(console.width, 130),
         )
     )
-
 
 def _log_epoch_to_run_logger(
         run_logger: Optional[RunLogger],
@@ -4022,7 +3943,7 @@ def _log_epoch_to_run_logger(
         elapsed: float,
         total_samples: int,
         is_best: bool,
-        model: TinyGPT,
+        model: TinyClassifierGPT,
         tokenizer: BPETokenizer,
         device: str,
         args,
@@ -4074,7 +3995,7 @@ def _log_epoch_to_run_logger(
 
 def _do_checkpointing(
         epoch: int,
-        model: TinyGPT,
+        model: TinyClassifierGPT,
         optimizer,
         scheduler,
         avg_train_loss: float,
@@ -4145,7 +4066,7 @@ def _do_checkpointing(
 
 
 def _save_final_model(
-        model: TinyGPT,
+        model: TinyClassifierGPT,
         tokenizer: BPETokenizer,
         save_path: str,
         train_losses_hist: List[float],
@@ -4349,7 +4270,7 @@ def train(args: argparse.Namespace):
         t0 = time.time()
 
         # ── Train ───────────────────────────────────────────────────────
-        avg_train_loss, avg_value_loss, total_samples = _run_train_epoch(
+        avg_train_loss, avg_accuracy, total_samples = _run_train_epoch(
             epoch, total_epochs, model, optimizer, args,
             batch_gen_kwargs, loss_kwargs, tokenizer, device,
             plotter, run_logger, csv_log, timer, epoch_ctrl, total_samples,
@@ -4380,7 +4301,8 @@ def train(args: argparse.Namespace):
 
         # ── Epoch summary ───────────────────────────────────────────────
         _print_epoch_summary(epoch, total_epochs, avg_train_loss, avg_val_loss,
-                             current_lr, total_samples, elapsed, timer, is_best)
+                             current_lr, total_samples, elapsed, timer, is_best,
+                             avg_accuracy=avg_accuracy)
 
         # ── Logging ─────────────────────────────────────────────────────
         _log_epoch_to_run_logger(
@@ -4400,7 +4322,7 @@ def train(args: argparse.Namespace):
             plotter, replay_buffer, tokenizer, save_path, is_best, args,
         )
 
-        # ── Sync to remote (at most one process at a time) ─────────────
+        # ── Sync to remote ─────────────────────────────────────────────
         _maybe_run_sync(run_dir_path, args.sync)
 
         # ── Graceful stop ───────────────────────────────────────────────
