@@ -897,6 +897,8 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--value-loss-alpha", type=float, default=0.1,
                    help="Weight for the value regression (absolute difference) loss term. "
                    "0 = disabled, higher = more emphasis on numeric accuracy.")
+    g.add_argument("--ffn", type=int, default=0,
+                   help="MLP/FFN hidden dimension (0 = auto, defaults to 4*d_model)")
 
     g = p.add_argument_group("Training")
     g.add_argument("--epochs", type=int, default=30,
@@ -1639,6 +1641,7 @@ class LLVMGPTConfig:
             n_layers: int = 4,
             max_seq_len: int = 2048,
             dropout: float = 0.1,
+            ffn: int = 0,
             **kwargs,
             ):
         self.vocab_size = vocab_size
@@ -1647,6 +1650,7 @@ class LLVMGPTConfig:
         self.n_layers = n_layers
         self.max_seq_len = max_seq_len
         self.dropout = dropout
+        self.ffn = ffn if ffn > 0 else 4 * d_model
         self.hidden_size = d_model
         self.num_attention_heads = n_heads
         self.num_hidden_layers = n_layers
@@ -1666,7 +1670,7 @@ class LLVMGPTConfig:
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1):
+    def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1, ffn: int = 8):
         super().__init__()
         assert d_model % n_heads == 0, (
             f"Invalid configuration: d_model ({d_model}) must be divisible by n_heads ({n_heads}). "
@@ -1674,6 +1678,7 @@ class CausalSelfAttention(nn.Module):
         )
 
         self.n_heads = n_heads
+        self.ffn = ffn
         self.head_dim = d_model // n_heads
         self.qkv = nn.Linear(d_model, 3 * d_model)
         self.proj = nn.Linear(d_model, d_model)
@@ -1720,15 +1725,15 @@ class CausalSelfAttention(nn.Module):
             sys.exit(1)
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1):
+    def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1, ffn: int = 8):
         super().__init__()
         self.ln1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_heads, max_seq_len, dropout)
+        self.attn = CausalSelfAttention(d_model, n_heads, max_seq_len, dropout, ffn)
         self.ln2 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
-                nn.Linear(d_model, 4 * d_model),
+                nn.Linear(d_model, ffn),
                 nn.GELU(),
-                nn.Linear(4 * d_model, d_model),
+                nn.Linear(ffn, d_model),
                 nn.Dropout(dropout),
                 )
 
@@ -1749,7 +1754,7 @@ class TinyClassifierGPT(nn.Module):
 
         self.blocks = nn.ModuleList(
             [TransformerBlock(config.d_model, config.n_heads,
-                              config.max_seq_len, dropout=0.0)
+                              config.max_seq_len, dropout=0.0, ffn=config.ffn)
              for _ in range(config.n_layers)]
         )
         self.ln_f = nn.LayerNorm(config.d_model)
@@ -2610,21 +2615,29 @@ class _ModelOutput(dict):
 # 4.  ANALYTICAL MODEL CONFIG
 # ════════════════════════════════════════════════════════════════════════════
 
-def estimate_params(vocab_size: int, d_model: int, n_layers: int, max_seq_len: int) -> int:
+def estimate_params(vocab_size: int, d_model: int, n_layers: int, max_seq_len: int, ffn: int = 0) -> int:
+    actual_ffn = ffn if ffn > 0 else 4 * d_model
     # Token embedding only (no positional embedding with RoPE)
     emb = vocab_size * d_model
-    # Transformer blocks (unchanged — RoPE adds no learnable params)
-    blocks = n_layers * (12 * d_model ** 2 + 13 * d_model)
+    # Transformer blocks:
+    #   - QKV + proj: 4 * d_model^2 + 4 * d_model (biases)
+    #   - MLP: d_model * actual_ffn + actual_ffn + actual_ffn * d_model + d_model
+    #   - LayerNorms: 2 * (2 * d_model)
+    attn_params = 4 * d_model * d_model + 4 * d_model  # qkv + proj
+    mlp_params = d_model * actual_ffn + actual_ffn + actual_ffn * d_model + d_model
+    ln_params = 4 * d_model  # 2 layer norms per block
+    blocks = n_layers * (attn_params + mlp_params + ln_params)
     # Final layer norm
     ln_f = 2 * d_model
     # Classification head
-    cls_head = d_model * 2 + 2  # Linear(d_model, 2)
+    cls_head = d_model * 2 + 2
     return emb + blocks + ln_f + cls_head
 
 def find_model_config(
         vocab_size: int,
         target_params: int = 1_000,
         max_seq_len: int = 2048,
+        ffn: int = 0,
         ) -> dict:
     best = None
     best_diff = float("inf")
@@ -2633,7 +2646,7 @@ def find_model_config(
             if d_model % n_heads != 0:
                 continue
             for n_layers in range(1, 24):
-                n = estimate_params(vocab_size, d_model, n_layers, max_seq_len)
+                n = estimate_params(vocab_size, d_model, n_layers, max_seq_len, ffn)
                 diff = abs(n - target_params)
                 if diff < best_diff:
                     best_diff = diff
@@ -2644,7 +2657,6 @@ def find_model_config(
                             "estimated_params": n,
                             }
     return best
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 5.  OPTIMIZER / SCHEDULER FACTORIES
@@ -3411,7 +3423,6 @@ def _load_or_build_tokenizer(args, allowed_ops: List[str]) -> BPETokenizer:
         )
 
 def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTConfig]:
-    """Determine model architecture config from args, --continue, or auto-search."""
     if args.continue_run is not None:
         config_path = os.path.join(args.continue_run, "config.json")
         if os.path.exists(config_path):
@@ -3438,7 +3449,9 @@ def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTC
             f"[bold cyan]Searching for architecture "
             f"(target ~{args.target_params:,} params)...[/]"
         )
-        cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len)
+        cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len, ffn=args.ffn)
+
+    ffn_val = args.ffn if args.ffn > 0 else 4 * cfg["d_model"]
 
     model_config = LLVMGPTConfig(
         vocab_size=tokenizer.vocab_size,
@@ -3447,9 +3460,9 @@ def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTC
         n_layers=cfg["n_layers"],
         max_seq_len=args.max_seq_len,
         dropout=args.dropout,
+        ffn=ffn_val,
     )
     return cfg, model_config
-
 
 def _create_model(model_config: LLVMGPTConfig, device: str) -> TinyClassifierGPT:
     """Instantiate the model and move to device."""
@@ -3694,6 +3707,7 @@ def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
     config_table.add_column("Value", style="green")
 
     config_table.add_row("Model", "d_model", str(cfg["d_model"]))
+    config_table.add_row("", "ffn_dim", str(args.ffn if args.ffn > 0 else 4 * cfg["d_model"]))
     config_table.add_row("", "n_heads", str(cfg["n_heads"]))
     config_table.add_row("", "n_layers", str(cfg["n_layers"]))
     config_table.add_row("", "vocab_size", str(tokenizer.vocab_size))
