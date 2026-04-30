@@ -2131,8 +2131,9 @@ def find_next_chat_dir(base: str = "chats") -> str:
     return chat_dir
 
 
-def load_model_and_tokenizer(run_path: str, device: str = 'cpu'):
-    """Load model and tokenizer from a run directory."""
+def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
+                              checkpoint_path: Optional[str] = None):
+    """Load model and tokenizer from a run directory, optionally with a specific checkpoint."""
     # Try loading config
     config_path = os.path.join(run_path, "config.json")
     if not os.path.exists(config_path):
@@ -2145,8 +2146,34 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu'):
     # Load tokenizer
     tokenizer = BPETokenizer.from_pretrained(run_path)
 
-    # Load model
-    model = TinyGPT.from_pretrained(run_path, device)
+    # Load model config and architecture
+    config = LLVMGPTConfig.from_pretrained(run_path)
+    model = TinyGPT(config)
+
+    # Determine which weights to load
+    if checkpoint_path and os.path.exists(checkpoint_path):
+        # Load from the explicit .pt checkpoint
+        print(f"   Loading weights from: {checkpoint_path}")
+        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        
+        # Handle checkpoints that wrap state_dict in a larger dict
+        # (e.g., {"model_state_dict": ..., "optimizer_state_dict": ..., "epoch": ...})
+        if "model_state_dict" in state_dict:
+            state_dict = state_dict["model_state_dict"]
+        elif "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+        
+        model.load_state_dict(state_dict, strict=False)
+    else:
+        # Fall back to pytorch_model.bin
+        bin_path = os.path.join(run_path, "pytorch_model.bin")
+        if os.path.exists(bin_path):
+            print(f"   Loading weights from: pytorch_model.bin")
+            state_dict = torch.load(bin_path, map_location=device, weights_only=True)
+            model.load_state_dict(state_dict)
+        else:
+            print(f"   ⚠️  No checkpoint found, using random weights!")
+
     model = model.to(device)
     model.eval()
 
@@ -2158,8 +2185,9 @@ def main():
         description="Interactive chat with a trained TinyGPT model, with full introspection.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("run_path", type=str,
-                        help="Path to the run directory (e.g., runs/0)")
+    parser.add_argument("run_path", type=str, nargs="?", default=None,
+                        help="Path to run directory (e.g., runs/0), a .pt checkpoint "
+                             "(e.g., runs/0/model_1234.pt), or omit to use latest run")
     parser.add_argument("--max-gen-len", type=int, default=50,
                         help="Maximum generation length per response")
     parser.add_argument("--temperature", type=float, default=1.0,
@@ -2180,12 +2208,19 @@ def main():
     else:
         device = args.device
 
+    # Resolve run path and checkpoint
+    try:
+        run_dir, checkpoint_path = resolve_run_path(args.run_path)
+    except FileNotFoundError as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+
     # Load model
-    print(f"🔬 Loading model from: {args.run_path}")
+    print(f"🔬 Loading model from: {run_dir}")
     print(f"   Device: {device}")
 
     try:
-        model, tokenizer = load_model_and_tokenizer(args.run_path, device)
+        model, tokenizer = load_model_and_tokenizer(run_dir, device, checkpoint_path)
     except FileNotFoundError as e:
         print(f"❌ Error: {e}")
         sys.exit(1)
@@ -2200,14 +2235,15 @@ def main():
     chat_dir = find_next_chat_dir(args.chats_dir)
     logger = setup_logger(chat_dir)
     logger.info(f"Chat session started. Saving to: {chat_dir}")
-    logger.info(f"Model: {args.run_path}, device={device}, params={n_params:,}")
+    logger.info(f"Model: {run_dir}, checkpoint={checkpoint_path}, device={device}, params={n_params:,}")
 
     # Create introspection engine
     engine = IntrospectionEngine(model, tokenizer, device, logger)
 
     # Save session metadata
     session_meta = {
-        'run_path': args.run_path,
+        'run_path': run_dir,
+        'checkpoint_path': checkpoint_path,
         'device': device,
         'n_params': n_params,
         'model_config': {
@@ -2227,6 +2263,9 @@ def main():
     print("=" * 60)
     print("🔬 INTERACTIVE CHAT WITH FULL INTROSPECTION")
     print("=" * 60)
+    print(f"   Run directory: {run_dir}")
+    if checkpoint_path:
+        print(f"   Checkpoint: {os.path.basename(checkpoint_path)}")
     print(f"   Chat logs: {chat_dir}/")
     print(f"   Type your input and press Enter.")
     print(f"   Type 'quit' or 'exit' to end the session.")
@@ -2288,6 +2327,8 @@ def main():
     summary = {
         'total_interactions': interaction_idx,
         'chat_dir': chat_dir,
+        'run_path': run_dir,
+        'checkpoint_path': checkpoint_path,
         'ended_at': datetime.now(timezone.utc).isoformat(),
     }
     with open(os.path.join(chat_dir, "session_summary.json"), 'w') as f:
@@ -2296,6 +2337,92 @@ def main():
     print(f"\n📁 All results saved to: {chat_dir}/")
     print(f"   Open {os.path.join(chat_dir, 'dashboard.html')} in a browser to explore.")
 
+# ═══════════════════════════════════════════════════════════════════════════
+# PATH RESOLUTION HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def find_latest_run(runs_base: str = "runs") -> str:
+    """Find the most recently modified run directory under runs_base."""
+    if not os.path.isdir(runs_base):
+        raise FileNotFoundError(f"Runs directory '{runs_base}' does not exist.")
+
+    run_dirs = []
+    for entry in os.listdir(runs_base):
+        full = os.path.join(runs_base, entry)
+        if os.path.isdir(full) and os.path.exists(os.path.join(full, "config.json")):
+            run_dirs.append(full)
+
+    if not run_dirs:
+        raise FileNotFoundError(f"No valid run directories found in '{runs_base}' (need config.json).")
+
+    # Sort by modification time, newest first
+    run_dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+    return run_dirs[0]
+
+
+def find_latest_checkpoint(run_dir: str) -> Optional[str]:
+    """Find the latest .pt checkpoint file in a run directory."""
+    pt_files = sorted(
+        [f for f in os.listdir(run_dir) if f.endswith(".pt")],
+        key=lambda f: os.path.getmtime(os.path.join(run_dir, f)),
+        reverse=True,
+    )
+    if pt_files:
+        return os.path.join(run_dir, pt_files[0])
+    return None
+
+
+def resolve_run_path(user_path: Optional[str]) -> Tuple[str, Optional[str]]:
+    """
+    Resolve the user-provided path into (run_directory, checkpoint_path).
+
+    Handles three cases:
+      1. None / not specified  → find latest run dir, latest checkpoint
+      2. Path to a .pt file   → derive run dir from parent, use that checkpoint
+      3. Path to a directory   → use that dir, find latest checkpoint in it
+
+    Returns:
+        (run_dir, checkpoint_path) where checkpoint_path may be None
+        if only pytorch_model.bin exists.
+    """
+    # Case 1: Nothing specified — use latest run
+    if user_path is None:
+        run_dir = find_latest_run()
+        ckpt = find_latest_checkpoint(run_dir)
+        print(f"📂 No path specified, using latest run: {run_dir}")
+        if ckpt:
+            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
+        return run_dir, ckpt
+
+    # Case 2: Direct path to a .pt file
+    if user_path.endswith(".pt") and os.path.isfile(user_path):
+        ckpt_path = os.path.abspath(user_path)
+        run_dir = os.path.dirname(ckpt_path)
+
+        # Validate that the parent directory has the required files
+        if not os.path.exists(os.path.join(run_dir, "config.json")):
+            raise FileNotFoundError(
+                f"Checkpoint '{user_path}' found, but its directory "
+                f"'{run_dir}' has no config.json."
+            )
+
+        print(f"📂 Using checkpoint: {user_path}")
+        print(f"   Run directory: {run_dir}")
+        return run_dir, ckpt_path
+
+    # Case 3: Path to a directory
+    if os.path.isdir(user_path):
+        run_dir = user_path
+        ckpt = find_latest_checkpoint(run_dir)
+        if ckpt:
+            print(f"📂 Run directory: {run_dir}")
+            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
+        return run_dir, ckpt
+
+    # Nothing matched
+    raise FileNotFoundError(
+        f"Path '{user_path}' is not a valid .pt file or run directory."
+    )
 
 if __name__ == "__main__":
     main()
