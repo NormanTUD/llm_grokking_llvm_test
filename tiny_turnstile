@@ -1,5 +1,12 @@
 #!/bin/bash
 
+#SBATCH --job-name=grokking
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gres=gpu:1
+#SBATCH --mem=64G
+#SBATCH --time=60:00:00
+
 # ═══════════════════════════════════════════════════════════════════════════
 # tiny_turnstile.sh — Dynamic wrapper for train.py (turnstile task)
 #
