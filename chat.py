@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import sys
 
-from datetime import datetime, timedelta  # Add this line back!
+from datetime import datetime, timedelta
 
 try:
     from datetime import UTC
@@ -56,38 +56,25 @@ def ensure_safe_env():
 ensure_safe_env()
 
 """
-Interactive chat with a trained TinyGPT model, with full internal state inspection.
+Interactive chat with a trained TinyClassifierGPT model, with full internal state inspection.
 
 Usage:
     python3 chat.py runs/0
     python3 chat.py runs/0 --max-gen-len 50
 
 What it does:
-    1. Loads the model (.pt checkpoint) and tokenizer from the specified run directory
-    2. Provides an interactive CLI where you type inputs and get model responses
+    1. Loads the classifier model (.pt checkpoint) and tokenizer from the specified run directory
+    2. Provides an interactive CLI where you type turnstile expressions and get 0/1 predictions
     3. For EVERY request, logs and visualizes:
        - All hidden states per layer (raw numbers)
        - Attention patterns (if extractable)
        - Jacobian fields between layers
        - PCA projections (2D, 3D) of each layer's hidden states
-       - 2D slices of the representation space at each layer
        - Divergence, curl, shear decomposition of layer transitions
-       - Token probability distributions at each generation step
-       - How spaces are "bent" (deformation grids)
-       - Eigenvalue spectra of layer Jacobians
        - CKA similarity between layers
-       - Persistence diagrams (topological features)
+       - Eigenvalue spectra of layer Jacobians
     4. Saves results in chats/0, chats/1, ... (auto-incrementing)
     5. Generates an interactive HTML dashboard (Plotly-based) for each chat
-
-The HTML dashboard lets you:
-    - Scroll through each generation step
-    - Inspect each layer's hidden states as heatmaps
-    - View PCA projections interactively (rotate 3D, zoom 2D)
-    - See Jacobian field visualizations
-    - Examine token probabilities at each step
-    - Compare layer-to-layer transformations
-    - View deformation grids showing how space is bent
 """
 
 import os
@@ -134,11 +121,8 @@ import plotly.io as pio
 from jinja2 import Environment, BaseLoader
 
 # ═══════════════════════════════════════════════════════════════════════════
-# IMPORT MODEL CLASSES FROM train.py's module system
+# MODEL CLASSES — TinyClassifierGPT (matches train.py)
 # ═══════════════════════════════════════════════════════════════════════════
-
-# We need to import the model architecture. Since train.py defines everything,
-# we'll re-define the minimal classes needed here to avoid circular imports.
 
 class LLVMGPTConfig:
     model_type = "llvm_gpt"
@@ -214,35 +198,31 @@ class TransformerBlock(nn.Module):
         return x
 
 
-class TinyGPT(nn.Module):
+class TinyClassifierGPT(nn.Module):
+    """
+    Classification model matching train.py's TinyClassifierGPT.
+    Pools the last token's hidden state and projects to 2 classes.
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.max_seq_len = config.max_seq_len
         self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
         self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
-        self.drop = nn.Dropout(config.dropout)
         self.blocks = nn.ModuleList([
-            TransformerBlock(config.d_model, config.n_heads, config.max_seq_len, config.dropout)
+            TransformerBlock(config.d_model, config.n_heads,
+                            config.max_seq_len, dropout=0.0)
             for _ in range(config.n_layers)
         ])
         self.ln_f = nn.LayerNorm(config.d_model)
-        self.head = nn.Linear(config.vocab_size, config.vocab_size, bias=False)
-        # Weight tying
-        self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
-        self.head.weight = self.tok_emb.weight
-
-        self.value_head = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model),
-            nn.GELU(),
-            nn.Linear(config.d_model, 1),
-        )
+        self.cls_head = nn.Linear(config.d_model, 2)
+        self.apply(self._init_weights)
 
     def forward(self, input_ids, output_hidden_states=True, **kwargs):
         B, T = input_ids.shape
         assert T <= self.max_seq_len
-        pos = torch.arange(0, T, device=input_ids.device).unsqueeze(0)
-        x = self.drop(self.tok_emb(input_ids) + self.pos_emb(pos))
+        pos = torch.arange(T, device=input_ids.device).unsqueeze(0)
+        x = self.tok_emb(input_ids) + self.pos_emb(pos)
 
         hidden_states = [x.detach().clone()] if output_hidden_states else None
 
@@ -252,31 +232,33 @@ class TinyGPT(nn.Module):
                 hidden_states.append(x.detach().clone())
 
         x = self.ln_f(x)
-        logits = self.head(x)
+
+        # Pool: last token's hidden state
+        pooled = x[:, -1, :]  # (B, d_model)
+        logits = self.cls_head(pooled)  # (B, 2)
 
         return {
             'logits': logits,
             'hidden_states': tuple(hidden_states) if output_hidden_states else None,
             'last_hidden_state': x,
+            'pooled': pooled,
         }
+
+    @staticmethod
+    def _init_weights(module):
+        if isinstance(module, nn.Linear):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
-    @classmethod
-    def from_pretrained(cls, path, device='cpu'):
-        config = LLVMGPTConfig.from_pretrained(path)
-        model = cls(config)
-        # Try loading from checkpoint
-        ckpt_path = os.path.join(path, "pytorch_model.bin")
-        if os.path.exists(ckpt_path):
-            state_dict = torch.load(ckpt_path, map_location=device, weights_only=True)
-            model.load_state_dict(state_dict)
-        return model
-
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TOKENIZER (minimal re-implementation for loading)
+# TOKENIZER
 # ═══════════════════════════════════════════════════════════════════════════
 
 from tokenizers import Tokenizer as HFTokenizer
@@ -337,7 +319,6 @@ def setup_logger(chat_dir: str) -> logging.Logger:
     logger = logging.getLogger(f"chat_{chat_dir}")
     logger.setLevel(logging.DEBUG)
 
-    # File handler - everything
     fh = logging.FileHandler(os.path.join(chat_dir, "chat_debug.log"))
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter(
@@ -345,7 +326,6 @@ def setup_logger(chat_dir: str) -> logging.Logger:
     ))
     logger.addHandler(fh)
 
-    # Console handler - info only
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter('%(message)s'))
@@ -355,16 +335,17 @@ def setup_logger(chat_dir: str) -> logging.Logger:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# INTROSPECTION ENGINE
+# INTROSPECTION ENGINE — CLASSIFIER VERSION
 # ═══════════════════════════════════════════════════════════════════════════
 
 class IntrospectionEngine:
     """
-    Captures and analyzes everything that happens inside the model
-    during generation. This is the core analysis engine.
+    Captures and analyzes everything that happens inside the classifier model
+    during a single forward pass. Instead of step-by-step generation, we do
+    ONE forward pass and inspect all internal states.
     """
 
-    def __init__(self, model: TinyGPT, tokenizer: BPETokenizer, device: str,
+    def __init__(self, model: TinyClassifierGPT, tokenizer: BPETokenizer, device: str,
                  logger: logging.Logger):
         self.model = model
         self.tokenizer = tokenizer
@@ -372,115 +353,78 @@ class IntrospectionEngine:
         self.logger = logger
         self.config = model.config
 
-    def generate_with_full_introspection(
+    def classify_with_full_introspection(
         self,
         prompt: str,
-        max_gen_len: int = 50,
-        temperature: float = 1.0,
-        top_k: int = 0,
     ) -> Dict[str, Any]:
         """
-        Generate tokens one by one, capturing EVERYTHING at each step.
+        Run a single forward pass on the prompt, capturing all internal states.
 
-        Returns a massive dict with all internal states, suitable for
-        visualization.
+        Returns a dict with all internal states, suitable for visualization.
         """
         self.model.eval()
-        self.logger.info(f"Starting generation for prompt: '{prompt}'")
+        self.logger.info(f"Classifying prompt: '{prompt}'")
 
         # Encode prompt
         prompt_ids = [self.tokenizer.bos_token_id] + self.tokenizer.encode(prompt)
         self.logger.debug(f"Prompt token IDs: {prompt_ids}")
         self.logger.debug(f"Prompt length: {len(prompt_ids)} tokens")
 
-        generated_ids = list(prompt_ids)
-        eos_id = self.tokenizer.eos_token_id
-
-        # Storage for all steps
-        steps_data = []
+        t0 = time.time()
 
         with torch.no_grad():
-            for step_idx in range(max_gen_len):
-                t0 = time.time()
+            input_ids = torch.tensor(
+                [prompt_ids],
+                dtype=torch.long, device=self.device
+            )
 
-                # Prepare input
-                input_ids = torch.tensor(
-                    [generated_ids[-self.model.max_seq_len:]],
-                    dtype=torch.long, device=self.device
-                )
+            # Forward pass with hidden states
+            output = self.model(input_ids=input_ids, output_hidden_states=True)
+            logits = output['logits']  # (1, 2) — class logits
+            hidden_states = output['hidden_states']
 
-                # Forward pass with hidden states
-                output = self.model(input_ids=input_ids, output_hidden_states=True)
-                logits = output['logits']
-                hidden_states = output['hidden_states']
+            # Get class probabilities
+            probs = F.softmax(logits[0], dim=-1)  # (2,)
+            log_probs = F.log_softmax(logits[0], dim=-1)  # (2,)
 
-                # Get logits for the last position
-                last_logits = logits[0, -1, :]  # (vocab_size,)
+            # Predicted class
+            predicted_class = logits[0].argmax().item()
+            confidence = probs[predicted_class].item()
 
-                # Apply temperature
-                if temperature != 1.0:
-                    last_logits = last_logits / temperature
+        elapsed = time.time() - t0
 
-                # Apply top-k
-                if top_k > 0:
-                    indices_to_remove = last_logits < torch.topk(last_logits, top_k)[0][-1]
-                    last_logits[indices_to_remove] = float('-inf')
+        # ── Capture introspection data ──────────────────────────────────
+        step_data = self._capture_step_data(
+            input_ids=input_ids,
+            hidden_states=hidden_states,
+            logits=logits[0],
+            probs=probs,
+            log_probs=log_probs,
+            predicted_class=predicted_class,
+            prompt_ids=prompt_ids,
+        )
 
-                # Compute probabilities
-                probs = F.softmax(last_logits, dim=-1)
-                log_probs = F.log_softmax(last_logits, dim=-1)
+        step_data['elapsed_ms'] = elapsed * 1000
 
-                # Select next token (greedy for reproducibility)
-                next_token = last_logits.argmax().item()
-
-                # ── Capture step data ───────────────────────────────────
-                step_data = self._capture_step_data(
-                    step_idx=step_idx,
-                    input_ids=input_ids,
-                    hidden_states=hidden_states,
-                    logits=last_logits,
-                    probs=probs,
-                    log_probs=log_probs,
-                    next_token=next_token,
-                    generated_so_far=generated_ids.copy(),
-                )
-
-                elapsed = time.time() - t0
-                step_data['elapsed_ms'] = elapsed * 1000
-
-                steps_data.append(step_data)
-
-                self.logger.debug(
-                    f"Step {step_idx}: token={next_token} "
-                    f"('{self.tokenizer.decode([next_token])}'), "
-                    f"prob={probs[next_token].item():.4f}, "
-                    f"elapsed={elapsed*1000:.1f}ms"
-                )
-
-                # Append and check for EOS
-                generated_ids.append(next_token)
-                if next_token == eos_id:
-                    self.logger.info(f"EOS reached at step {step_idx}")
-                    break
-
-        # Decode full output
-        answer_ids = generated_ids[len(prompt_ids):]
-        answer_text = self.tokenizer.decode(answer_ids).strip()
-        for special in ["<eos>", "<pad>", "<bos>"]:
-            answer_text = answer_text.replace(special, "")
-
-        # ── Global analysis (across all steps) ──────────────────────────
-        global_analysis = self._compute_global_analysis(steps_data)
+        # Decode token texts for display
+        token_texts = []
+        for tid in prompt_ids:
+            try:
+                token_texts.append(self.tokenizer.decode([tid]))
+            except:
+                token_texts.append(f"[{tid}]")
 
         result = {
             'prompt': prompt,
             'prompt_ids': prompt_ids,
-            'generated_ids': generated_ids,
-            'answer_ids': answer_ids,
-            'answer_text': answer_text.strip(),
-            'num_steps': len(steps_data),
-            'steps': steps_data,
-            'global_analysis': global_analysis,
+            'predicted_class': predicted_class,
+            'confidence': confidence,
+            'class_probs': probs.cpu().numpy().tolist(),
+            'class_logits': logits[0].cpu().numpy().tolist(),
+            'answer_text': str(predicted_class),
+            'num_steps': 1,  # Single forward pass
+            'steps': [step_data],
+            'global_analysis': self._compute_global_analysis([step_data]),
             'model_config': {
                 'd_model': self.config.d_model,
                 'n_heads': self.config.n_heads,
@@ -488,24 +432,28 @@ class IntrospectionEngine:
                 'vocab_size': self.config.vocab_size,
                 'max_seq_len': self.config.max_seq_len,
             },
+            'token_texts': token_texts,
             'timestamp': datetime.now(timezone.utc).isoformat(),
+            'elapsed_ms': elapsed * 1000,
         }
 
-        self.logger.info(f"Generation complete: '{answer_text}' ({len(steps_data)} steps)")
+        self.logger.info(
+            f"Classification complete: class={predicted_class} "
+            f"(confidence={confidence:.4f}, elapsed={elapsed*1000:.1f}ms)"
+        )
         return result
 
     def _capture_step_data(
         self,
-        step_idx: int,
         input_ids: torch.Tensor,
         hidden_states: tuple,
         logits: torch.Tensor,
         probs: torch.Tensor,
         log_probs: torch.Tensor,
-        next_token: int,
-        generated_so_far: list,
+        predicted_class: int,
+        prompt_ids: list,
     ) -> Dict[str, Any]:
-        """Capture all internal data for a single generation step."""
+        """Capture all internal data for the classification forward pass."""
 
         n_layers = len(hidden_states)
         seq_len = input_ids.shape[1]
@@ -513,7 +461,6 @@ class IntrospectionEngine:
         # ── 1. Hidden states (raw values) ───────────────────────────────
         hidden_states_np = []
         for layer_idx, hs in enumerate(hidden_states):
-            # hs shape: (1, T, D)
             hs_np = hs[0].cpu().float().numpy()  # (T, D)
             hidden_states_np.append(hs_np)
 
@@ -529,13 +476,16 @@ class IntrospectionEngine:
         # ── 5. Eigenvalue spectra ───────────────────────────────────────
         eigenvalue_spectra = self._compute_eigenvalue_spectra(jacobians)
 
-        # ── 6. Token probabilities (top-k) ──────────────────────────────
-        top_k_probs = self._get_top_k_probs(probs, k=20)
+        # ── 6. Class probabilities ──────────────────────────────────────
+        top_k_probs = [
+            {'token_id': 0, 'token_text': 'class_0', 'probability': probs[0].item()},
+            {'token_id': 1, 'token_text': 'class_1', 'probability': probs[1].item()},
+        ]
 
         # ── 7. Attention weights ────────────────────────────────────────
         attention_weights = self._extract_attention_weights()
 
-        # ── 8. Space deformation (how the grid is bent) ─────────────────
+        # ── 8. Space deformation ────────────────────────────────────────
         deformation_data = self._compute_deformation_grid(hidden_states_np)
 
         # ── 9. Layer norms and statistics ───────────────────────────────
@@ -544,10 +494,10 @@ class IntrospectionEngine:
         # ── 10. CKA similarity matrix ──────────────────────────────────
         cka_matrix = self._compute_cka(hidden_states)
 
-        # ── 11. Singular value spectra per layer transition ─────────────
+        # ── 11. SVD spectra ─────────────────────────────────────────────
         svd_spectra = self._compute_svd_spectra(jacobians)
 
-        # ── 12. 2D slices of each layer's space ────────────────────────
+        # ── 12. 2D slices ──────────────────────────────────────────────
         space_slices = self._compute_2d_slices(hidden_states_np)
 
         # ── 13. Residual stream analysis ────────────────────────────────
@@ -555,19 +505,22 @@ class IntrospectionEngine:
 
         # ── 14. Token decoded text ──────────────────────────────────────
         token_texts = []
-        for tid in generated_so_far:
+        for tid in prompt_ids:
             try:
                 token_texts.append(self.tokenizer.decode([tid]))
             except:
                 token_texts.append(f"[{tid}]")
 
+        # Entropy of the 2-class distribution
+        entropy = -(probs * log_probs).sum().item()
+
         return {
-            'step_idx': step_idx,
-            'next_token': next_token,
-            'next_token_text': self.tokenizer.decode([next_token]),
-            'next_token_prob': probs[next_token].item(),
-            'next_token_logprob': log_probs[next_token].item(),
-            'entropy': -(probs * log_probs).sum().item(),
+            'step_idx': 0,
+            'next_token': predicted_class,
+            'next_token_text': str(predicted_class),
+            'next_token_prob': probs[predicted_class].item(),
+            'next_token_logprob': log_probs[predicted_class].item(),
+            'entropy': entropy,
             'seq_len': seq_len,
             'token_texts': token_texts,
             'hidden_states_last_pos': [hs[-1].tolist() for hs in hidden_states_np],
@@ -592,17 +545,15 @@ class IntrospectionEngine:
         """Compute Jacobian approximation between consecutive layers."""
         jacobians = []
         for ell in range(len(hidden_states) - 1):
-            h_in = hidden_states[ell][0].cpu().float()   # (T, D)
-            h_out = hidden_states[ell + 1][0].cpu().float()  # (T, D)
+            h_in = hidden_states[ell][0].cpu().float()
+            h_out = hidden_states[ell + 1][0].cpu().float()
             delta = h_out - h_in
 
-            # Center
             h_in_c = h_in - h_in.mean(0)
             delta_c = delta - delta.mean(0)
 
             try:
-                # Least-squares Jacobian: delta ≈ h_in @ J
-                J = torch.linalg.lstsq(h_in_c, delta_c).solution  # (D, D)
+                J = torch.linalg.lstsq(h_in_c, delta_c).solution
                 J_np = J.numpy()
             except Exception:
                 D = h_in.shape[-1]
@@ -623,32 +574,24 @@ class IntrospectionEngine:
             J = np.array(jac_data['matrix'])
             D = J.shape[0]
 
-            # Divergence = trace(J)
             div_val = float(np.trace(J))
-
-            # Curl = ||J_antisym||_F
             J_antisym = (J - J.T) / 2
             curl_val = float(np.linalg.norm(J_antisym, 'fro'))
-
-            # Shear = ||J_sym - (tr(J_sym)/D) * I||_F
             J_sym = (J + J.T) / 2
             shear_mat = J_sym - (np.trace(J_sym) / D) * np.eye(D)
             shear_val = float(np.linalg.norm(shear_mat, 'fro'))
 
-            # Determinant
             try:
                 det_val = float(np.linalg.det(J))
             except:
                 det_val = 0.0
 
-            # Condition number
             try:
                 svs = np.linalg.svd(J, compute_uv=False)
                 cond = float(svs[0] / (svs[-1] + 1e-10))
             except:
                 cond = 0.0
 
-            # Spectral radius
             try:
                 eigvals = np.linalg.eigvals(J)
                 spectral_radius = float(np.max(np.abs(eigvals)))
@@ -675,7 +618,6 @@ class IntrospectionEngine:
         pca_3d_results = []
 
         for layer_idx, hs in enumerate(hidden_states_np):
-            # hs shape: (T, D)
             if hs.shape[0] < 2 or hs.shape[1] < 2:
                 pca_2d_results.append({'x': [], 'y': [], 'explained_variance': []})
                 pca_3d_results.append({'x': [], 'y': [], 'z': [], 'explained_variance': []})
@@ -685,7 +627,6 @@ class IntrospectionEngine:
                 scaler = StandardScaler()
                 hs_scaled = scaler.fit_transform(hs)
 
-                # 2D PCA
                 n_comp_2d = min(2, hs.shape[0], hs.shape[1])
                 pca2 = PCA(n_components=n_comp_2d)
                 proj_2d = pca2.fit_transform(hs_scaled)
@@ -695,7 +636,6 @@ class IntrospectionEngine:
                     'explained_variance': pca2.explained_variance_ratio_.tolist(),
                 })
 
-                # 3D PCA
                 n_comp_3d = min(3, hs.shape[0], hs.shape[1])
                 pca3 = PCA(n_components=n_comp_3d)
                 proj_3d = pca3.fit_transform(hs_scaled)
@@ -705,7 +645,7 @@ class IntrospectionEngine:
                     'z': proj_3d[:, 2].tolist() if n_comp_3d >= 3 else [0.0] * len(proj_3d),
                     'explained_variance': pca3.explained_variance_ratio_.tolist(),
                 })
-            except Exception as e:
+            except Exception:
                 pca_2d_results.append({'x': [], 'y': [], 'explained_variance': []})
                 pca_3d_results.append({'x': [], 'y': [], 'z': [], 'explained_variance': []})
 
@@ -733,36 +673,15 @@ class IntrospectionEngine:
                 })
         return spectra
 
-    def _get_top_k_probs(self, probs: torch.Tensor, k: int = 20) -> List[Dict]:
-        """Get top-k token probabilities."""
-        top_probs, top_indices = torch.topk(probs, min(k, len(probs)))
-        results = []
-        for i in range(len(top_probs)):
-            idx_val = top_indices[i].item()
-            prob_val = top_probs[i].item()
-            try:
-                token_text = self.tokenizer.decode([idx_val])
-            except:
-                token_text = f"[{idx_val}]"
-            results.append({
-                'token_id': idx_val,
-                'token_text': token_text,
-                'probability': prob_val,
-            })
-        return results
-
     def _extract_attention_weights(self) -> List[Dict]:
         """Extract attention weights from all layers."""
         attention_data = []
         for layer_idx, blk in enumerate(self.model.blocks):
             attn_module = blk.attn
             if hasattr(attn_module, '_last_attn_weights') and attn_module._last_attn_weights is not None:
-                # Shape: (1, n_heads, T, T)
                 weights = attn_module._last_attn_weights[0].cpu().float().numpy()
-                # Store per-head attention for the last query position
                 heads_data = []
                 for head_idx in range(weights.shape[0]):
-                    # Last row = attention from last position to all others
                     last_row = weights[head_idx, -1, :].tolist()
                     heads_data.append({
                         'head_idx': head_idx,
@@ -788,26 +707,30 @@ class IntrospectionEngine:
     def _compute_deformation_grid(self, hidden_states_np: List[np.ndarray]) -> List[Dict]:
         """
         Compute how a regular grid in the representation space is deformed
-        by each layer transition. This shows how the space is "bent".
+        by each layer transition.
         """
         deformation_data = []
         grid_resolution = 10
 
         for ell in range(len(hidden_states_np) - 1):
-            h_in = hidden_states_np[ell]   # (T, D)
-            h_out = hidden_states_np[ell + 1]  # (T, D)
+            h_in = hidden_states_np[ell]
+            h_out = hidden_states_np[ell + 1]
 
             if h_in.shape[0] < 3 or h_in.shape[1] < 2:
-                deformation_data.append({'grid_before': [], 'grid_after': [], 'strain': []})
+                deformation_data.append({
+                    'grid_before_x': [], 'grid_before_y': [],
+                    'grid_after_x': [], 'grid_after_y': [],
+                    'strain': [], 'grid_resolution': grid_resolution,
+                    'displacement_x': [], 'displacement_y': [],
+                    'token_positions_before': [], 'token_positions_after': [],
+                })
                 continue
 
-            # PCA to 2D for visualization
             try:
                 pca = PCA(n_components=2)
                 h_in_2d = pca.fit_transform(StandardScaler().fit_transform(h_in))
                 h_out_2d = pca.transform(StandardScaler().fit_transform(h_out))
 
-                # Create a regular grid in the PCA space
                 x_min, x_max = h_in_2d[:, 0].min() - 0.5, h_in_2d[:, 0].max() + 0.5
                 y_min, y_max = h_in_2d[:, 1].min() - 0.5, h_in_2d[:, 1].max() + 0.5
 
@@ -816,8 +739,6 @@ class IntrospectionEngine:
                 gx, gy = np.meshgrid(grid_x, grid_y)
                 grid_points = np.column_stack([gx.ravel(), gy.ravel()])
 
-                # Interpolate the deformation at grid points
-                # Use the displacement field from h_in_2d to h_out_2d
                 displacements = h_out_2d - h_in_2d
                 from scipy.interpolate import RBFInterpolator
 
@@ -831,8 +752,6 @@ class IntrospectionEngine:
                     dy = np.zeros(len(grid_points))
 
                 deformed_grid = grid_points + np.column_stack([dx, dy])
-
-                # Compute local strain (magnitude of displacement)
                 strain = np.sqrt(dx**2 + dy**2)
 
                 deformation_data.append({
@@ -847,7 +766,7 @@ class IntrospectionEngine:
                     'token_positions_before': h_in_2d.tolist(),
                     'token_positions_after': h_out_2d.tolist(),
                 })
-            except Exception as e:
+            except Exception:
                 deformation_data.append({
                     'grid_before_x': [], 'grid_before_y': [],
                     'grid_after_x': [], 'grid_after_y': [],
@@ -862,7 +781,6 @@ class IntrospectionEngine:
         """Compute comprehensive statistics for each layer."""
         stats = []
         for layer_idx, hs in enumerate(hidden_states_np):
-            # hs shape: (T, D)
             norms = np.linalg.norm(hs, axis=1)
             stats.append({
                 'layer_idx': layer_idx,
@@ -904,7 +822,13 @@ class IntrospectionEngine:
             hsic_xy = np.linalg.norm(X.T @ Y, 'fro') ** 2
             hsic_xx = np.linalg.norm(X.T @ X, 'fro') ** 2
             hsic_yy = np.linalg.norm(Y.T @ Y, 'fro') ** 2
-            return hsic_xy / (np.sqrt(hsic_xx * hsic_yy) + 1e-8)
+            denom = np.sqrt(hsic_xx * hsic_yy) + 1e-8
+            if not np.isfinite(denom) or denom == 0:
+                return 0.0
+            val = hsic_xy / denom
+            if not np.isfinite(val):
+                return 0.0
+            return val
 
         for i in range(n):
             for j in range(i, n):
@@ -940,16 +864,12 @@ class IntrospectionEngine:
         return spectra
 
     def _compute_2d_slices(self, hidden_states_np: List[np.ndarray]) -> List[Dict]:
-        """
-        Compute 2D slices of each layer's representation space.
-        Shows the distribution of values in pairs of dimensions.
-        """
+        """Compute 2D slices of each layer's representation space."""
         slices = []
         max_dims_to_show = min(6, hidden_states_np[0].shape[1] if hidden_states_np else 0)
 
         for layer_idx, hs in enumerate(hidden_states_np):
             layer_slices = []
-            # Show pairs of the first few dimensions
             for d1 in range(min(3, max_dims_to_show)):
                 for d2 in range(d1 + 1, min(d1 + 3, max_dims_to_show)):
                     layer_slices.append({
@@ -975,13 +895,12 @@ class IntrospectionEngine:
 
         for ell in range(1, len(hidden_states_np)):
             delta = hidden_states_np[ell] - hidden_states_np[ell - 1]
-            delta_norm = float(np.linalg.norm(delta[-1]))  # Last position
+            delta_norm = float(np.linalg.norm(delta[-1]))
             deltas_norms.append(delta_norm)
 
             cumulative = hidden_states_np[ell] - hidden_states_np[0]
             cumulative_norms.append(float(np.linalg.norm(cumulative[-1])))
 
-            # Cosine similarity between consecutive layers (last position)
             a = hidden_states_np[ell][-1]
             b = hidden_states_np[ell - 1][-1]
             cos_sim = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10))
@@ -994,23 +913,18 @@ class IntrospectionEngine:
         }
 
     def _compute_global_analysis(self, steps_data: List[Dict]) -> Dict:
-        """Compute analysis across all generation steps."""
+        """Compute analysis across all steps (for classifier, just one step)."""
         if not steps_data:
             return {}
 
-        # Entropy over time
         entropies = [s['entropy'] for s in steps_data]
-
-        # Token probabilities over time
         token_probs = [s['next_token_prob'] for s in steps_data]
 
-        # Layer norm evolution
         layer_norms_over_time = []
         for s in steps_data:
             norms = [stats['mean_norm'] for stats in s['layer_stats']]
             layer_norms_over_time.append(norms)
 
-        # Divergence/curl/shear evolution
         div_over_time = []
         curl_over_time = []
         shear_over_time = []
@@ -1033,7 +947,7 @@ class IntrospectionEngine:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# HTML DASHBOARD GENERATOR
+# HTML DASHBOARD GENERATOR (reused from original, unchanged)
 # ═══════════════════════════════════════════════════════════════════════════
 
 class DashboardGenerator:
@@ -1053,13 +967,9 @@ class DashboardGenerator:
         self.logger.info("Generating interactive dashboard...")
         t0 = time.time()
 
-        # Generate all Plotly figures as JSON
         figures = self._generate_all_figures(result)
-
-        # Generate the HTML
         html_content = self._render_html(result, figures)
 
-        # Write to file
         html_path = os.path.join(self.chat_dir, "dashboard.html")
         with open(html_path, 'w') as f:
             f.write(html_content)
@@ -1071,316 +981,198 @@ class DashboardGenerator:
     def _generate_all_figures(self, result: Dict) -> Dict[str, str]:
         """Generate all Plotly figures and return them as JSON strings."""
         figures = {}
-
         steps = result['steps']
         global_analysis = result['global_analysis']
-        n_layers = result['model_config']['n_layers'] + 1  # +1 for embedding
+        n_layers = result['model_config']['n_layers'] + 1
 
-        # ── 1. Entropy over generation steps ────────────────────────────
         figures['entropy'] = self._fig_entropy(global_analysis)
-
-        # ── 2. Token probability over steps ─────────────────────────────
         figures['token_probs'] = self._fig_token_probs(steps)
-
-        # ── 3. Top-k token probabilities per step ───────────────────────
         figures['top_k_heatmap'] = self._fig_top_k_heatmap(steps)
-
-        # ── 4. Layer norms over time ────────────────────────────────────
         figures['layer_norms'] = self._fig_layer_norms(global_analysis, n_layers)
-
-        # ── 5. Divergence/Curl/Shear over time ──────────────────────────
         figures['jacobian_decomp'] = self._fig_jacobian_decomp(global_analysis)
 
-        # ── 6. CKA similarity matrix (first step) ──────────────────────
         if steps:
             figures['cka_matrix'] = self._fig_cka_matrix(steps[0])
-
-        # ── 7. Eigenvalue spectra (first step) ─────────────────────────
-        if steps:
             figures['eigenvalue_spectra'] = self._fig_eigenvalue_spectra(steps[0])
-
-        # ── 8. PCA projections per layer (first step) ──────────────────
-        if steps:
             figures['pca_2d'] = self._fig_pca_2d(steps[0])
             figures['pca_3d'] = self._fig_pca_3d(steps[0])
-
-        # ── 9. Deformation grids (first step) ──────────────────────────
-        if steps:
             figures['deformation'] = self._fig_deformation_grids(steps[0])
-
-        # ── 10. Attention patterns (first step) ────────────────────────
-        if steps:
             figures['attention'] = self._fig_attention_patterns(steps[0])
-
-        # ── 11. Hidden state heatmaps per layer (first step) ───────────
-        if steps:
             figures['hidden_states'] = self._fig_hidden_state_heatmaps(steps[0])
-
-        # ── 12. Residual stream analysis ───────────────────────────────
-        if steps:
             figures['residual'] = self._fig_residual_analysis(steps[0])
-
-        # ── 13. SVD spectra ────────────────────────────────────────────
-        if steps:
             figures['svd_spectra'] = self._fig_svd_spectra(steps[0])
-
-        # ── 14. 2D space slices ────────────────────────────────────────
-        if steps:
             figures['space_slices'] = self._fig_space_slices(steps[0])
 
-        # ── 15. Per-step figures (for step navigation) ─────────────────
-        step_figures = []
-        for step_idx, step in enumerate(steps[:20]):  # Limit to first 20 for size
-            step_figs = {}
-            step_figs['pca_2d'] = self._fig_pca_2d(step)
-            step_figs['deformation'] = self._fig_deformation_grids(step)
-            step_figs['eigenvalue_spectra'] = self._fig_eigenvalue_spectra(step)
-            step_figures.append(step_figs)
-        figures['per_step'] = step_figures
-
+        figures['per_step'] = []
         return figures
 
     def _fig_entropy(self, global_analysis: Dict) -> str:
-        """Entropy of token distribution over generation steps."""
         entropies = global_analysis.get('entropies', [])
         if not entropies:
             return '{}'
-
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=list(range(len(entropies))),
-            y=entropies,
-            mode='lines+markers',
-            name='Entropy',
-            line=dict(color='#7c5cfc', width=2),
-            marker=dict(size=6),
+            x=list(range(len(entropies))), y=entropies,
+            mode='lines+markers', name='Entropy',
+            line=dict(color='#7c5cfc', width=2), marker=dict(size=6),
         ))
         fig.update_layout(
-            title='Token Distribution Entropy Over Generation Steps',
-            xaxis_title='Generation Step',
-            yaxis_title='Entropy (nats)',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            title='Classification Entropy',
+            xaxis_title='Step', yaxis_title='Entropy (nats)',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
         )
         return pio.to_json(fig)
 
     def _fig_token_probs(self, steps: List[Dict]) -> str:
-        """Probability of chosen token over steps."""
         probs = [s['next_token_prob'] for s in steps]
         tokens = [s['next_token_text'] for s in steps]
-
         fig = go.Figure()
         fig.add_trace(go.Bar(
-            x=list(range(len(probs))),
-            y=probs,
-            text=tokens,
-            textposition='outside',
-            marker_color='#00d4aa',
-            hovertemplate='Step %{x}<br>Token: %{text}<br>Prob: %{y:.4f}<extra></extra>',
+            x=list(range(len(probs))), y=probs, text=tokens,
+            textposition='outside', marker_color='#00d4aa',
         ))
         fig.update_layout(
-            title='Chosen Token Probability Per Step',
-            xaxis_title='Generation Step',
-            yaxis_title='Probability',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            title='Predicted Class Confidence',
+            xaxis_title='Step', yaxis_title='Probability',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
         )
         return pio.to_json(fig)
 
     def _fig_top_k_heatmap(self, steps: List[Dict]) -> str:
-        """Heatmap of top-k token probabilities across steps."""
         if not steps:
             return '{}'
-
-        # Collect top tokens across all steps
-        all_tokens = set()
-        for s in steps:
-            for t in s['top_k_probs'][:10]:
-                all_tokens.add(t['token_text'])
-
-        token_list = sorted(all_tokens)[:20]  # Limit to 20 tokens
-        token_to_idx = {t: i for i, t in enumerate(token_list)}
-
-        # Build heatmap matrix
-        matrix = np.zeros((len(token_list), len(steps)))
+        # For classifier, show class 0 vs class 1 probabilities
+        matrix = np.zeros((2, len(steps)))
         for step_idx, s in enumerate(steps):
             for t in s['top_k_probs']:
-                if t['token_text'] in token_to_idx:
-                    matrix[token_to_idx[t['token_text']], step_idx] = t['probability']
-
+                if t['token_text'] == 'class_0':
+                    matrix[0, step_idx] = t['probability']
+                elif t['token_text'] == 'class_1':
+                    matrix[1, step_idx] = t['probability']
         fig = go.Figure(data=go.Heatmap(
-            z=matrix,
-            x=[f"Step {i}" for i in range(len(steps))],
-            y=token_list,
-            colorscale='Viridis',
-            hovertemplate='Token: %{y}<br>Step: %{x}<br>Prob: %{z:.4f}<extra></extra>',
+            z=matrix, x=[f"Step {i}" for i in range(len(steps))],
+            y=['Class 0', 'Class 1'], colorscale='Viridis',
         ))
         fig.update_layout(
-            title='Top Token Probabilities Across Steps',
-            xaxis_title='Generation Step',
-            yaxis_title='Token',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
-            height=500,
+            title='Class Probabilities',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'), height=300,
         )
         return pio.to_json(fig)
 
     def _fig_layer_norms(self, global_analysis: Dict, n_layers: int) -> str:
-        """Layer norms over generation steps."""
         norms = global_analysis.get('layer_norms_over_time', [])
         if not norms:
             return '{}'
-
         fig = go.Figure()
         colors = px.colors.qualitative.Set3
         for layer_idx in range(min(n_layers, len(norms[0]) if norms else 0)):
             layer_norms = [n[layer_idx] for n in norms if layer_idx < len(n)]
             fig.add_trace(go.Scatter(
-                x=list(range(len(layer_norms))),
-                y=layer_norms,
-                mode='lines',
-                name=f'Layer {layer_idx}',
+                x=list(range(len(layer_norms))), y=layer_norms,
+                mode='lines', name=f'Layer {layer_idx}',
                 line=dict(color=colors[layer_idx % len(colors)]),
             ))
-
         fig.update_layout(
-            title='Mean Hidden State Norm Per Layer Over Steps',
-            xaxis_title='Generation Step',
-            yaxis_title='Mean Norm',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            title='Mean Hidden State Norm Per Layer',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
         )
         return pio.to_json(fig)
 
     def _fig_jacobian_decomp(self, global_analysis: Dict) -> str:
-        """Divergence, curl, shear over generation steps."""
         divs = global_analysis.get('div_over_time', [])
-        curls = global_analysis.get('curl_over_time', [])
-        shears = global_analysis.get('shear_over_time', [])
-
         if not divs:
             return '{}'
-
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True,
                            subplot_titles=['Divergence', 'Curl', 'Shear'])
-
+        curls = global_analysis.get('curl_over_time', [])
+        shears = global_analysis.get('shear_over_time', [])
         n_transitions = len(divs[0]) if divs else 0
         colors = px.colors.qualitative.Set2
-
         for t_idx in range(n_transitions):
-            div_vals = [d[t_idx] for d in divs if t_idx < len(d)]
-            curl_vals = [c[t_idx] for c in curls if t_idx < len(c)]
-            shear_vals = [s[t_idx] for s in shears if t_idx < len(s)]
-
             color = colors[t_idx % len(colors)]
             name = f'L{t_idx}→L{t_idx+1}'
-
-            fig.add_trace(go.Scatter(x=list(range(len(div_vals))), y=div_vals,
-                                     mode='lines', name=name, line=dict(color=color),
-                                     showlegend=True), row=1, col=1)
-            fig.add_trace(go.Scatter(x=list(range(len(curl_vals))), y=curl_vals,
-                                     mode='lines', name=name, line=dict(color=color),
-                                     showlegend=False), row=2, col=1)
-            fig.add_trace(go.Scatter(x=list(range(len(shear_vals))), y=shear_vals,
-                                     mode='lines', name=name, line=dict(color=color),
-                                     showlegend=False), row=3, col=1)
-
+            fig.add_trace(go.Scatter(
+                x=list(range(len(divs))),
+                y=[d[t_idx] for d in divs if t_idx < len(d)],
+                mode='lines', name=name, line=dict(color=color),
+            ), row=1, col=1)
+            fig.add_trace(go.Scatter(
+                x=list(range(len(curls))),
+                y=[c[t_idx] for c in curls if t_idx < len(c)],
+                mode='lines', name=name, line=dict(color=color), showlegend=False,
+            ), row=2, col=1)
+            fig.add_trace(go.Scatter(
+                x=list(range(len(shears))),
+                y=[s[t_idx] for s in shears if t_idx < len(s)],
+                mode='lines', name=name, line=dict(color=color), showlegend=False,
+            ), row=3, col=1)
         fig.update_layout(
-            title='Jacobian Decomposition Over Generation Steps',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
-            height=700,
+            title='Jacobian Decomposition',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'), height=700,
         )
         return pio.to_json(fig)
 
     def _fig_cka_matrix(self, step: Dict) -> str:
-        """CKA similarity matrix between layers."""
         cka = step.get('cka_matrix', [])
         if not cka:
             return '{}'
-
         fig = go.Figure(data=go.Heatmap(
-            z=cka,
-            x=[f'L{i}' for i in range(len(cka))],
+            z=cka, x=[f'L{i}' for i in range(len(cka))],
             y=[f'L{i}' for i in range(len(cka))],
-            colorscale='RdBu_r',
-            zmin=0, zmax=1,
-            hovertemplate='Layer %{x} vs %{y}<br>CKA: %{z:.4f}<extra></extra>',
+            colorscale='RdBu_r', zmin=0, zmax=1,
         ))
         fig.update_layout(
             title='CKA Similarity Between Layers',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
             width=500, height=500,
         )
         return pio.to_json(fig)
 
     def _fig_eigenvalue_spectra(self, step: Dict) -> str:
-        """Eigenvalue spectra of Jacobians in the complex plane."""
         spectra = step.get('eigenvalue_spectra', [])
         if not spectra:
             return '{}'
-
         fig = go.Figure()
         colors = px.colors.qualitative.Plotly
-
         for idx, spec in enumerate(spectra):
             real_parts = spec.get('real_parts', [])
             imag_parts = spec.get('imag_parts', [])
             if real_parts:
                 fig.add_trace(go.Scatter(
-                    x=real_parts, y=imag_parts,
-                    mode='markers',
+                    x=real_parts, y=imag_parts, mode='markers',
                     name=f'L{spec["layer_from"]}→L{spec["layer_from"]+1}',
                     marker=dict(size=8, color=colors[idx % len(colors)]),
-                    hovertemplate='Re: %{x:.4f}<br>Im: %{y:.4f}<extra></extra>',
                 ))
-
-        # Add unit circle
         theta = np.linspace(0, 2*np.pi, 100)
         fig.add_trace(go.Scatter(
             x=np.cos(theta).tolist(), y=np.sin(theta).tolist(),
             mode='lines', name='Unit Circle',
             line=dict(color='rgba(255,255,255,0.3)', dash='dash'),
         ))
-
         fig.update_layout(
-            title='Jacobian Eigenvalue Spectra (Complex Plane)',
-            xaxis_title='Real Part',
-            yaxis_title='Imaginary Part',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            title='Jacobian Eigenvalue Spectra',
+            xaxis_title='Real', yaxis_title='Imaginary',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
             xaxis=dict(scaleanchor='y'),
         )
         return pio.to_json(fig)
 
     def _fig_pca_2d(self, step: Dict) -> str:
-        """2D PCA projections per layer."""
         pca_data = step.get('pca_2d', [])
         if not pca_data:
             return '{}'
-
         n_layers = len(pca_data)
         cols = min(3, n_layers)
         rows = math.ceil(n_layers / cols)
-
         fig = make_subplots(rows=rows, cols=cols,
                            subplot_titles=[f'Layer {i}' for i in range(n_layers)])
-
         for idx, pca in enumerate(pca_data):
             row = idx // cols + 1
             col = idx % cols + 1
@@ -1389,193 +1181,111 @@ class DashboardGenerator:
             if x and y:
                 fig.add_trace(go.Scatter(
                     x=x, y=y, mode='markers+lines',
-                    marker=dict(size=6, color=list(range(len(x))),
-                               colorscale='Viridis'),
-                    line=dict(color='rgba(124,92,252,0.3)'),
-                    showlegend=False,
-                    hovertemplate='Token %{pointNumber}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<extra></extra>',
+                    marker=dict(size=6, color=list(range(len(x))), colorscale='Viridis'),
+                    line=dict(color='rgba(124,92,252,0.3)'), showlegend=False,
                 ), row=row, col=col)
-
-                # Add explained variance annotation
-                ev = pca.get('explained_variance', [])
-                if ev:
-                    ev_text = f"EV: {sum(ev)*100:.1f}%"
-                    fig.add_annotation(
-                        text=ev_text, x=0.5, y=0.02,
-                        xref=f'x{idx+1} domain' if idx > 0 else 'x domain',
-                        yref=f'y{idx+1} domain' if idx > 0 else 'y domain',
-                        showarrow=False, font=dict(size=9, color='#6b70a0'),
-                    )
-
         fig.update_layout(
-            title='2D PCA Projections Per Layer (Token Trajectory)',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
-            height=300 * rows,
-            showlegend=False,
+            title='2D PCA Projections Per Layer',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
+            height=300 * rows, showlegend=False,
         )
         return pio.to_json(fig)
 
     def _fig_pca_3d(self, step: Dict) -> str:
-        """3D PCA projections per layer."""
         pca_data = step.get('pca_3d', [])
         if not pca_data:
             return '{}'
-
         fig = go.Figure()
         colors = px.colors.qualitative.Plotly
-
         for idx, pca in enumerate(pca_data):
-            x = pca.get('x', [])
-            y = pca.get('y', [])
-            z = pca.get('z', [])
+            x, y, z = pca.get('x', []), pca.get('y', []), pca.get('z', [])
             if x and y and z:
                 fig.add_trace(go.Scatter3d(
-                    x=x, y=y, z=z,
-                    mode='markers+lines',
-                    marker=dict(size=4, color=list(range(len(x))),
-                               colorscale='Viridis'),
+                    x=x, y=y, z=z, mode='markers+lines',
+                    marker=dict(size=4, color=list(range(len(x))), colorscale='Viridis'),
                     line=dict(color=colors[idx % len(colors)], width=2),
                     name=f'Layer {idx}',
-                    hovertemplate='Token %{pointNumber}<br>PC1: %{x:.3f}<br>PC2: %{y:.3f}<br>PC3: %{z:.3f}<extra></extra>',
                 ))
-
         fig.update_layout(
-            title='3D PCA Projections (All Layers)',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
-            scene=dict(
-                xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3',
-                bgcolor='#12152a',
-            ),
+            title='3D PCA Projections',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
+            scene=dict(xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3',
+                       bgcolor='#12152a'),
             height=600,
         )
         return pio.to_json(fig)
 
     def _fig_deformation_grids(self, step: Dict) -> str:
-        """Deformation grid visualizations."""
         deformation_data = step.get('deformation_data', [])
         if not deformation_data:
             return '{}'
-
         n_transitions = len(deformation_data)
-        fig = make_subplots(rows=1, cols=n_transitions,
+        fig = make_subplots(rows=1, cols=max(1, n_transitions),
                            subplot_titles=[f'L{i}→L{i+1}' for i in range(n_transitions)])
-
         for idx, deform in enumerate(deformation_data):
             col = idx + 1
-            gx_before = deform.get('grid_before_x', [])
-            gy_before = deform.get('grid_before_y', [])
             gx_after = deform.get('grid_after_x', [])
             gy_after = deform.get('grid_after_y', [])
             strain = deform.get('strain', [])
-            token_pos_before = deform.get('token_positions_before', [])
-            token_pos_after = deform.get('token_positions_after', [])
-
-            if not gx_before:
+            if not gx_after:
                 continue
-
             grid_res = deform.get('grid_resolution', 10)
-
-            # Draw deformed grid lines (horizontal)
             for row_idx in range(grid_res):
                 start = row_idx * grid_res
                 end = start + grid_res
                 fig.add_trace(go.Scatter(
                     x=gx_after[start:end], y=gy_after[start:end],
                     mode='lines', line=dict(color='rgba(124,92,252,0.4)', width=1),
-                    showlegend=False,
-                    hoverinfo='skip',
+                    showlegend=False, hoverinfo='skip',
                 ), row=1, col=col)
-
-            # Draw deformed grid lines (vertical)
             for col_idx in range(grid_res):
-                indices = [col_idx + row_idx * grid_res for row_idx in range(grid_res)]
+                indices = [col_idx + r * grid_res for r in range(grid_res)]
                 x_vals = [gx_after[i] for i in indices if i < len(gx_after)]
                 y_vals = [gy_after[i] for i in indices if i < len(gy_after)]
                 fig.add_trace(go.Scatter(
                     x=x_vals, y=y_vals,
                     mode='lines', line=dict(color='rgba(0,212,170,0.4)', width=1),
-                    showlegend=False,
-                    hoverinfo='skip',
+                    showlegend=False, hoverinfo='skip',
                 ), row=1, col=col)
-
-            # Overlay strain as scatter
             if strain:
                 fig.add_trace(go.Scatter(
-                    x=gx_after, y=gy_after,
-                    mode='markers',
+                    x=gx_after, y=gy_after, mode='markers',
                     marker=dict(size=3, color=strain, colorscale='Hot',
                                showscale=(idx == n_transitions - 1)),
                     showlegend=False,
-                    hovertemplate='Strain: %{marker.color:.3f}<extra></extra>',
                 ), row=1, col=col)
-
-            # Token positions
-            if token_pos_after:
-                tp = np.array(token_pos_after)
-                fig.add_trace(go.Scatter(
-                    x=tp[:, 0].tolist(), y=tp[:, 1].tolist(),
-                    mode='markers',
-                    marker=dict(size=8, color='#ff5c72', symbol='diamond'),
-                    showlegend=False,
-                    hovertemplate='Token %{pointNumber}<extra></extra>',
-                ), row=1, col=col)
-
         fig.update_layout(
-            title='Space Deformation Grids (How Space is Bent)',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
-            height=400,
-            showlegend=False,
+            title='Space Deformation Grids',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
+            height=400, showlegend=False,
         )
         return pio.to_json(fig)
 
     def _fig_attention_patterns(self, step: Dict) -> str:
-        """Attention weight patterns."""
         attention_data = step.get('attention_weights', [])
         if not attention_data:
             return '{}'
-
         n_layers = len(attention_data)
-        total_heads = sum(len(a.get('heads', [])) for a in attention_data)
-
-        if total_heads == 0:
-            return '{}'
-
-        # Show attention from last position for each head
-        fig = make_subplots(
-            rows=n_layers, cols=1,
-            subplot_titles=[f'Layer {a["layer_idx"]}' for a in attention_data],
-            vertical_spacing=0.05,
-        )
-
+        fig = make_subplots(rows=n_layers, cols=1,
+                           subplot_titles=[f'Layer {a["layer_idx"]}' for a in attention_data])
         colors = px.colors.qualitative.Set2
-
         for layer_idx, attn in enumerate(attention_data):
             for head in attn.get('heads', []):
                 attn_weights = head.get('attention_to_all', [])
                 if attn_weights:
                     fig.add_trace(go.Bar(
-                        x=list(range(len(attn_weights))),
-                        y=attn_weights,
+                        x=list(range(len(attn_weights))), y=attn_weights,
                         name=f'L{layer_idx}H{head["head_idx"]}',
                         marker_color=colors[head["head_idx"] % len(colors)],
                         opacity=0.7,
                     ), row=layer_idx + 1, col=1)
-
         fig.update_layout(
-            title='Attention Weights (Last Position → All Positions)',
-            template='plotly_dark',
-            paper_bgcolor='#08090d',
-            plot_bgcolor='#12152a',
-            font=dict(color='#e8eaf6'),
+            title='Attention Weights (Last Position)',
+            template='plotly_dark', paper_bgcolor='#08090d',
+            plot_bgcolor='#12152a', font=dict(color='#e8eaf6'),
             height=200 * n_layers,
             barmode='group',
         )
@@ -1588,7 +1298,6 @@ class DashboardGenerator:
             return '{}'
 
         n_layers = len(hidden_states)
-        # Stack all layers' last-position hidden states into a matrix
         matrix = np.array(hidden_states)  # (n_layers, d_model)
 
         fig = go.Figure(data=go.Heatmap(
@@ -1694,7 +1403,6 @@ class DashboardGenerator:
         n_layers = len(slices_data)
         max_slices_per_layer = 3
 
-        total_plots = n_layers * max_slices_per_layer
         cols = min(3, n_layers)
         rows = max_slices_per_layer
 
@@ -1732,8 +1440,6 @@ class DashboardGenerator:
 
     def _render_html(self, result: Dict, figures: Dict) -> str:
         """Render the full HTML dashboard from figures and result data."""
-
-        # Serialize per-step figures
         per_step_json = json.dumps(figures.get('per_step', []), default=str)
 
         template = JINJA_ENV.from_string(CHAT_DASHBOARD_TEMPLATE)
@@ -1754,7 +1460,7 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat Introspection Dashboard</title>
+<title>Classifier Introspection Dashboard</title>
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -1781,7 +1487,10 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
 
   .chat-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin-bottom:1.5rem}
   .chat-box .prompt{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:0.9rem;margin-bottom:0.5rem}
-  .chat-box .response{color:var(--accent2);font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:600}
+  .chat-box .response{font-family:'JetBrains Mono',monospace;font-size:1.3rem;font-weight:700;margin-bottom:0.3rem}
+  .chat-box .response .class-0{color:var(--red)}
+  .chat-box .response .class-1{color:var(--green)}
+  .chat-box .confidence{color:var(--muted);font-size:0.85rem}
   .chat-box .meta{color:var(--muted);font-size:0.75rem;margin-top:0.5rem}
 
   .section{margin-bottom:2rem}
@@ -1789,15 +1498,9 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
   .badge{background:var(--accent-dim);color:var(--accent);font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;font-weight:600}
 
   .plot-container{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem;overflow:hidden}
-  .plot-container .plot-title{font-size:0.85rem;font-weight:600;color:var(--accent);margin-bottom:0.5rem;font-family:'JetBrains Mono',monospace}
 
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
   .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
-
-  .step-nav{display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap}
-  .step-btn{background:var(--card);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.7rem;border-radius:6px;cursor:pointer;font-size:0.8rem;font-family:'JetBrains Mono',monospace;transition:all 0.15s}
-  .step-btn:hover{background:var(--card2);border-color:var(--accent)}
-  .step-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
   .data-table{width:100%;border-collapse:collapse;font-size:0.75rem;font-family:'JetBrains Mono',monospace}
   .data-table th{background:var(--card2);padding:0.4rem 0.6rem;text-align:left;color:var(--accent);border-bottom:1px solid var(--border)}
@@ -1827,22 +1530,34 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
 <body>
 
 <div class="hero">
-  <h1>🔬 Chat Introspection Dashboard</h1>
-  <div class="subtitle">Complete internal state analysis for every generation step</div>
+  <h1>🔬 Classifier Introspection Dashboard</h1>
+  <div class="subtitle">Complete internal state analysis for classification</div>
 </div>
 
 <div class="container">
 
 <!-- Chat Summary -->
 <div class="chat-box">
-  <div class="prompt">📝 Prompt: "{{ result.prompt }}"</div>
-  <div class="response">💬 Response: "{{ result.answer_text }}"</div>
+  <div class="prompt">📝 Input: "{{ result.prompt }}"</div>
+  <div class="response">
+    🎯 Prediction:
+    {% if result.predicted_class == 1 %}
+    <span class="class-1">1 (TRUE)</span>
+    {% else %}
+    <span class="class-0">0 (FALSE)</span>
+    {% endif %}
+  </div>
+  <div class="confidence">
+    Confidence: {{ "%.2f"|format(result.confidence * 100) }}% •
+    P(class 0) = {{ "%.4f"|format(result.class_probs[0]) }} •
+    P(class 1) = {{ "%.4f"|format(result.class_probs[1]) }}
+  </div>
   <div class="meta">
-    {{ result.num_steps }} generation steps •
     d_model={{ result.model_config.d_model }} •
     n_layers={{ result.model_config.n_layers }} •
     n_heads={{ result.model_config.n_heads }} •
     vocab_size={{ result.model_config.vocab_size }} •
+    {{ "%.1f"|format(result.elapsed_ms) }}ms •
     {{ timestamp }}
   </div>
 </div>
@@ -1850,52 +1565,23 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
 <!-- Tab Navigation -->
 <div class="tabs" id="main-tabs">
   <div class="tab active" data-tab="overview">📊 Overview</div>
-  <div class="tab" data-tab="per-step">🔍 Per-Step Analysis</div>
   <div class="tab" data-tab="geometry">🌊 Geometry & Deformation</div>
   <div class="tab" data-tab="attention">👁 Attention</div>
   <div class="tab" data-tab="topology">🔮 Topology & Spectra</div>
-  <div class="tab" data-tab="raw-data">📋 Raw Data & Equations</div>
+  <div class="tab" data-tab="raw-data">📋 Raw Data</div>
 </div>
 
 <!-- Overview Tab -->
 <div class="tab-content active" id="tab-overview">
   <div class="section">
-    <div class="section-title">📈 Generation Dynamics</div>
+    <div class="section-title">📈 Classification Result</div>
     <div class="grid-2">
-      <div class="plot-container"><div id="plot-entropy"></div></div>
       <div class="plot-container"><div id="plot-token-probs"></div></div>
+      <div class="plot-container"><div id="plot-cka-matrix"></div></div>
     </div>
-    <div class="plot-container"><div id="plot-top-k-heatmap"></div></div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">🧬 Layer Dynamics Over Time</div>
     <div class="grid-2">
       <div class="plot-container"><div id="plot-layer-norms"></div></div>
-      <div class="plot-container"><div id="plot-jacobian-decomp"></div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">🔗 Layer Relationships</div>
-    <div class="grid-2">
-      <div class="plot-container"><div id="plot-cka-matrix"></div></div>
       <div class="plot-container"><div id="plot-residual"></div></div>
-    </div>
-  </div>
-</div>
-
-<!-- Per-Step Tab -->
-<div class="tab-content" id="tab-per-step">
-  <div class="section">
-    <div class="section-title">🔍 Step-by-Step Inspection <span class="badge">Navigate with buttons below</span></div>
-    <div class="step-nav" id="step-nav"></div>
-    <div id="step-detail-container">
-      <div class="grid-2">
-        <div class="plot-container"><div id="plot-step-pca"></div></div>
-        <div class="plot-container"><div id="plot-step-eigenvalues"></div></div>
-      </div>
-      <div class="plot-container"><div id="plot-step-deformation"></div></div>
     </div>
   </div>
 </div>
@@ -1928,112 +1614,83 @@ CHAT_DASHBOARD_TEMPLATE = r'''<!DOCTYPE html>
       <div class="plot-container"><div id="plot-svd-spectra"></div></div>
     </div>
     <div class="plot-container"><div id="plot-hidden-states"></div></div>
+    <div class="plot-container"><div id="plot-jacobian-decomp"></div></div>
   </div>
 </div>
 
 <!-- Raw Data Tab -->
 <div class="tab-content" id="tab-raw-data">
   <div class="section">
-    <div class="section-title">📋 Internal State Equations</div>
-    <div class="equations-box" id="equations-box">
-      {% for step in result.steps[:10] %}
-      <div style="margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0.5rem;">
-        <span class="eq-layer">Step {{ step.step_idx }}</span>:
-        token = <span class="eq-val">"{{ step.next_token_text }}"</span>
-        (id={{ step.next_token }}, p=<span class="eq-val">{{ "%.4f"|format(step.next_token_prob) }}</span>,
-        H=<span class="eq-val">{{ "%.3f"|format(step.entropy) }}</span> nats)<br>
-        {% for decomp in step.jacobian_decomp %}
-        &nbsp;&nbsp;<span class="eq-op">J(L{{ decomp.layer_from }}→L{{ decomp.layer_to }})</span>:
-        div=<span class="eq-val">{{ "%.4f"|format(decomp.divergence) }}</span>,
-        curl=<span class="eq-val">{{ "%.4f"|format(decomp.curl) }}</span>,
-        shear=<span class="eq-val">{{ "%.4f"|format(decomp.shear) }}</span>,
-        det=<span class="eq-val">{{ "%.4e"|format(decomp.determinant) }}</span>,
-        κ=<span class="eq-val">{{ "%.2f"|format(decomp.condition_number) }}</span>,
-        ρ=<span class="eq-val">{{ "%.4f"|format(decomp.spectral_radius) }}</span><br>
-        {% endfor %}
-        {% for stat in step.layer_stats %}
-        &nbsp;&nbsp;<span class="eq-op">Layer {{ stat.layer_idx }}</span>:
-        ‖h‖=<span class="eq-val">{{ "%.3f"|format(stat.mean_norm) }}</span>±{{ "%.3f"|format(stat.std_norm) }},
-        μ=<span class="eq-val">{{ "%.4f"|format(stat.mean_value) }}</span>,
-        σ=<span class="eq-val">{{ "%.4f"|format(stat.std_value) }}</span>,
-        sparsity=<span class="eq-val">{{ "%.2f"|format(stat.sparsity) }}</span>,
-        eff_rank=<span class="eq-val">{{ "%.1f"|format(stat.effective_rank) }}</span><br>
-        {% endfor %}
-      </div>
+    <div class="section-title">📋 Internal State Details</div>
+    <div class="equations-box">
+      {% if result.steps %}
+      {% set step = result.steps[0] %}
+      <span class="eq-layer">Classification</span>:
+      predicted = <span class="eq-val">{{ result.predicted_class }}</span>
+      (confidence=<span class="eq-val">{{ "%.4f"|format(result.confidence) }}</span>,
+      H=<span class="eq-val">{{ "%.3f"|format(step.entropy) }}</span> nats)<br><br>
+
+      <span class="eq-layer">Class Logits</span>:
+      [<span class="eq-val">{{ "%.4f"|format(result.class_logits[0]) }}</span>,
+       <span class="eq-val">{{ "%.4f"|format(result.class_logits[1]) }}</span>]<br><br>
+
+      {% for decomp in step.jacobian_decomp %}
+      <span class="eq-op">J(L{{ decomp.layer_from }}→L{{ decomp.layer_to }})</span>:
+      div=<span class="eq-val">{{ "%.4f"|format(decomp.divergence) }}</span>,
+      curl=<span class="eq-val">{{ "%.4f"|format(decomp.curl) }}</span>,
+      shear=<span class="eq-val">{{ "%.4f"|format(decomp.shear) }}</span>,
+      det=<span class="eq-val">{{ "%.4e"|format(decomp.determinant) }}</span>,
+      κ=<span class="eq-val">{{ "%.2f"|format(decomp.condition_number) }}</span>,
+      ρ=<span class="eq-val">{{ "%.4f"|format(decomp.spectral_radius) }}</span><br>
+      {% endfor %}<br>
+
+      {% for stat in step.layer_stats %}
+      <span class="eq-op">Layer {{ stat.layer_idx }}</span>:
+      ‖h‖=<span class="eq-val">{{ "%.3f"|format(stat.mean_norm) }}</span>±{{ "%.3f"|format(stat.std_norm) }},
+      μ=<span class="eq-val">{{ "%.4f"|format(stat.mean_value) }}</span>,
+      σ=<span class="eq-val">{{ "%.4f"|format(stat.std_value) }}</span>,
+      sparsity=<span class="eq-val">{{ "%.2f"|format(stat.sparsity) }}</span>,
+      eff_rank=<span class="eq-val">{{ "%.1f"|format(stat.effective_rank) }}</span><br>
       {% endfor %}
+      {% endif %}
     </div>
+  </div>
 
-    <!-- Layer Statistics Table -->
-    <div class="section">
-      <div class="section-title">📋 Layer Statistics (All Steps)</div>
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Step</th><th>Token</th><th>Prob</th><th>Entropy</th>
-              {% for i in range(result.model_config.n_layers + 1) %}
-              <th>L{{i}} ‖h‖</th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for step in result.steps[:20] %}
-            <tr>
-              <td>{{ step.step_idx }}</td>
-              <td>{{ step.next_token_text }}</td>
-              <td>{{ "%.4f"|format(step.next_token_prob) }}</td>
-              <td>{{ "%.3f"|format(step.entropy) }}</td>
-              {% for stat in step.layer_stats %}
-              <td>{{ "%.2f"|format(stat.mean_norm) }}</td>
-              {% endfor %}
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <!-- Token breakdown -->
+  <div class="section">
+    <div class="section-title">🔤 Input Tokens</div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead><tr><th>Position</th><th>Token</th></tr></thead>
+        <tbody>
+          {% for tok in result.token_texts %}
+          <tr><td>{{ loop.index0 }}</td><td>{{ tok }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-
-    <!-- Raw Logits for first step -->
-    {% if result.steps %}
-    <div class="section">
-      <div class="section-title">🔢 Raw Logits (Step 0, first 50 values)</div>
-      <div class="equations-box" style="max-height:200px;">
-        {% set logits = result.steps[0].logits_raw[:50] %}
-        {% for val in logits %}
-        <span class="eq-val">{{ "%.3f"|format(val) }}</span>{% if not loop.last %}, {% endif %}
-        {% endfor %}
-        {% if result.steps[0].logits_raw|length > 50 %}... ({{ result.steps[0].logits_raw|length }} total){% endif %}
-      </div>
-    </div>
-    {% endif %}
   </div>
 </div>
 
 </div>
 
 <div class="footer">
-  Generated by chat.py introspection engine • {{ timestamp }} • Model: d_model={{ result.model_config.d_model }}, n_layers={{ result.model_config.n_layers }}
+  Generated by chat.py (classifier mode) • {{ timestamp }} • Model: d_model={{ result.model_config.d_model }}, n_layers={{ result.model_config.n_layers }}
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════
-// TAB NAVIGATION
-// ═══════════════════════════════════════════════════════════════════════════
+// Tab navigation
 document.querySelectorAll('.tabs .tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const tabId = tab.dataset.tab;
-    // Deactivate all tabs and contents
     document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    // Activate clicked
     tab.classList.add('active');
     document.getElementById('tab-' + tabId).classList.add('active');
   });
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PLOTLY RENDERING
-// ═══════════════════════════════════════════════════════════════════════════
+// Plotly rendering
 const plotlyConfig = {responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d']};
 
 function renderPlot(divId, figData) {
@@ -2048,66 +1705,20 @@ function renderPlot(divId, figData) {
   }
 }
 
-// Render overview plots
-renderPlot('plot-entropy', {{ figures.get('entropy', '"{}"') | safe }});
-renderPlot('plot-token-probs', {{ figures.get('token_probs', '"{}"') | safe }});
-renderPlot('plot-top-k-heatmap', {{ figures.get('top_k_heatmap', '"{}"') | safe }});
-renderPlot('plot-layer-norms', {{ figures.get('layer_norms', '"{}"') | safe }});
-renderPlot('plot-jacobian-decomp', {{ figures.get('jacobian_decomp', '"{}"') | safe }});
+// Render all plots
+renderPlot('plot-token-probs', {{ figures.get('top_k_heatmap', '"{}"') | safe }});
 renderPlot('plot-cka-matrix', {{ figures.get('cka_matrix', '"{}"') | safe }});
+renderPlot('plot-layer-norms', {{ figures.get('layer_norms', '"{}"') | safe }});
 renderPlot('plot-residual', {{ figures.get('residual', '"{}"') | safe }});
-
-// Geometry tab
+renderPlot('plot-jacobian-decomp', {{ figures.get('jacobian_decomp', '"{}"') | safe }});
 renderPlot('plot-deformation', {{ figures.get('deformation', '"{}"') | safe }});
 renderPlot('plot-pca-2d', {{ figures.get('pca_2d', '"{}"') | safe }});
 renderPlot('plot-pca-3d', {{ figures.get('pca_3d', '"{}"') | safe }});
 renderPlot('plot-space-slices', {{ figures.get('space_slices', '"{}"') | safe }});
-
-// Attention tab
 renderPlot('plot-attention', {{ figures.get('attention', '"{}"') | safe }});
-
-// Topology tab
 renderPlot('plot-eigenvalue-spectra', {{ figures.get('eigenvalue_spectra', '"{}"') | safe }});
 renderPlot('plot-svd-spectra', {{ figures.get('svd_spectra', '"{}"') | safe }});
 renderPlot('plot-hidden-states', {{ figures.get('hidden_states', '"{}"') | safe }});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PER-STEP NAVIGATION
-// ═══════════════════════════════════════════════════════════════════════════
-const perStepData = {{ per_step_json | safe }};
-const stepNav = document.getElementById('step-nav');
-let currentStep = 0;
-
-// Create step buttons
-for (let i = 0; i < {{ result.num_steps }}; i++) {
-  const btn = document.createElement('div');
-  btn.className = 'step-btn' + (i === 0 ? ' active' : '');
-  btn.textContent = 'Step ' + i;
-  btn.dataset.step = i;
-  btn.addEventListener('click', () => showStep(i));
-  stepNav.appendChild(btn);
-}
-
-function showStep(idx) {
-  currentStep = idx;
-  // Update button states
-  document.querySelectorAll('.step-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', i === idx);
-  });
-
-  // Render per-step plots if available
-  if (perStepData[idx]) {
-    const stepFigs = perStepData[idx];
-    if (stepFigs.pca_2d) renderPlot('plot-step-pca', stepFigs.pca_2d);
-    if (stepFigs.eigenvalue_spectra) renderPlot('plot-step-eigenvalues', stepFigs.eigenvalue_spectra);
-    if (stepFigs.deformation) renderPlot('plot-step-deformation', stepFigs.deformation);
-  }
-}
-
-// Initialize first step
-if (perStepData.length > 0) {
-  showStep(0);
-}
 </script>
 </body>
 </html>
@@ -2133,8 +1744,7 @@ def find_next_chat_dir(base: str = "chats") -> str:
 
 def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
                               checkpoint_path: Optional[str] = None):
-    """Load model and tokenizer from a run directory, optionally with a specific checkpoint."""
-    # Try loading config
+    """Load classifier model and tokenizer from a run directory."""
     config_path = os.path.join(run_path, "config.json")
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"No config.json found in {run_path}")
@@ -2146,17 +1756,14 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
     # Load tokenizer
     tokenizer = BPETokenizer.from_pretrained(run_path)
 
-    # Load model config and architecture
+    # Load model config and architecture — USE TinyClassifierGPT
     config = LLVMGPTConfig.from_pretrained(run_path)
-    model = TinyGPT(config)
+    model = TinyClassifierGPT(config)
 
     # Determine which weights to load
     if checkpoint_path and os.path.exists(checkpoint_path):
-        # Load from the explicit .pt checkpoint
         print(f"   Loading weights from: {checkpoint_path}")
 
-        # First try weights_only=True (safe), fall back to weights_only=False
-        # for checkpoints that contain numpy arrays or other non-tensor objects
         try:
             state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
         except Exception:
@@ -2164,8 +1771,7 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
             print(f"      (This is safe for locally-trained checkpoints)")
             state_dict = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-        # Handle checkpoints that wrap state_dict in a larger dict
-        # (e.g., {"model_state_dict": ..., "optimizer_state_dict": ..., "epoch": ...})
+        # Handle wrapped checkpoints
         if isinstance(state_dict, dict):
             if "model_state_dict" in state_dict:
                 print(f"   📦 Unwrapping 'model_state_dict' from checkpoint")
@@ -2178,7 +1784,7 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
                 print(f"   📦 Unwrapping 'state_dict' from checkpoint")
                 state_dict = state_dict["state_dict"]
 
-        # Convert any numpy arrays to tensors before loading
+        # Convert numpy arrays to tensors
         cleaned_state_dict = {}
         for k, v in state_dict.items():
             if isinstance(v, np.ndarray):
@@ -2186,17 +1792,15 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
             elif isinstance(v, torch.Tensor):
                 cleaned_state_dict[k] = v
             else:
-                # Skip non-tensor entries (optimizer states, scalars, etc.)
                 print(f"   ⏭️  Skipping non-tensor key: {k} (type: {type(v).__name__})")
                 continue
-        
+
         result = model.load_state_dict(cleaned_state_dict, strict=False)
         if result.missing_keys:
             print(f"   ⚠️  Missing keys: {result.missing_keys}")
         if result.unexpected_keys:
             print(f"   ⚠️  Unexpected keys: {result.unexpected_keys}")
     else:
-        # Fall back to pytorch_model.bin
         bin_path = os.path.join(run_path, "pytorch_model.bin")
         if os.path.exists(bin_path):
             print(f"   Loading weights from: pytorch_model.bin")
@@ -2216,20 +1820,109 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
 
     return model, tokenizer
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PATH RESOLUTION HELPERS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def find_latest_run(runs_base: str = "runs") -> str:
+    """Find the most recently modified run directory under runs_base."""
+    if not os.path.isdir(runs_base):
+        raise FileNotFoundError(f"Runs directory '{runs_base}' does not exist.")
+
+    run_dirs = []
+    for entry in os.listdir(runs_base):
+        full = os.path.join(runs_base, entry)
+        if os.path.isdir(full) and os.path.exists(os.path.join(full, "config.json")):
+            run_dirs.append(full)
+
+    if not run_dirs:
+        raise FileNotFoundError(f"No valid run directories found in '{runs_base}' (need config.json).")
+
+    run_dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+    return run_dirs[0]
+
+
+def find_latest_checkpoint(run_dir: str) -> Optional[str]:
+    """Find the latest .pt checkpoint file in a run directory."""
+    pt_files = sorted(
+        [f for f in os.listdir(run_dir) if f.endswith(".pt")],
+        key=lambda f: os.path.getmtime(os.path.join(run_dir, f)),
+        reverse=True,
+    )
+    if pt_files:
+        # Prefer model_best.pt if it exists
+        if "model_best.pt" in pt_files:
+            return os.path.join(run_dir, "model_best.pt")
+        return os.path.join(run_dir, pt_files[0])
+    return None
+
+
+def resolve_run_path(user_path: Optional[str]) -> Tuple[str, Optional[str]]:
+    """
+    Resolve the user-provided path into (run_directory, checkpoint_path).
+
+    Handles three cases:
+      1. None / not specified  → find latest run dir, latest checkpoint
+      2. Path to a .pt file   → derive run dir from parent, use that checkpoint
+      3. Path to a directory   → use that dir, find latest checkpoint in it
+
+    Returns:
+        (run_dir, checkpoint_path) where checkpoint_path may be None
+        if only pytorch_model.bin exists.
+    """
+    # Case 1: Nothing specified — use latest run
+    if user_path is None:
+        run_dir = find_latest_run()
+        ckpt = find_latest_checkpoint(run_dir)
+        print(f"📂 No path specified, using latest run: {run_dir}")
+        if ckpt:
+            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
+        return run_dir, ckpt
+
+    # Case 2: Direct path to a .pt file
+    if user_path.endswith(".pt") and os.path.isfile(user_path):
+        ckpt_path = os.path.abspath(user_path)
+        run_dir = os.path.dirname(ckpt_path)
+
+        # Validate that the parent directory has the required files
+        if not os.path.exists(os.path.join(run_dir, "config.json")):
+            raise FileNotFoundError(
+                f"Checkpoint '{user_path}' found, but its directory "
+                f"'{run_dir}' has no config.json."
+            )
+
+        print(f"📂 Using checkpoint: {user_path}")
+        print(f"   Run directory: {run_dir}")
+        return run_dir, ckpt_path
+
+    # Case 3: Path to a directory
+    if os.path.isdir(user_path):
+        run_dir = user_path
+        ckpt = find_latest_checkpoint(run_dir)
+        if ckpt:
+            print(f"📂 Run directory: {run_dir}")
+            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
+        return run_dir, ckpt
+
+    # Nothing matched
+    raise FileNotFoundError(
+        f"Path '{user_path}' is not a valid .pt file or run directory."
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN CLI ENTRY POINT
+# ═══════════════════════════════════════════════════════════════════════════
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Interactive chat with a trained TinyGPT model, with full introspection.",
+        description="Interactive chat with a trained TinyClassifierGPT model, with full introspection.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("run_path", type=str, nargs="?", default=None,
                         help="Path to run directory (e.g., runs/0), a .pt checkpoint "
-                             "(e.g., runs/0/model_1234.pt), or omit to use latest run")
-    parser.add_argument("--max-gen-len", type=int, default=50,
-                        help="Maximum generation length per response")
-    parser.add_argument("--temperature", type=float, default=1.0,
-                        help="Sampling temperature")
-    parser.add_argument("--top-k", type=int, default=0,
-                        help="Top-k sampling (0 = greedy)")
+                             "(e.g., runs/0/model_best.pt), or omit to use latest run")
     parser.add_argument("--device", type=str, default="auto",
                         choices=["auto", "cpu", "cuda", "mps"],
                         help="Device to use")
@@ -2297,15 +1990,16 @@ def main():
 
     # Interactive loop
     print("=" * 60)
-    print("🔬 INTERACTIVE CHAT WITH FULL INTROSPECTION")
+    print("🔬 CLASSIFIER INTROSPECTION MODE")
     print("=" * 60)
     print(f"   Run directory: {run_dir}")
     if checkpoint_path:
         print(f"   Checkpoint: {os.path.basename(checkpoint_path)}")
     print(f"   Chat logs: {chat_dir}/")
-    print(f"   Type your input and press Enter.")
+    print(f"   Type a turnstile expression and press Enter.")
+    print(f"   The model will classify it as 0 (FALSE) or 1 (TRUE).")
     print(f"   Type 'quit' or 'exit' to end the session.")
-    print(f"   After each reply, a full dashboard will be generated.")
+    print(f"   After each prediction, a full dashboard will be generated.")
     print("=" * 60)
     print()
 
@@ -2325,29 +2019,33 @@ def main():
             print("\n👋 Session ended.")
             break
 
-        print(f"\n🧠 Generating with full introspection...")
+        print(f"\n🧠 Classifying with full introspection...")
         t0 = time.time()
 
-        # Generate with full introspection
-        result = engine.generate_with_full_introspection(
-            prompt=prompt,
-            max_gen_len=args.max_gen_len,
-            temperature=args.temperature,
-            top_k=args.top_k,
-        )
+        # Classify with full introspection
+        result = engine.classify_with_full_introspection(prompt=prompt)
 
         gen_time = time.time() - t0
-        print(f"\n💬 Model > {result['answer_text']}")
-        print(f"   ({result['num_steps']} steps, {gen_time:.1f}s generation)")
+
+        # Display result
+        predicted = result['predicted_class']
+        confidence = result['confidence']
+        class_label = "TRUE (1)" if predicted == 1 else "FALSE (0)"
+        color_marker = "✅" if predicted == 1 else "❌"
+
+        print(f"\n{color_marker} Model > {class_label}")
+        print(f"   Confidence: {confidence:.2%}")
+        print(f"   P(0)={result['class_probs'][0]:.4f}, P(1)={result['class_probs'][1]:.4f}")
+        print(f"   ({gen_time*1000:.1f}ms)")
 
         # Save result JSON
         result_path = os.path.join(chat_dir, f"interaction_{interaction_idx}.json")
-        # Convert numpy arrays to lists for JSON serialization
         with open(result_path, 'w') as f:
-            json.dump(result, f, indent=2, default=lambda x: x.tolist() if hasattr(x, 'tolist') else str(x))
+            json.dump(result, f, indent=2,
+                      default=lambda x: x.tolist() if hasattr(x, 'tolist') else str(x))
 
         logger.info(f"Interaction {interaction_idx}: prompt='{prompt}', "
-                    f"answer='{result['answer_text']}', steps={result['num_steps']}")
+                    f"answer='{predicted}' (confidence={confidence:.4f})")
 
         # Generate dashboard
         print(f"   📊 Generating interactive dashboard...")
@@ -2373,92 +2071,6 @@ def main():
     print(f"\n📁 All results saved to: {chat_dir}/")
     print(f"   Open {os.path.join(chat_dir, 'dashboard.html')} in a browser to explore.")
 
-# ═══════════════════════════════════════════════════════════════════════════
-# PATH RESOLUTION HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
-
-def find_latest_run(runs_base: str = "runs") -> str:
-    """Find the most recently modified run directory under runs_base."""
-    if not os.path.isdir(runs_base):
-        raise FileNotFoundError(f"Runs directory '{runs_base}' does not exist.")
-
-    run_dirs = []
-    for entry in os.listdir(runs_base):
-        full = os.path.join(runs_base, entry)
-        if os.path.isdir(full) and os.path.exists(os.path.join(full, "config.json")):
-            run_dirs.append(full)
-
-    if not run_dirs:
-        raise FileNotFoundError(f"No valid run directories found in '{runs_base}' (need config.json).")
-
-    # Sort by modification time, newest first
-    run_dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
-    return run_dirs[0]
-
-
-def find_latest_checkpoint(run_dir: str) -> Optional[str]:
-    """Find the latest .pt checkpoint file in a run directory."""
-    pt_files = sorted(
-        [f for f in os.listdir(run_dir) if f.endswith(".pt")],
-        key=lambda f: os.path.getmtime(os.path.join(run_dir, f)),
-        reverse=True,
-    )
-    if pt_files:
-        return os.path.join(run_dir, pt_files[0])
-    return None
-
-
-def resolve_run_path(user_path: Optional[str]) -> Tuple[str, Optional[str]]:
-    """
-    Resolve the user-provided path into (run_directory, checkpoint_path).
-
-    Handles three cases:
-      1. None / not specified  → find latest run dir, latest checkpoint
-      2. Path to a .pt file   → derive run dir from parent, use that checkpoint
-      3. Path to a directory   → use that dir, find latest checkpoint in it
-
-    Returns:
-        (run_dir, checkpoint_path) where checkpoint_path may be None
-        if only pytorch_model.bin exists.
-    """
-    # Case 1: Nothing specified — use latest run
-    if user_path is None:
-        run_dir = find_latest_run()
-        ckpt = find_latest_checkpoint(run_dir)
-        print(f"📂 No path specified, using latest run: {run_dir}")
-        if ckpt:
-            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
-        return run_dir, ckpt
-
-    # Case 2: Direct path to a .pt file
-    if user_path.endswith(".pt") and os.path.isfile(user_path):
-        ckpt_path = os.path.abspath(user_path)
-        run_dir = os.path.dirname(ckpt_path)
-
-        # Validate that the parent directory has the required files
-        if not os.path.exists(os.path.join(run_dir, "config.json")):
-            raise FileNotFoundError(
-                f"Checkpoint '{user_path}' found, but its directory "
-                f"'{run_dir}' has no config.json."
-            )
-
-        print(f"📂 Using checkpoint: {user_path}")
-        print(f"   Run directory: {run_dir}")
-        return run_dir, ckpt_path
-
-    # Case 3: Path to a directory
-    if os.path.isdir(user_path):
-        run_dir = user_path
-        ckpt = find_latest_checkpoint(run_dir)
-        if ckpt:
-            print(f"📂 Run directory: {run_dir}")
-            print(f"   Latest checkpoint: {os.path.basename(ckpt)}")
-        return run_dir, ckpt
-
-    # Nothing matched
-    raise FileNotFoundError(
-        f"Path '{user_path}' is not a valid .pt file or run directory."
-    )
 
 if __name__ == "__main__":
     main()
