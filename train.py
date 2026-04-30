@@ -2922,11 +2922,15 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20, task=
     """
     Classification prediction: run the prompt through the model,
     argmax the 2-class logits, compare to expected label.
+    
+    Also handles autoregressive models gracefully by detecting
+    whether the model outputs 2D (classifier) or 3D (LM) logits.
     """
     model.eval()
     predictions = []
 
     eos_id = tokenizer.eos_token_id
+    is_classifier = hasattr(model, 'cls_head')
 
     for token_ids, prompt_len in batch[:8]:
         # ── Extract expected answer ─────────────────────────────────
@@ -2952,12 +2956,60 @@ def get_batch_predictions(model, tokenizer, batch, device, max_gen_len=20, task=
         if not expected_answer:
             continue
 
-        # ── Classification: feed prompt, argmax logits ──────────────
         prompt_ids = token_ids[:prompt_len]
         inp = torch.tensor([prompt_ids], dtype=torch.long, device=device)
-        _, logits = model(inp)
-        predicted_class = logits.argmax(dim=-1).item()
-        predicted_answer = str(predicted_class)
+
+        if is_classifier or task == "turnstile":
+            # ── Classification: feed prompt, argmax logits ──────────
+            output = model(inp)
+            if isinstance(output, tuple):
+                _, logits = output
+            else:
+                logits = output.logits
+            predicted_class = logits.argmax(dim=-1).item()
+            predicted_answer = str(predicted_class)
+        else:
+            # ── Autoregressive decode ───────────────────────────────
+            generated_ids = []
+            input_tensor = inp
+            for _ in range(max_gen_len):
+                if input_tensor.shape[1] >= model.max_seq_len:
+                    break
+                output = model(input_ids=input_tensor, output_hidden_states=False)
+                if isinstance(output, tuple):
+                    _, step_logits = output
+                else:
+                    step_logits = output.logits
+
+                # Safety: if 2D logits, treat as classifier
+                if step_logits.dim() == 2:
+                    next_id = step_logits.argmax(dim=-1).item()
+                    if next_id != eos_id and next_id != tokenizer.pad_token_id:
+                        generated_ids.append(next_id)
+                    break
+
+                next_logits = step_logits[:, -1, :]
+                next_id = next_logits.argmax(dim=-1).item()
+
+                if next_id == eos_id or next_id == tokenizer.pad_token_id:
+                    break
+
+                generated_ids.append(next_id)
+                input_tensor = torch.cat(
+                    [input_tensor, torch.tensor([[next_id]], device=device)],
+                    dim=1,
+                )
+
+            if generated_ids:
+                predicted_answer = tokenizer.decode(generated_ids).strip()
+                for special in ["<eos>", "<pad>", "<bos>"]:
+                    predicted_answer = predicted_answer.replace(special, "")
+                predicted_answer = predicted_answer.strip()
+            else:
+                predicted_answer = ""
+
+        if not predicted_answer:
+            predicted_answer = "(empty)"
 
         try:
             is_correct = int(predicted_answer) == int(expected_answer)

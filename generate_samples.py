@@ -10,7 +10,6 @@ from typing import List, Dict, Optional
 
 from random_infix_gen import generate_random_function
 
-
 def generate_example_samples(
     model, tokenizer, device, num_samples,
     max_params=3, max_ops=4, allowed_ops=None,
@@ -30,6 +29,9 @@ def generate_example_samples(
     eos_id = tokenizer.eos_token_id
     pad_id = tokenizer.pad_token_id
     bos_id = tokenizer.bos_token_id
+
+    # Detect if the model is a classifier (has cls_head outputting (B, num_classes))
+    is_classifier = hasattr(model, 'cls_head')
 
     while len(samples) < num_samples and attempts < num_samples * 10:
         attempts += 1
@@ -77,16 +79,20 @@ def generate_example_samples(
 
         prompt_ids = [bos_id] + full_ids[:common_len]
 
-        # ── Classification mode (turnstile) vs autoregressive ───────
-        if task == "turnstile":
+        # ── Classification mode: use for turnstile OR classifier model ──
+        if task == "turnstile" or is_classifier:
             # Feed prompt, get 2-class logits, argmax
             input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
             with torch.no_grad():
-                _, logits = model(input_ids=input_tensor)
+                output = model(input_ids=input_tensor)
+                if isinstance(output, tuple):
+                    _, logits = output
+                else:
+                    logits = output.logits
                 predicted_class = logits.argmax(dim=-1).item()
             predicted_str = str(predicted_class)
         else:
-            # Greedy autoregressive decode (original behavior)
+            # Greedy autoregressive decode (only for true language models)
             input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
             generated_ids = []
             with torch.no_grad():
@@ -99,6 +105,15 @@ def generate_example_samples(
                         _, step_logits = output
                     else:
                         step_logits = output.logits
+
+                    # Safety check: if logits are 2D (B, C) instead of 3D (B, T, V),
+                    # this is a classifier model — use argmax directly and stop
+                    if step_logits.dim() == 2:
+                        next_id = step_logits.argmax(dim=-1).item()
+                        if next_id != eos_id and next_id != pad_id:
+                            generated_ids.append(next_id)
+                        break
+
                     # For autoregressive: logits are (B, T, V)
                     next_logits = step_logits[:, -1, :]
                     next_id = next_logits.argmax(dim=-1).item()
