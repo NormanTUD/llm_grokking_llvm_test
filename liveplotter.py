@@ -974,7 +974,6 @@ class LivePlotter:
     def _refresh(self):
         if not self.enabled:
             return
-
         if not self.suppress_window:
             self._check_reopen()
 
@@ -986,8 +985,6 @@ class LivePlotter:
                 ax.relim()
                 ax.autoscale_view()
 
-            # ── Protect Jacobi sub-axes positions ──────────────────
-            # Save positions before draw/pause, restore after
             saved_positions = []
             for sub_ax in self._jacobi_subaxes:
                 try:
@@ -996,11 +993,11 @@ class LivePlotter:
                     pass
 
             if not self.suppress_window and self._is_window_alive():
-                self.plt.pause(0.001)
+                self.fig.canvas.draw_idle()
+                self.fig.canvas.flush_events()
             else:
                 self.fig.canvas.draw()
 
-            # Restore Jacobi sub-axes positions after redraw
             for sub_ax, pos in saved_positions:
                 try:
                     sub_ax.set_position(pos)
@@ -2486,25 +2483,29 @@ class LivePlotter:
 
     # ── Save figure to file ─────────────────────────────────────────────
     def _save_to_file(self):
-        """Save the current figure to disk at a fixed size, independent of window state."""
+        """Save the current figure to disk without disturbing the interactive window."""
         if not self.enabled:
             return
         try:
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+
             save_path = self.plot_file
             if run_dir is not None:
                 save_path = os.path.join(run_dir, self.plot_file)
 
-            # ── Rotate: move current latest → next numbered history file ──
+            # Rotate old file
             if os.path.exists(save_path):
                 base, ext = os.path.splitext(save_path)
                 seq = 1
                 while os.path.exists(f"{base}-{seq:08d}{ext}"):
                     seq += 1
-                history_path = f"{base}-{seq:08d}{ext}"
-                os.rename(save_path, history_path)
+                os.rename(save_path, f"{base}-{seq:08d}{ext}")
 
-            # ── Force a fixed size regardless of interactive window state ──
+            # Temporarily swap to Agg canvas for saving — no window interaction
+            original_canvas = self.fig.canvas
             original_size = self.fig.get_size_inches()
+
+            agg_canvas = FigureCanvasAgg(self.fig)
             self.fig.set_size_inches(self._fig_width, self._fig_height)
 
             self.fig.savefig(
@@ -2515,12 +2516,12 @@ class LivePlotter:
                 edgecolor="none",
             )
 
-            # ── Restore the interactive window size so display isn't affected ──
-            if not self.suppress_window:
-                self.fig.set_size_inches(original_size)
+            # Restore the original interactive canvas and size
+            self.fig.set_canvas(original_canvas)
+            self.fig.set_size_inches(original_size)
 
-        except Exception as e:
-            pass  # Don't crash training for a file write error
+        except Exception:
+            pass
 
     # ── Batch update (train) ────────────────────────────────────────────
     def update_batch(self, batch_loss: float):
