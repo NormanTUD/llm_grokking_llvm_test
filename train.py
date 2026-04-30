@@ -3394,7 +3394,7 @@ def _print_model_summary(model: TinyGPT):
 
     model_stats = torchinfo_summary(
         model,
-        input_size=(1, 128),
+        input_size=(1, args.max_seq_len),
         dtypes=[torch.long],
         verbose=0,
     )
