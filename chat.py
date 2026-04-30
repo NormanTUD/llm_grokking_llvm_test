@@ -2154,22 +2154,56 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
     if checkpoint_path and os.path.exists(checkpoint_path):
         # Load from the explicit .pt checkpoint
         print(f"   Loading weights from: {checkpoint_path}")
-        state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
-        
+
+        # First try weights_only=True (safe), fall back to weights_only=False
+        # for checkpoints that contain numpy arrays or other non-tensor objects
+        try:
+            state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        except Exception:
+            print(f"   ⚠️  weights_only=True failed, falling back to weights_only=False")
+            print(f"      (This is safe for locally-trained checkpoints)")
+            state_dict = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
         # Handle checkpoints that wrap state_dict in a larger dict
         # (e.g., {"model_state_dict": ..., "optimizer_state_dict": ..., "epoch": ...})
-        if "model_state_dict" in state_dict:
-            state_dict = state_dict["model_state_dict"]
-        elif "state_dict" in state_dict:
-            state_dict = state_dict["state_dict"]
+        if isinstance(state_dict, dict):
+            if "model_state_dict" in state_dict:
+                print(f"   📦 Unwrapping 'model_state_dict' from checkpoint")
+                if "epoch" in state_dict:
+                    print(f"      Checkpoint epoch: {state_dict['epoch']}")
+                if "best_val_loss" in state_dict:
+                    print(f"      Best val loss: {state_dict['best_val_loss']:.4f}")
+                state_dict = state_dict["model_state_dict"]
+            elif "state_dict" in state_dict:
+                print(f"   📦 Unwrapping 'state_dict' from checkpoint")
+                state_dict = state_dict["state_dict"]
+
+        # Convert any numpy arrays to tensors before loading
+        cleaned_state_dict = {}
+        for k, v in state_dict.items():
+            if isinstance(v, np.ndarray):
+                cleaned_state_dict[k] = torch.from_numpy(v)
+            elif isinstance(v, torch.Tensor):
+                cleaned_state_dict[k] = v
+            else:
+                # Skip non-tensor entries (optimizer states, scalars, etc.)
+                print(f"   ⏭️  Skipping non-tensor key: {k} (type: {type(v).__name__})")
+                continue
         
-        model.load_state_dict(state_dict, strict=False)
+        result = model.load_state_dict(cleaned_state_dict, strict=False)
+        if result.missing_keys:
+            print(f"   ⚠️  Missing keys: {result.missing_keys}")
+        if result.unexpected_keys:
+            print(f"   ⚠️  Unexpected keys: {result.unexpected_keys}")
     else:
         # Fall back to pytorch_model.bin
         bin_path = os.path.join(run_path, "pytorch_model.bin")
         if os.path.exists(bin_path):
             print(f"   Loading weights from: pytorch_model.bin")
-            state_dict = torch.load(bin_path, map_location=device, weights_only=True)
+            try:
+                state_dict = torch.load(bin_path, map_location=device, weights_only=True)
+            except Exception:
+                state_dict = torch.load(bin_path, map_location=device, weights_only=False)
             model.load_state_dict(state_dict)
         else:
             print(f"   ⚠️  No checkpoint found, using random weights!")
@@ -2177,8 +2211,10 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
     model = model.to(device)
     model.eval()
 
-    return model, tokenizer
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"   ✅ Model loaded successfully ({n_params:,} parameters)")
 
+    return model, tokenizer
 
 def main():
     parser = argparse.ArgumentParser(
