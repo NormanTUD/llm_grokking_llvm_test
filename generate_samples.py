@@ -10,6 +10,7 @@ from typing import List, Dict, Optional
 
 from random_infix_gen import generate_random_function
 
+
 def generate_example_samples(
     model, tokenizer, device, num_samples,
     max_params=3, max_ops=4, allowed_ops=None,
@@ -43,7 +44,7 @@ def generate_example_samples(
             except Exception:
                 continue
             expected_str = str(expected_result)
-            params_str = ""  # no params for turnstile
+            params_str = ""
         else:
             num_p = random.randint(2, max(2, max_params))
             num_o = random.randint(1, max(1, max_ops))
@@ -76,33 +77,47 @@ def generate_example_samples(
 
         prompt_ids = [bos_id] + full_ids[:common_len]
 
-        # ── Greedy decode ───────────────────────────────────────────
-        input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
-
-        generated_ids = []
-        with torch.no_grad():
-            for _ in range(max_gen_len):
-                if input_tensor.shape[1] >= model.max_seq_len:
-                    break
-                output = model(input_ids=input_tensor)
-                logits = output.logits[:, -1, :]
-                next_id = logits.argmax(dim=-1).item()
-
-                if next_id == eos_id or next_id == pad_id:
-                    break
-
-                generated_ids.append(next_id)
-                input_tensor = torch.cat(
-                    [input_tensor, torch.tensor([[next_id]], device=device)],
-                    dim=1,
-                )
-
-        # ── Decode and clean ────────────────────────────────────────
-        if generated_ids:
-            predicted_str = tokenizer.decode(generated_ids).strip()
+        # ── Classification mode (turnstile) vs autoregressive ───────
+        if task == "turnstile":
+            # Feed prompt, get 2-class logits, argmax
+            input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+            with torch.no_grad():
+                _, logits = model(input_ids=input_tensor)
+                predicted_class = logits.argmax(dim=-1).item()
+            predicted_str = str(predicted_class)
         else:
-            predicted_str = ""
+            # Greedy autoregressive decode (original behavior)
+            input_tensor = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+            generated_ids = []
+            with torch.no_grad():
+                for _ in range(max_gen_len):
+                    if input_tensor.shape[1] >= model.max_seq_len:
+                        break
+                    output = model(input_ids=input_tensor, output_hidden_states=False)
+                    # Handle both tuple and named output
+                    if isinstance(output, tuple):
+                        _, step_logits = output
+                    else:
+                        step_logits = output.logits
+                    # For autoregressive: logits are (B, T, V)
+                    next_logits = step_logits[:, -1, :]
+                    next_id = next_logits.argmax(dim=-1).item()
 
+                    if next_id == eos_id or next_id == pad_id:
+                        break
+
+                    generated_ids.append(next_id)
+                    input_tensor = torch.cat(
+                        [input_tensor, torch.tensor([[next_id]], device=device)],
+                        dim=1,
+                    )
+
+            if generated_ids:
+                predicted_str = tokenizer.decode(generated_ids).strip()
+            else:
+                predicted_str = ""
+
+        # ── Clean ───────────────────────────────────────────────────
         for special_tok in ["<eos>", "<pad>", "<bos>"]:
             predicted_str = predicted_str.replace(special_tok, "")
         predicted_str = predicted_str.strip()
