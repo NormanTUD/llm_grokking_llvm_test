@@ -809,9 +809,9 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--task", type=str, default="infix",
                    choices=["infix", "turnstile"],
                    help="Task type: 'infix' = current math expressions, "
-                        "'turnstile' = ⊢-counting equality evaluation (0/1)")
+                        "'turnstile' = !-counting equality evaluation (0/1)")
     g.add_argument("--max-turnstiles", type=int, default=10,
-                   help="Max ⊢ symbols on each side (turnstile task only)")
+                   help="Max ! symbols on each side (turnstile task only)")
 
     g = p.add_argument_group("Model Architecture")
     g.add_argument("--target-params", type=int, default=1_000,
