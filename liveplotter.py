@@ -2195,7 +2195,7 @@ class LivePlotter:
         """Create the figure and return named axes.
 
         Layout (3 rows × 3 cols):
-          Row 0: [epoch loss] [batch loss (train EMA)] [learning rate]
+          Row 0: [epoch loss] [batch loss (train EMA)] [FFN weight grid]
           Row 1: [jacobi fields ──────────────────────] [val batch loss]
           Row 2: [predictions ────────────] [pred diffs] [model info]
         """
@@ -2205,9 +2205,9 @@ class LivePlotter:
         axes = {
             "epoch":   fig.add_subplot(gs[0, 0]),
             "batch":   fig.add_subplot(gs[0, 1]),
-            "lr":      fig.add_subplot(gs[0, 2]),
-            "kelp":    fig.add_subplot(gs[1, 0:2]),   # jacobi fields — wide
-            "val":     fig.add_subplot(gs[1, 2]),      # val batch loss — right
+            "weights": fig.add_subplot(gs[0, 2]),  # ← CHANGED from "lr"
+            "kelp":    fig.add_subplot(gs[1, 0:2]),
+            "val":     fig.add_subplot(gs[1, 2]),
             "preds":   fig.add_subplot(gs[2, 0]),
             "diffs":   fig.add_subplot(gs[2, 1]),
             "info":    fig.add_subplot(gs[2, 2]),
@@ -2266,17 +2266,146 @@ class LivePlotter:
         )
         ax.legend(loc="upper right", fontsize=8)
 
-    def _setup_lr_axis(self, ax):
-        """Configure the learning rate axis and create its line artist."""
-        ax.set_title("Learning Rate", fontsize=10, fontweight="bold")
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("LR")
-        ax.grid(True, alpha=0.3)
-        ax.ticklabel_format(style="sci", axis="y", scilimits=(-3, -3))
-        self.line_lr, = ax.plot(
-            [], [], label="LR", color="seagreen", linewidth=2,
+    def _draw_weight_grid(self, model):
+        """
+        Draw a grid of colored values for each weight in the dense (FFN) layers.
+        Red = smallest weight, Green = largest weight, interpolated in between.
+        """
+        if not self.enabled or self.ax_weights is None:
+            return
+
+        ax = self.ax_weights
+        ax.clear()
+        ax.set_facecolor("#0d1117")
+
+        # ── Collect all FFN (MLP) weights from transformer blocks ───────
+        all_weights = []
+        layer_labels = []
+
+        if model is None:
+            ax.text(0.5, 0.5, "Waiting for model...",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            ax.set_title("FFN Dense Layer Weights", fontsize=10, fontweight="bold")
+            ax.axis("off")
+            return
+
+        # Extract weights from the MLP (FFN) layers inside each transformer block
+        for block_idx, block in enumerate(model.blocks):
+            for name, param in block.mlp.named_parameters():
+                if 'weight' in name and param.dim() == 2:
+                    w = param.detach().cpu().numpy()
+                    all_weights.append(w)
+                    layer_labels.append(f"B{block_idx}.{name}")
+
+        # Also get the classifier head weights
+        if hasattr(model, 'cls_head'):
+            w = model.cls_head.weight.detach().cpu().numpy()
+            all_weights.append(w)
+            layer_labels.append("cls_head")
+
+        if not all_weights:
+            ax.text(0.5, 0.5, "No dense layers found",
+                    ha="center", va="center", fontsize=11, alpha=0.4,
+                    color="#6a9ab8", transform=ax.transAxes)
+            ax.set_title("FFN Dense Layer Weights", fontsize=10, fontweight="bold")
+            ax.axis("off")
+            return
+
+        # ── Concatenate all weights into one big matrix for visualization ──
+        # Strategy: show each layer's weight matrix as a sub-grid
+        # For compactness, subsample large matrices
+        n_layers = len(all_weights)
+
+        # Determine grid layout: arrange layers in a column
+        # Each layer gets a horizontal strip
+        max_display_rows = 64  # max rows to show per layer
+        max_display_cols = 128  # max cols to show per layer
+
+        # Build a combined image: stack layers vertically with separators
+        strips = []
+        global_min = min(w.min() for w in all_weights)
+        global_max = max(w.max() for w in all_weights)
+
+        for w in all_weights:
+            rows, cols = w.shape
+            # Subsample if too large
+            row_step = max(1, rows // max_display_rows)
+            col_step = max(1, cols // max_display_cols)
+            w_sub = w[::row_step, ::col_step]
+            strips.append(w_sub)
+
+        # Pad all strips to the same width
+        max_cols = max(s.shape[1] for s in strips)
+        padded_strips = []
+        for s in strips:
+            if s.shape[1] < max_cols:
+                pad_width = max_cols - s.shape[1]
+                # Pad with NaN (will be rendered as black/transparent)
+                padded = np.pad(s, ((0, 0), (0, pad_width)),
+                               mode='constant', constant_values=np.nan)
+            else:
+                padded = s
+            padded_strips.append(padded)
+
+        # Add 1-pixel separator rows between layers
+        separator = np.full((1, max_cols), np.nan)
+        combined_rows = []
+        for i, strip in enumerate(padded_strips):
+            combined_rows.append(strip)
+            if i < len(padded_strips) - 1:
+                combined_rows.append(separator)
+
+        combined = np.vstack(combined_rows)
+
+        # ── Create custom red-to-green colormap ─────────────────────────
+        from matplotlib.colors import LinearSegmentedColormap
+        colors_list = [
+            (0.8, 0.0, 0.0),   # Red (smallest)
+            (0.9, 0.9, 0.0),   # Yellow (middle)
+            (0.0, 0.8, 0.0),   # Green (largest)
+        ]
+        rg_cmap = LinearSegmentedColormap.from_list("red_green", colors_list, N=256)
+        rg_cmap.set_bad(color='#0d1117')  # NaN pixels → background color
+
+        # ── Draw the image ──────────────────────────────────────────────
+        im = ax.imshow(
+            combined,
+            cmap=rg_cmap,
+            aspect='auto',
+            interpolation='nearest',
+            vmin=global_min,
+            vmax=global_max,
         )
-        ax.legend(loc="upper right", fontsize=8)
+
+        # ── Add layer labels on the left side ───────────────────────────
+        y_pos = 0
+        for i, (strip, label) in enumerate(zip(padded_strips, layer_labels)):
+            label_y = y_pos + strip.shape[0] / 2
+            ax.text(
+                -0.5, label_y, label,
+                fontsize=5, color='#aaccee',
+                ha='right', va='center',
+                fontfamily='monospace',
+                clip_on=False,
+            )
+            y_pos += strip.shape[0] + 1  # +1 for separator
+
+        # ── Title with stats ────────────────────────────────────────────
+        total_weights = sum(w.size for w in all_weights)
+        ax.set_title(
+            f"FFN Dense Weights ({n_layers} matrices, {total_weights:,} params)\n"
+            f"Red={global_min:.4f} → Green={global_max:.4f}",
+            fontsize=8, fontweight="bold", color="#c0d8e8",
+        )
+        ax.axis("off")
+
+    def _setup_weights_axis(self, ax):
+        """Configure the FFN weight grid visualization axis."""
+        ax.set_title("FFN Dense Layer Weights", fontsize=10, fontweight="bold")
+        ax.axis("off")
+        self.ax_weights = ax
+        self._weights_im = None
 
     def _setup_val_axis(self, ax):
         """Configure the validation batch loss axis and create its line artists."""
@@ -2312,7 +2441,6 @@ class LivePlotter:
         data_axes = [
             named_axes["epoch"],
             named_axes["batch"],
-            named_axes["lr"],
             named_axes["val"],
         ]
         if self.ax_diffs is not None:
@@ -2360,12 +2488,11 @@ class LivePlotter:
         # 3. Configure each axis
         self._setup_diffs_axis(named_axes["diffs"])
         self._jacobi_subaxes = []
-        # Do NOT reset _jacobi_data here — preserve cached data for restore
-        self._jacobi_drawn_step = -1  # force redraw on next draw call
+        self._jacobi_drawn_step = -1
         self._setup_kelp_axis(named_axes["kelp"])
         self._setup_epoch_axis(named_axes["epoch"])
         self._setup_batch_axis(named_axes["batch"])
-        self._setup_lr_axis(named_axes["lr"])
+        self._setup_weights_axis(named_axes["weights"])  # ← CHANGED from _setup_lr_axis
         self._setup_val_axis(named_axes["val"])
         self._setup_preds_axis(named_axes["preds"])
         self._setup_info_axis(named_axes["info"])
@@ -2382,7 +2509,7 @@ class LivePlotter:
         self._draw_predictions()
         self._draw_model_info()
 
-        # 7. Apply window chrome, layout, and event bindings
+        # 7. Apply window chrome, layout, event bindings
         self._apply_figure_chrome()
 
         # 8. Restore any accumulated data onto the new figure
@@ -2524,7 +2651,7 @@ class LivePlotter:
             pass
 
     # ── Batch update (train) ────────────────────────────────────────────
-    def update_batch(self, batch_loss: float):
+    def update_batch(self, batch_loss: float, model=None):
         if not self.enabled:
             return
         self._global_batch += 1
@@ -2539,8 +2666,13 @@ class LivePlotter:
         if self._global_batch % self.update_every == 0:
             xs = list(range(len(self.batch_ema)))
             self.line_batch_ema.set_data(xs, self.batch_ema)
+
+            # Update weight grid every plot refresh
+            if model is not None:
+                self._draw_weight_grid(model)
+
             self._refresh()
-            self._save_to_file()  # ← ADD THIS: re-save plot after each batch update
+            self._save_to_file()
 
     # ── Val batch ───────────────────────────────────────────────────────
     def update_val_batch(self, val_batch_loss: float):
@@ -2567,7 +2699,7 @@ class LivePlotter:
                                          self._val_epoch_avg_ys)
 
     # ── Epoch update ────────────────────────────────────────────────────
-    def update_epoch(self, train_loss: float, val_loss: float, lr: float):
+    def update_epoch(self, train_loss: float, val_loss: float, lr: float, model=None):
         if not self.enabled:
             return
 
@@ -2578,11 +2710,12 @@ class LivePlotter:
         epochs = list(range(1, len(self.train_epoch_losses) + 1))
         self.line_train_epoch.set_data(epochs, self.train_epoch_losses)
         self.line_val_epoch.set_data(epochs, self.val_epoch_losses)
-        self.line_lr.set_data(epochs, self.lr_history)
+
+        # Draw weight grid if model is available
+        if model is not None:
+            self._draw_weight_grid(model)
 
         self._refresh()
-
-        # Always save to file after each epoch
         self._save_to_file()
 
     # ════════════════════════════════════════════════════════════════════

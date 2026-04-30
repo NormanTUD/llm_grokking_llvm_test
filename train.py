@@ -3832,7 +3832,7 @@ def _run_train_epoch(
                 n_samples_in_batch=len(batch),
             )
 
-            plotter.update_batch(bl)
+            plotter.update_batch(bl, model=model)
             plotter.update_topo(model, inp)
             plotter.update_jacobi_fields(model, inp, tokenizer)
 
@@ -4364,7 +4364,7 @@ def train(args: argparse.Namespace):
         )
 
         # ── Plot update ─────────────────────────────────────────────────
-        plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr)
+        plotter.update_epoch(avg_train_loss, avg_val_loss, current_lr, model=model)
 
         # ── Checkpointing ───────────────────────────────────────────────
         _do_checkpointing(
