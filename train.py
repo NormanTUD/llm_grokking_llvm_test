@@ -293,10 +293,10 @@ class RotaryPositionEmbedding(nn.Module):
 
     def _build_cache(self, seq_len: int):
         """Build cos/sin cache for positions [0, seq_len)."""
-        t = torch.arange(seq_len, dtype=self.inv_freq.dtype)
+        t = torch.arange(seq_len, dtype=self.inv_freq.dtype, device=self.inv_freq.device)
         # Outer product: (seq_len,) x (dim//2,) -> (seq_len, dim//2)
         freqs = torch.outer(t, self.inv_freq)
-        # Duplicate to cover full dim: (seq_len, dim)
+        # Duplicate to cover full dim: (seq_len, dim//2 * 2)
         emb = torch.cat((freqs, freqs), dim=-1)
         # Register as buffers (not parameters, but move with .to(device))
         self.register_buffer("cos_cached", emb.cos(), persistent=False)
@@ -331,15 +331,15 @@ def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) 
         x_rot = x[..., :rope_dim]
         x_pass = x[..., rope_dim:]
 
-        x1 = x_rot[..., : rope_dim // 2]
-        x2 = x_rot[..., rope_dim // 2 :]
+        x1 = x_rot[..., :rope_dim // 2]
+        x2 = x_rot[..., rope_dim // 2:]
         x_rotated = torch.cat((-x2, x1), dim=-1)
 
         x_rot = (x_rot * cos) + (x_rotated * sin)
         return torch.cat((x_rot, x_pass), dim=-1)
     else:
-        x1 = x[..., : head_dim // 2]
-        x2 = x[..., head_dim // 2 :]
+        x1 = x[..., :head_dim // 2]
+        x2 = x[..., head_dim // 2:]
         x_rotated = torch.cat((-x2, x1), dim=-1)
         return (x * cos) + (x_rotated * sin)
 
@@ -3479,6 +3479,22 @@ def _resolve_model_config(args, tokenizer: BPETokenizer) -> Tuple[dict, LLVMGPTC
         )
         cfg = find_model_config(tokenizer.vocab_size, args.target_params, args.max_seq_len, ffn=args.ffn)
 
+    # ── Ensure head_dim is even (required by RoPE) ──────────────────────
+    d_model = cfg["d_model"]
+    n_heads = cfg["n_heads"]
+    if d_model % n_heads != 0:
+        d_model = n_heads * math.ceil(d_model / n_heads)
+    head_dim = d_model // n_heads
+    if head_dim % 2 != 0:
+        # Bump d_model so head_dim becomes even
+        new_head_dim = head_dim + 1
+        d_model = new_head_dim * n_heads
+        console.print(
+            f"[bold yellow]⚠ head_dim ({head_dim}) was odd (RoPE requires even). "
+            f"Auto-correcting d_model to {d_model} (head_dim={new_head_dim}).[/]"
+        )
+    cfg["d_model"] = d_model
+
     ffn_val = args.ffn if args.ffn > 0 else 4 * cfg["d_model"]
 
     model_config = LLVMGPTConfig(
@@ -3501,21 +3517,30 @@ def _print_model_summary(model: TinyClassifierGPT):
     """Print a Rich panel with the torchinfo model summary."""
     from torchinfo import summary as torchinfo_summary
 
-    model_stats = torchinfo_summary(
-        model,
-        input_size=(1, args.max_seq_len),
-        dtypes=[torch.long],
-        verbose=0,
-    )
-    summary_panel = Panel(
-        Text(str(model_stats), style="white"),
-        title="[bold cyan]📐 Model Summary (torchinfo)",
-        border_style="cyan",
-        padding=(1, 2),
-        expand=False,
-    )
-    console.print(summary_panel)
+    try:
+        # Determine the device the model is actually on
+        model_device = next(model.parameters()).device
 
+        model_stats = torchinfo_summary(
+            model,
+            input_size=(1, model.config.max_seq_len),
+            dtypes=[torch.long],
+            device=model_device,
+            verbose=0,
+        )
+        summary_panel = Panel(
+            Text(str(model_stats), style="white"),
+            title="[bold cyan]📐 Model Summary (torchinfo)",
+            border_style="cyan",
+            padding=(1, 2),
+            expand=False,
+        )
+        console.print(summary_panel)
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠ Could not generate model summary: {e}[/]\n"
+            f"[dim]  (Training will proceed normally)[/]"
+        )
 
 def _load_checkpoint_for_continue(args, model: TinyClassifierGPT, device: str) -> Optional[dict]:
     """
