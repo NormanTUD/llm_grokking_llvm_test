@@ -1756,6 +1756,20 @@ class TinyClassifierGPT(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
+
+        if config.d_model % config.n_heads != 0:
+            rest = config.d_model % config.n_heads
+            old_d_model = config.d_model
+            config.d_model = config.d_model + (config.n_heads - rest)
+            # Also update config.hidden_size and config.ffn if needed
+            config.hidden_size = config.d_model
+            console.print(
+                f"[bold yellow]⚠ d_model ({old_d_model}) is not divisible by n_heads ({config.n_heads}). "
+                f"Auto-correcting d_model to {config.d_model} (nearest multiple of {config.n_heads}). "
+                f"To silence this warning, pass --d-model={config.d_model} explicitly.[/]"
+            )
+
+
         self.max_seq_len = config.max_seq_len
 
         # Token embedding only — NO positional embedding (RoPE is in attention)
