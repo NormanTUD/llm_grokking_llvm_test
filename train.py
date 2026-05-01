@@ -1673,7 +1673,8 @@ class CausalSelfAttention(nn.Module):
     def __init__(self, d_model: int, n_heads: int, max_seq_len: int, dropout: float = 0.1, ffn: int = 8):
         super().__init__()
         if not d_model % n_heads == 0:
-            example_d_model = n_heads * ((d_model // n_heads)) + 1
+            rest = d_model % n_heads
+            example_d_model = d_model + (n_heads - rest) if rest != 0 else d_model
 
             console.print(
                 f"[red]" +
