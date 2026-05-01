@@ -312,31 +312,36 @@ class RotaryPositionEmbedding(nn.Module):
             self.max_seq_len = seq_len
         return self.cos_cached[:seq_len], self.sin_cached[:seq_len]
 
-
 def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """
     Apply RoPE rotation to a tensor x of shape (B, n_heads, T, head_dim).
 
-    cos, sin: (T, head_dim) — precomputed from RotaryPositionEmbedding.
-
-    The rotation formula for each pair (x_2i, x_{2i+1}):
-        x_2i'    = x_2i * cos - x_{2i+1} * sin
-        x_{2i+1}' = x_{2i+1} * cos + x_2i * sin
-
-    Implemented efficiently by splitting into two halves and rotating.
+    cos, sin: (T, rope_dim) — precomputed from RotaryPositionEmbedding.
+    If head_dim is odd, only the first (head_dim // 2 * 2) dimensions are rotated;
+    the last dimension is passed through unchanged.
     """
-    # x: (B, n_heads, T, head_dim)
-    # cos, sin: (T, head_dim) -> reshape to (1, 1, T, head_dim) for broadcasting
-    cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim)
-    sin = sin.unsqueeze(0).unsqueeze(0)  # (1, 1, T, head_dim)
+    cos = cos.unsqueeze(0).unsqueeze(0)  # (1, 1, T, rope_dim)
+    sin = sin.unsqueeze(0).unsqueeze(0)  # (1, 1, T, rope_dim)
 
-    # Rotate: split x into two halves along last dim, swap and negate
-    x1 = x[..., : x.shape[-1] // 2]  # first half
-    x2 = x[..., x.shape[-1] // 2 :]  # second half
-    # "Rotated" version: [-x2, x1]
-    x_rotated = torch.cat((-x2, x1), dim=-1)
+    head_dim = x.shape[-1]
+    rope_dim = cos.shape[-1]
 
-    return (x * cos) + (x_rotated * sin)
+    if rope_dim < head_dim:
+        # Only rotate the first rope_dim dimensions, pass through the rest
+        x_rot = x[..., :rope_dim]
+        x_pass = x[..., rope_dim:]
+
+        x1 = x_rot[..., : rope_dim // 2]
+        x2 = x_rot[..., rope_dim // 2 :]
+        x_rotated = torch.cat((-x2, x1), dim=-1)
+
+        x_rot = (x_rot * cos) + (x_rotated * sin)
+        return torch.cat((x_rot, x_pass), dim=-1)
+    else:
+        x1 = x[..., : head_dim // 2]
+        x2 = x[..., head_dim // 2 :]
+        x_rotated = torch.cat((-x2, x1), dim=-1)
+        return (x * cos) + (x_rotated * sin)
 
 class AdaptiveLocalMinimaExplorer(torch.optim.lr_scheduler._LRScheduler):
     """
