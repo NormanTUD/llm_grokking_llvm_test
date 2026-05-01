@@ -52,7 +52,7 @@ def compute_layer_jacobi_fields(model, input_ids, device, max_tokens=1024, token
     fields = []
     for ell in range(len(hidden_states) - 1):
         h_in, h_out, token_strings_layer = _prepare_layer_pair(
-            hidden_states, ell, max_tokens, token_strings
+            hidden_states, ell, max_tokens, token_strings, tokenizer
         )
         delta = h_out - h_in
 
@@ -237,29 +237,24 @@ def _compute_projection_basis(hidden_states, D, is_2d):
         'mode': 'pca',
     }
 
-def _prepare_layer_pair(hidden_states, ell, max_tokens, token_strings):
-    """
-    Extract and flatten the input/output hidden state pair for a layer,
-    applying token subsampling if needed.
-    
-    Returns: (h_in, h_out, token_strings_layer)
-    """
+# In liveplotter.py (Beispiel für die Filterung)
+def _prepare_layer_pair(hidden_states, ell, max_tokens, token_strings, tokenizer):
     h_in = hidden_states[ell].detach().float().reshape(-1, hidden_states[ell].shape[-1])
     h_out = hidden_states[ell + 1].detach().float().reshape(-1, hidden_states[ell + 1].shape[-1])
-
-    T = h_in.shape[0]
-    if T > max_tokens:
-        idx = torch.linspace(0, T - 1, max_tokens).long()
-        h_in = h_in[idx]
-        h_out = h_out[idx]
-        token_strings_layer = (
-            [token_strings[i] for i in idx.tolist()] if token_strings else None
-        )
-    else:
-        token_strings_layer = token_strings
-
-    return h_in, h_out, token_strings_layer
-
+    
+    # Spezial-IDs identifizieren
+    special_ids = {tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id}
+    
+    # Maske erstellen: Behalte nur echte Daten
+    # (Annahme: input_ids sind irgendwo zugänglich oder token_strings korrespondieren 1:1)
+    mask = [s not in ["<bos>", "<eos>", "<pad>", "<0>", "<1>", "<2>"] for s in token_strings]
+    mask_idx = torch.tensor([i for i, m in enumerate(mask) if m])
+    
+    h_in = h_in[mask_idx]
+    h_out = h_out[mask_idx]
+    filtered_token_strings = [token_strings[i] for i in mask_idx.tolist()]
+    
+    return h_in, h_out, filtered_token_strings
 
 def _project_to_2d(h_in, h_out, delta, projection, is_2d):
     """Project hidden states to 2D using PCA basis or direct slicing."""
@@ -1676,209 +1671,6 @@ class LivePlotter:
         cum_ax.tick_params(labelsize=0, length=0)
         for spine in cum_ax.spines.values():
             spine.set_color('#1a3a2a')
-            spine.set_linewidth(0.5)
-
-    def _draw_single_jacobi_panel(self, sub_ax, f, ell, jacobi_data, hsv_to_rgb):
-        """Draw a single layer's Jacobi field panel (the existing top-row visualization)."""
-        h_in_2d = f['h_in_2d']
-        grid_x = f['grid_x']
-        grid_y = f['grid_y']
-        grid_volume = f['grid_volume']
-        grid_disp_x = f['grid_disp_x']
-        grid_disp_y = f['grid_disp_y']
-        grid_max_stretch_val = f['grid_max_stretch_val']
-        grid_min_stretch_val = f['grid_min_stretch_val']
-        grid_max_stretch_dir = f['grid_max_stretch_dir']
-        x_lim = f['x_lim']
-        y_lim = f['y_lim']
-        per_token_volume = f['per_token_volume']
-        per_token_shear = f['per_token_shear_mag']
-
-        grid_n = grid_x.shape[0]
-
-        # ── 1. COLORFUL BACKGROUND: HSV encoding of deformation ───
-        disp_angle = np.arctan2(grid_disp_y, grid_disp_x)
-        disp_mag = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
-
-        mag_norm = np.arcsinh(disp_mag * 2.0)
-        mag_max = max(mag_norm.max(), 1e-10)
-        mag_norm = mag_norm / mag_max
-
-        H = (disp_angle + np.pi) / (2 * np.pi)
-        S_hsv = np.ones_like(H) * 0.85
-        V_hsv = 0.15 + 0.85 * mag_norm
-
-        hsv_img = np.stack([H, S_hsv, V_hsv], axis=-1)
-        rgb_img = hsv_to_rgb(hsv_img)
-
-        log_vol = np.log(np.clip(grid_volume, 1e-6, None))
-        lv_absmax = max(np.abs(log_vol).max(), 1e-6)
-        lv_norm = np.clip(log_vol / lv_absmax, -1, 1)
-
-        vol_blend = 0.2
-        rgb_img[:, :, 0] = np.clip(
-            rgb_img[:, :, 0] + vol_blend * np.clip(lv_norm, 0, 1), 0, 1
-        )
-        rgb_img[:, :, 2] = np.clip(
-            rgb_img[:, :, 2] + vol_blend * np.clip(-lv_norm, 0, 1), 0, 1
-        )
-
-        sub_ax.imshow(
-            rgb_img,
-            extent=[x_lim[0], x_lim[1], y_lim[0], y_lim[1]],
-            origin='lower', aspect='auto', interpolation='bilinear', alpha=0.9,
-        )
-
-        # ── 2. STREAMLINES ────────────────────────────────────────
-        gx_1d = np.linspace(x_lim[0], x_lim[1], grid_n)
-        gy_1d = np.linspace(y_lim[0], y_lim[1], grid_n)
-
-        try:
-            speed = np.sqrt(grid_disp_x**2 + grid_disp_y**2)
-            lw = 0.3 + 1.2 * speed / max(speed.max(), 1e-10)
-            sub_ax.streamplot(
-                gx_1d, gy_1d, grid_disp_x, grid_disp_y,
-                color='white', linewidth=lw, density=0.7,
-                arrowsize=0.6, arrowstyle='->', zorder=2, minlength=0.2,
-            )
-        except Exception:
-            pass
-
-        # ── 3. STRETCH WHISKERS ───────────────────────────────────
-        whisker_step = max(1, grid_n // 8)
-        x_span = x_lim[1] - x_lim[0]
-        y_span = y_lim[1] - y_lim[0]
-        whisker_len = min(x_span, y_span) / (grid_n / whisker_step) * 0.3
-
-        for gi in range(whisker_step // 2, grid_n, whisker_step):
-            for gj in range(whisker_step // 2, grid_n, whisker_step):
-                cx = grid_x[gi, gj]
-                cy = grid_y[gi, gj]
-                d = grid_max_stretch_dir[gi, gj]
-                s_max = grid_max_stretch_val[gi, gj]
-                s_min = grid_min_stretch_val[gi, gj]
-
-                ratio = s_max / max(s_min, 1e-10)
-                if ratio < 1.05:
-                    continue
-
-                length = whisker_len * min(ratio - 1.0, 3.0) / 3.0
-
-                if ratio < 1.5:
-                    wcolor, walpha = '#ffff44', 0.4
-                elif ratio < 3.0:
-                    wcolor, walpha = '#ff8800', 0.6
-                else:
-                    wcolor, walpha = '#ff2222', 0.8
-
-                x0 = cx - length * d[0]
-                y0 = cy - length * d[1]
-                x1 = cx + length * d[0]
-                y1 = cy + length * d[1]
-
-                sub_ax.plot(
-                    [x0, x1], [y0, y1],
-                    color=wcolor, linewidth=1.0, alpha=walpha,
-                    zorder=4, solid_capstyle='round',
-                )
-
-        # ── 4. TOKEN MARKERS ─────────────────────────────────────
-        shear_max = max(per_token_shear.max(), 1e-6)
-        shear_norm = per_token_shear / shear_max
-
-        sub_ax.scatter(
-            h_in_2d[:, 0], h_in_2d[:, 1],
-            s=10, c=shear_norm, cmap='magma',
-            vmin=0, vmax=1, edgecolors='none', zorder=6, alpha=0.9,
-        )
-
-        # ── 4b. SPARSE TOKEN LABELS ──────────────────────────────
-        token_strings_f = f.get('token_strings', None)
-        n_tokens = h_in_2d.shape[0]
-
-        fig_dpi = self.fig.dpi
-        fig_w_in, fig_h_in = self.fig.get_size_inches()
-        # Estimate panel pixel size from figure-fraction coords
-        # (fw and fh are in figure fraction; we don't have them here,
-        #  so use a reasonable estimate based on sub_ax position)
-        pos = sub_ax.get_position()
-        panel_w_px = pos.width * fig_w_in * fig_dpi
-        panel_h_px = pos.height * fig_h_in * fig_dpi
-        panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
-
-        base_font = panel_diag_px * 0.020
-        token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
-        label_fontsize = max(7.0, min(18.0, base_font * token_scale))
-
-        # ── How many labels ───────────────────────────────────
-        n_labels = self._get_n_labels(n_tokens)
-        if panel_diag_px < 200:
-            n_labels = min(n_labels, 6)
-
-        # ── Seed: shifts each render, but stable within a layer
-        draw_key = jacobi_data.get('draw_key', 0)
-        rng = np.random.RandomState(
-            seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
-        )
-        label_idx = rng.choice(
-            n_tokens, size=min(n_labels, n_tokens), replace=False
-        )
-
-        offset_px = max(3.0, label_fontsize * 0.7)
-
-        for li in label_idx:
-            tx, ty = h_in_2d[li, 0], h_in_2d[li, 1]
-
-            # ── Human-readable label ──────────────────────────
-            if token_strings_f is not None and li < len(token_strings_f):
-                label_text = token_strings_f[li]
-                if len(label_text) > 14:
-                    label_text = label_text[:13] + "…"
-            else:
-                label_text = f"t{li}"
-
-            # Whitespace-only → visible placeholder
-            if not label_text.strip():
-                label_text = "␣"
-
-            sub_ax.annotate(
-                label_text,
-                (tx, ty),
-                fontsize=label_fontsize,
-                color='#f0f0f0',
-                alpha=0.92,
-                fontweight='bold',
-                fontfamily='monospace',
-                xytext=(offset_px, offset_px),
-                textcoords='offset points',
-                zorder=8,
-                bbox=dict(
-                    boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
-                    facecolor='#0d1117',
-                    edgecolor='#3a5a7a',
-                    alpha=0.75,
-                    linewidth=0.4,
-                ),
-            )
-
-        # ═══════════════════════════════════════════════════════
-        # 5. LAYER LABEL
-        # ═══════════════════════════════════════════════════════
-        layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
-        mean_vol = per_token_volume.mean()
-        aniso_val = f['anisotropy']
-
-        sub_ax.set_title(
-            f"{layer_label}  det={mean_vol:.2f}  σ₁/σₙ={aniso_val:.1f}",
-            fontsize=7, fontweight="bold", color="#aaccee", pad=2,
-        )
-
-        sub_ax.set_xlim(*x_lim)
-        sub_ax.set_ylim(*y_lim)
-        sub_ax.set_aspect('auto')
-        sub_ax.tick_params(labelsize=0, length=0)
-        for spine in sub_ax.spines.values():
-            spine.set_color('#2a3a4a')
             spine.set_linewidth(0.5)
 
     def _draw_cumulative_panel(self, cum_ax, ref_h_in_2d, cumulative_delta, f, ell, step):
@@ -3944,258 +3736,201 @@ class LivePlotter:
         return min(max(n_tokens // every_nth, min_nr), max_nr)
 
     def _draw_single_jacobi_panel_2d(self, sub_ax, f, ell, jacobi_data):
-        """
-        Draw a single layer's Jacobi field panel for the 2D special case.
-        
-        Instead of PCA + HSV deformation encoding, this draws:
-          1. The original (input) grid in gray
-          2. The warped (output) grid colored by local volume change
-          3. Token dots at input and output positions with displacement lines
-          4. Token labels
-        """
-        h_in_2d = f['h_in_2d']
-        h_out_2d = f['h_out_2d']
-        delta_2d = f['per_token_delta_2d']
-        per_token_volume = f['per_token_volume']
-        grid_x_in = f['grid_x_in']
-        grid_y_in = f['grid_y_in']
-        grid_x_out = f['grid_x_out']
-        grid_y_out = f['grid_y_out']
-        grid_n = f['grid_n']
-        x_lim = f['x_lim']
-        y_lim = f['y_lim']
+            """Draw a single layer's Jacobi field panel for the 2D special case (Color-coded)."""
+            h_in_2d = f['h_in_2d']
+            h_out_2d = f['h_out_2d']
+            delta_2d = f['per_token_delta_2d']
+            per_token_volume = f['per_token_volume']
+            grid_x_in = f['grid_x_in']
+            grid_y_in = f['grid_y_in']
+            grid_x_out = f['grid_x_out']
+            grid_y_out = f['grid_y_out']
+            grid_n = f['grid_n']
+            x_lim = f['x_lim']
+            y_lim = f['y_lim']
 
-        # ── Compute axis limits that encompass both input and output grids ──
-        all_x = np.concatenate([grid_x_in.ravel(), grid_x_out.ravel(),
-                                h_in_2d[:, 0], h_out_2d[:, 0]])
-        all_y = np.concatenate([grid_y_in.ravel(), grid_y_out.ravel(),
-                                h_in_2d[:, 1], h_out_2d[:, 1]])
-        pad_frac = 0.05
-        x_span = max(np.ptp(all_x), 0.1)
-        y_span = max(np.ptp(all_y), 0.1)
-        view_x_min = all_x.min() - pad_frac * x_span
-        view_x_max = all_x.max() + pad_frac * x_span
-        view_y_min = all_y.min() - pad_frac * y_span
-        view_y_max = all_y.max() + pad_frac * y_span
+            all_x = np.concatenate([grid_x_in.ravel(), grid_x_out.ravel(),
+                                    h_in_2d[:, 0], h_out_2d[:, 0]])
+            all_y = np.concatenate([grid_y_in.ravel(), grid_y_out.ravel(),
+                                    h_in_2d[:, 1], h_out_2d[:, 1]])
+            pad_frac = 0.05
+            x_span = max(np.ptp(all_x), 0.1)
+            y_span = max(np.ptp(all_y), 0.1)
+            view_x_min = all_x.min() - pad_frac * x_span
+            view_x_max = all_x.max() + pad_frac * x_span
+            view_y_min = all_y.min() - pad_frac * y_span
+            view_y_max = all_y.max() + pad_frac * y_span
 
-        # ════════════════════════════════════════════════════════════════
-        # 1. ORIGINAL (INPUT) GRID — gray, thin lines
-        # ════════════════════════════════════════════════════════════════
-        for i in range(grid_n):
-            # Horizontal lines (constant row)
-            sub_ax.plot(grid_x_in[i, :], grid_y_in[i, :],
-                        color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
-            # Vertical lines (constant column)
-            sub_ax.plot(grid_x_in[:, i], grid_y_in[:, i],
-                        color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
+            # ════════════════════════════════════════════════════════════════
+            # 1. ORIGINAL (INPUT) GRID
+            # ════════════════════════════════════════════════════════════════
+            for i in range(grid_n):
+                sub_ax.plot(grid_x_in[i, :], grid_y_in[i, :],
+                            color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
+                sub_ax.plot(grid_x_in[:, i], grid_y_in[:, i],
+                            color='#555555', linewidth=0.4, alpha=0.5, zorder=1)
 
-        # ════════════════════════════════════════════════════════════════
-        # 2. WARPED (OUTPUT) GRID — colored by local volume change
-        # ════════════════════════════════════════════════════════════════
-        # Compute local volume change at each grid cell from the warped grid
-        # using finite differences of the warped coordinates
-        grid_local_vol = np.ones((grid_n, grid_n))
-        for i in range(grid_n - 1):
-            for j in range(grid_n - 1):
-                # Input cell vectors
-                dx_in = grid_x_in[i, j+1] - grid_x_in[i, j]
-                dy_in = grid_y_in[i, j+1] - grid_y_in[i, j]
-                dx_in2 = grid_x_in[i+1, j] - grid_x_in[i, j]
-                dy_in2 = grid_y_in[i+1, j] - grid_y_in[i, j]
-                area_in = abs(dx_in * dy_in2 - dy_in * dx_in2)
+            # ════════════════════════════════════════════════════════════════
+            # 2. WARPED (OUTPUT) GRID
+            # ════════════════════════════════════════════════════════════════
+            grid_local_vol = np.ones((grid_n, grid_n))
+            for i in range(grid_n - 1):
+                for j in range(grid_n - 1):
+                    dx_in = grid_x_in[i, j+1] - grid_x_in[i, j]
+                    dy_in = grid_y_in[i, j+1] - grid_y_in[i, j]
+                    dx_in2 = grid_x_in[i+1, j] - grid_x_in[i, j]
+                    dy_in2 = grid_y_in[i+1, j] - grid_y_in[i, j]
+                    area_in = abs(dx_in * dy_in2 - dy_in * dx_in2)
 
-                # Output cell vectors
-                dx_out = grid_x_out[i, j+1] - grid_x_out[i, j]
-                dy_out = grid_y_out[i, j+1] - grid_y_out[i, j]
-                dx_out2 = grid_x_out[i+1, j] - grid_x_out[i, j]
-                dy_out2 = grid_y_out[i+1, j] - grid_y_out[i, j]
-                area_out = abs(dx_out * dy_out2 - dy_out * dx_out2)
+                    dx_out = grid_x_out[i, j+1] - grid_x_out[i, j]
+                    dy_out = grid_y_out[i, j+1] - grid_y_out[i, j]
+                    dx_out2 = grid_x_out[i+1, j] - grid_x_out[i, j]
+                    dy_out2 = grid_y_out[i+1, j] - grid_y_out[i, j]
+                    area_out = abs(dx_out * dy_out2 - dy_out * dx_out2)
 
-                if area_in > 1e-12:
-                    grid_local_vol[i, j] = area_out / area_in
+                    if area_in > 1e-12:
+                        grid_local_vol[i, j] = area_out / area_in
+                    else:
+                        grid_local_vol[i, j] = 1.0
+
+            log_vol = np.log(np.clip(grid_local_vol, 1e-6, None))
+            lv_absmax = max(np.abs(log_vol).max(), 1e-6)
+
+            def _vol_to_color(lv):
+                t = np.clip(lv / lv_absmax, -1, 1)
+                if t > 0.05:
+                    r = 0.3 + 0.7 * t
+                    g = 0.25 * (1 - t)
+                    b = 0.2 * (1 - t)
+                elif t < -0.05:
+                    at = abs(t)
+                    r = 0.2 * (1 - at)
+                    g = 0.25 * (1 - at)
+                    b = 0.3 + 0.7 * at
                 else:
-                    grid_local_vol[i, j] = 1.0
+                    r, g, b = 0.2, 0.55, 0.45
+                return (r, g, b)
 
-        # Map volume change to color:
-        #   expansion (vol > 1) → red
-        #   contraction (vol < 1) → blue
-        #   ~preserving (vol ≈ 1) → green/cyan
-        log_vol = np.log(np.clip(grid_local_vol, 1e-6, None))
-        lv_absmax = max(np.abs(log_vol).max(), 1e-6)
-
-        def _vol_to_color(lv):
-            """Map log-volume-change to RGB color."""
-            t = np.clip(lv / lv_absmax, -1, 1)
-            if t > 0.05:
-                # Expansion → red tint
-                r = 0.3 + 0.7 * t
-                g = 0.25 * (1 - t)
-                b = 0.2 * (1 - t)
-            elif t < -0.05:
-                # Contraction → blue tint
-                at = abs(t)
-                r = 0.2 * (1 - at)
-                g = 0.25 * (1 - at)
-                b = 0.3 + 0.7 * at
-            else:
-                # ~Volume preserving → green/cyan
-                r, g, b = 0.2, 0.55, 0.45
-            return (r, g, b)
-
-        for i in range(grid_n):
-            for j in range(grid_n - 1):
-                lv = log_vol[min(i, grid_n - 2), j]
-                color = _vol_to_color(lv)
-                # Horizontal warped lines (constant row)
-                sub_ax.plot(
-                    [grid_x_out[i, j], grid_x_out[i, j+1]],
-                    [grid_y_out[i, j], grid_y_out[i, j+1]],
-                    color=color, linewidth=0.8, alpha=0.85, zorder=2,
-                )
-            for j in range(grid_n):
-                if i < grid_n - 1:
-                    lv = log_vol[i, min(j, grid_n - 2)]
+            for i in range(grid_n):
+                for j in range(grid_n - 1):
+                    lv = log_vol[min(i, grid_n - 2), j]
                     color = _vol_to_color(lv)
-                    # Vertical warped lines (constant column)
                     sub_ax.plot(
-                        [grid_x_out[i, j], grid_x_out[i+1, j]],
-                        [grid_y_out[i, j], grid_y_out[i+1, j]],
+                        [grid_x_out[i, j], grid_x_out[i, j+1]],
+                        [grid_y_out[i, j], grid_y_out[i, j+1]],
                         color=color, linewidth=0.8, alpha=0.85, zorder=2,
                     )
+                for j in range(grid_n):
+                    if i < grid_n - 1:
+                        lv = log_vol[i, min(j, grid_n - 2)]
+                        color = _vol_to_color(lv)
+                        sub_ax.plot(
+                            [grid_x_out[i, j], grid_x_out[i+1, j]],
+                            [grid_y_out[i, j], grid_y_out[i+1, j]],
+                            color=color, linewidth=0.8, alpha=0.85, zorder=2,
+                        )
 
-        # ════════════════════════════════════════════════════════════════
-        # 3. TOKEN DISPLACEMENT LINES + DOTS
-        # ════════════════════════════════════════════════════════════════
-        T = h_in_2d.shape[0]
+            # ════════════════════════════════════════════════════════════════
+            # 3. TOKEN DISPLACEMENT LINES + DOTS (Gefiltert & Farbcodiert)
+            # ════════════════════════════════════════════════════════════════
+            T = h_in_2d.shape[0]
+            token_strings_f = f.get('token_strings', [])
+            
+            special_toks = {"<0>", "<1>", "<2>", "<bos>", "<eos>", "<pad>", ""}
+            mask = np.array([s.lower() not in special_toks for s in token_strings_f], dtype=bool)
 
-        # Displacement lines (input → output)
-        for t in range(T):
-            mag = np.sqrt(delta_2d[t, 0]**2 + delta_2d[t, 1]**2)
-            if mag < 1e-8:
-                continue
-            sub_ax.plot(
-                [h_in_2d[t, 0], h_out_2d[t, 0]],
-                [h_in_2d[t, 1], h_out_2d[t, 1]],
-                color='#ffffff', linewidth=0.6, alpha=0.4, zorder=3,
-            )
+            if mask.any() and len(token_strings_f) > 0:
+                plot_tokens = [t for i, t in enumerate(token_strings_f) if mask[i]]
+                
+                unique_tokens = sorted(list(set(plot_tokens)))
+                cmap = plt.get_cmap('tab10')
+                token_to_color = {tok: cmap(i % 10) for i, tok in enumerate(unique_tokens)}
+                point_colors = [token_to_color[tok] for tok in plot_tokens]
 
-        # Input positions — hollow circles
-        sub_ax.scatter(
-            h_in_2d[:, 0], h_in_2d[:, 1],
-            s=18, facecolors='none', edgecolors='#aaaaaa',
-            linewidths=0.7, zorder=5, alpha=0.9,
-        )
+                # Linien für die Verschiebung zeichnen (nur für nicht-Spezialtokens)
+                for t in range(T):
+                    if not mask[t]: continue
+                    mag = np.sqrt(delta_2d[t, 0]**2 + delta_2d[t, 1]**2)
+                    if mag < 1e-8:
+                        continue
+                    sub_ax.plot(
+                        [h_in_2d[t, 0], h_out_2d[t, 0]],
+                        [h_in_2d[t, 1], h_out_2d[t, 1]],
+                        color='#ffffff', linewidth=0.6, alpha=0.4, zorder=3,
+                    )
 
-        # Output positions — filled circles
-        sub_ax.scatter(
-            h_out_2d[:, 0], h_out_2d[:, 1],
-            s=14, color='#ffcc44', edgecolors='none',
-            zorder=6, alpha=0.9,
-        )
+                # Input positions — hohle farbige Kreise
+                sub_ax.scatter(
+                    h_in_2d[mask, 0], h_in_2d[mask, 1],
+                    s=18, facecolors='none', edgecolors=point_colors,
+                    linewidths=1.2, zorder=5, alpha=0.9,
+                )
 
-        # Expanding / contracting rings on OUTPUT positions
-        vol_hi = np.percentile(per_token_volume, 80)
-        vol_lo = np.percentile(per_token_volume, 20)
-        expanding = per_token_volume > vol_hi
-        contracting = per_token_volume < vol_lo
+                # Output positions — gefüllte farbige Kreise
+                sub_ax.scatter(
+                    h_out_2d[mask, 0], h_out_2d[mask, 1],
+                    s=20, c=point_colors, edgecolors='none',
+                    zorder=6, alpha=0.9,
+                )
 
-        if expanding.any():
-            sub_ax.scatter(
-                h_out_2d[expanding, 0], h_out_2d[expanding, 1],
-                s=32, facecolors='none', edgecolors='#ff4444',
-                linewidths=0.9, zorder=7, alpha=0.85,
-            )
-        if contracting.any():
-            sub_ax.scatter(
-                h_out_2d[contracting, 0], h_out_2d[contracting, 1],
-                s=32, facecolors='none', edgecolors='#4488ff',
-                linewidths=0.9, zorder=7, alpha=0.85,
-            )
+                # Expanding / contracting rings
+                vol_hi = np.percentile(per_token_volume, 80)
+                vol_lo = np.percentile(per_token_volume, 20)
+                expanding = (per_token_volume > vol_hi) & mask
+                contracting = (per_token_volume < vol_lo) & mask
 
-        # ════════════════════════════════════════════════════════════════
-        # 4. SPARSE TOKEN LABELS
-        # ════════════════════════════════════════════════════════════════
-        token_strings_f = f.get('token_strings', None)
-        n_tokens = T
+                if expanding.any():
+                    sub_ax.scatter(
+                        h_out_2d[expanding, 0], h_out_2d[expanding, 1],
+                        s=38, facecolors='none', edgecolors='#ff4444',
+                        linewidths=0.9, zorder=7, alpha=0.85,
+                    )
+                if contracting.any():
+                    sub_ax.scatter(
+                        h_out_2d[contracting, 0], h_out_2d[contracting, 1],
+                        s=38, facecolors='none', edgecolors='#4488ff',
+                        linewidths=0.9, zorder=7, alpha=0.85,
+                    )
 
-        fig_dpi = self.fig.dpi
-        fig_w_in, fig_h_in = self.fig.get_size_inches()
-        pos = sub_ax.get_position()
-        panel_w_px = pos.width * fig_w_in * fig_dpi
-        panel_h_px = pos.height * fig_h_in * fig_dpi
-        panel_diag_px = math.sqrt(panel_w_px**2 + panel_h_px**2)
-
-        base_font = panel_diag_px * 0.020
-        token_scale = max(0.6, min(1.5, 25.0 / max(n_tokens, 1)))
-        label_fontsize = max(7.0, min(18.0, base_font * token_scale))
-
-        n_labels = self._get_n_labels(n_tokens)
-        if panel_diag_px < 200:
-            n_labels = min(n_labels, 6)
-
-        draw_key = jacobi_data.get('draw_key', 0)
-        rng = np.random.RandomState(
-            seed=(draw_key * 7 + ell * 31) & 0xFFFFFFFF
-        )
-        label_idx = rng.choice(
-            n_tokens, size=min(n_labels, n_tokens), replace=False
-        )
-
-        offset_px = max(3.0, label_fontsize * 0.7)
-
-        for li in label_idx:
-            # Label at the OUTPUT position (where the token ended up)
-            tx, ty = h_out_2d[li, 0], h_out_2d[li, 1]
-
-            if token_strings_f is not None and li < len(token_strings_f):
-                label_text = token_strings_f[li]
-                if len(label_text) > 14:
-                    label_text = label_text[:13] + "\u2026"
-            else:
-                label_text = f"t{li}"
-
-            if not label_text.strip():
-                label_text = "\u2423"
-
-            sub_ax.annotate(
-                label_text,
-                (tx, ty),
-                fontsize=label_fontsize,
-                color='#f0f0f0',
-                alpha=0.92,
-                fontweight='bold',
-                fontfamily='monospace',
-                xytext=(offset_px, offset_px),
-                textcoords='offset points',
-                zorder=8,
-                bbox=dict(
-                    boxstyle=f'round,pad={max(0.12, label_fontsize * 0.018):.2f}',
+                # Legende
+                from matplotlib.lines import Line2D
+                legend_elements = [
+                    Line2D([0], [0], marker='o', color='w', label=tok,
+                           markerfacecolor=token_to_color[tok], markersize=5)
+                    for tok in unique_tokens
+                ]
+                
+                leg = sub_ax.legend(
+                    handles=legend_elements,
+                    loc='upper right',
+                    fontsize=5,
+                    frameon=True,
                     facecolor='#0d1117',
                     edgecolor='#3a5a7a',
-                    alpha=0.75,
-                    linewidth=0.4,
-                ),
+                    ncol=2 if len(unique_tokens) > 5 else 1
+                )
+                leg.get_frame().set_alpha(0.8)
+                plt.setp(leg.get_texts(), color="#aaccee")
+
+            # ════════════════════════════════════════════════════════════════
+            # 5. LAYER LABEL / TITLE
+            # ════════════════════════════════════════════════════════════════
+            layer_label = "Emb→L1" if ell == 0 else f"L{ell}→{ell+1}"
+            mean_vol = per_token_volume.mean()
+            aniso_val = f['anisotropy']
+
+            sub_ax.set_title(
+                f"{layer_label}  det={mean_vol:.2f}  σ₁/σ₂={aniso_val:.1f}",
+                fontsize=7, fontweight="bold", color="#aaccee", pad=2,
             )
 
-        # ════════════════════════════════════════════════════════════════
-        # 5. LAYER LABEL / TITLE
-        # ════════════════════════════════════════════════════════════════
-        layer_label = "Emb\u2192L1" if ell == 0 else f"L{ell}\u2192{ell+1}"
-        mean_vol = per_token_volume.mean()
-        aniso_val = f['anisotropy']
-
-        sub_ax.set_title(
-            f"{layer_label}  det={mean_vol:.2f}  \u03c3\u2081/\u03c3\u2082={aniso_val:.1f}",
-            fontsize=7, fontweight="bold", color="#aaccee", pad=2,
-        )
-
-        sub_ax.set_xlim(view_x_min, view_x_max)
-        sub_ax.set_ylim(view_y_min, view_y_max)
-        sub_ax.set_aspect('auto')
-        sub_ax.tick_params(labelsize=0, length=0)
-        for spine in sub_ax.spines.values():
-            spine.set_color('#2a3a4a')
-            spine.set_linewidth(0.5)
+            sub_ax.set_xlim(view_x_min, view_x_max)
+            sub_ax.set_ylim(view_y_min, view_y_max)
+            sub_ax.set_aspect('auto')
+            sub_ax.tick_params(labelsize=0, length=0)
+            for spine in sub_ax.spines.values():
+                spine.set_color('#2a3a4a')
+                spine.set_linewidth(0.5)
 
     # ── Finalize ────────────────────────────────────────────────────────
     def finalize(self):
