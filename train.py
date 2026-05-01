@@ -1676,10 +1676,10 @@ class CausalSelfAttention(nn.Module):
            example_d_model = n_heads * ((d_model // n_heads) + 1
 
             console.print(
-                f"[red]"
-                f"Invalid configuration: d_model ({d_model}) must be divisible by n_heads ({n_heads}). "
-                f"Try setting d_model to a multiple of n_heads, such as {example_d_model)}."
-                f"Auto setting ."
+                f"[red]" +
+                f"Invalid configuration: d_model ({d_model}) must be divisible by n_heads ({n_heads}). " +
+                f"Try setting d_model to a multiple of n_heads, such as {example_d_model)}." +
+                f"Auto setting ." +
                 f"[/]"
             )
 
