@@ -1680,7 +1680,7 @@ class CausalSelfAttention(nn.Module):
                 f"[red]" +
                 f"Invalid configuration: d_model ({d_model}) must be divisible by n_heads ({n_heads}). " +
                 f"Try setting d_model to a multiple of n_heads, such as {example_d_model}." +
-                f"Auto setting ." +
+                f"Auto setting to {example_d_model}." +
                 f"[/]"
             )
 
