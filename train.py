@@ -27,8 +27,6 @@ import uuid
 # In der train() Funktion, direkt nach dem Setup des run_dir:
 run_uuid = str(uuid.uuid4())
 
-print(run_uuid)
-
 from datetime import datetime, timedelta  # Add this line back!
 
 try:
@@ -4722,6 +4720,8 @@ def generate_single_sample_turnstile(
 
 if __name__ == "__main__":
     args = parse_args()
+
+    print(f"UUID: {run_uuid}")
 
     console.print(
         Panel(
