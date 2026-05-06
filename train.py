@@ -22,6 +22,12 @@ original_print = print
 
 import os
 import sys
+import uuid
+
+# In der train() Funktion, direkt nach dem Setup des run_dir:
+run_uuid = str(uuid.uuid4())
+
+print(run_uuid)
 
 from datetime import datetime, timedelta  # Add this line back!
 
@@ -3305,6 +3311,16 @@ def _save_checkpoint(
     """Save a .pt checkpoint to path/filename using atomic write.
     Returns the full path."""
     os.makedirs(path, exist_ok=True)
+
+    run_dir_path = f"{run_dir}/uuid.txt"
+
+    if run_dir_path is not None:
+        uuid_file = os.path.join(run_dir_path, "run_uuid.txt")
+        with open(uuid_file, "w") as f:
+            f.write(run_uuid + "\n")
+        console.print(f"[bold cyan]🔑 Run UUID: {run_uuid}[/]")
+
+
     full_path = os.path.join(path, filename)
     tmp_path = full_path + ".tmp"
 
