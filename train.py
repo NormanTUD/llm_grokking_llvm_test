@@ -3805,7 +3805,7 @@ def _print_config_table(args, cfg: dict, tokenizer: BPETokenizer,
     config_table.add_row("Controls", "+ / =", "Add 10 epochs")
     config_table.add_row("", "-", "Remove 10 epochs")
     config_table.add_row("", "q", "Finish after current epoch")
-    config_table.add_row("Controls", "r", "Reopen closed plot window")
+    config_table.add_row("", "r", "Reopen closed plot window")
 
     if args.continue_run is not None:
         config_table.add_row("Resume", "continuing from", args.continue_run)
