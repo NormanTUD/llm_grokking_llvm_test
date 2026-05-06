@@ -953,6 +953,8 @@ def parse_args() -> argparse.Namespace:
                    help="Device")
     g.add_argument("--seed", type=int, default=42,
                    help="Random seed")
+    g.add_argument("--exit-after-install", action="store_true", default=False,
+                   help="Exits after installation")
     g.add_argument("--dont-plot", action="store_true", default=False,
                    help="Disable live matplotlib")
     g.add_argument("--no-plot", action="store_false", dest="plot",
@@ -4729,6 +4731,10 @@ def generate_single_sample_turnstile(
 
 if __name__ == "__main__":
     args = parse_args()
+
+    if args.exit_after_install:
+        print("Exiting after installation")
+        sys.exit(0)
 
     print(f"UUID: {run_uuid}")
 
