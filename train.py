@@ -3314,7 +3314,7 @@ def _save_checkpoint(
     run_dir_path = f"{run_dir}/uuid.txt"
 
     if run_dir_path is not None:
-        uuid_file = os.path.join(run_dir_path, "run_uuid.txt")
+        uuid_file = os.path.join(run_dir, "run_uuid.txt")
         with open(uuid_file, "w") as f:
             f.write(run_uuid + "\n")
         console.print(f"[bold cyan]🔑 Run UUID: {run_uuid}[/]")
