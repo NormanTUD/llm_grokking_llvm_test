@@ -149,7 +149,10 @@ import termios
 import select
 import matplotlib
 import matplotlib.pyplot as plt
-import tkinter
+try:
+    import tkinter
+except ModuleNotFoundError:
+    pass
 from ripser import ripser
 try:
     from gudhi.representations import Landscape as _Landscape
@@ -1129,7 +1132,10 @@ def _tk_report_callback_exception(self, exc_type, exc_value, exc_tb):
     import traceback
     traceback.print_exception(exc_type, exc_value, exc_tb)
 
-tkinter.Tk.report_callback_exception = _tk_report_callback_exception
+try:
+    tkinter.Tk.report_callback_exception = _tk_report_callback_exception
+except:
+    pass
 
 _interrupt_count = 0
 
