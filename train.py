@@ -23,6 +23,7 @@ original_print = print
 import os
 import sys
 import uuid
+from pathlib import Path
 
 # In der train() Funktion, direkt nach dem Setup des run_dir:
 run_uuid = str(uuid.uuid4())
@@ -3714,6 +3715,10 @@ def _setup_run_logger(args, cfg: dict, model: TinyClassifierGPT, tokenizer: BPET
     """Set up the run logger and run directory. Returns (logger, run_dir)."""
     global run_dir, _lp_module
 
+    current_dir = str(Path(__file__).resolve().parent)
+
+    absolute_run_dir = f"{current_dir}/{args.run_dir}"
+
     if args.no_run_log:
         run_dir = None
         _lp_module.run_dir = run_dir
@@ -3722,10 +3727,10 @@ def _setup_run_logger(args, cfg: dict, model: TinyClassifierGPT, tokenizer: BPET
     if args.continue_run is not None:
         run_dir = args.continue_run
         _lp_module.run_dir = run_dir
-        run_logger = RunLogger(base_dir=args.run_dir, reuse_path=run_dir)
+        run_logger = RunLogger(base_dir=absolute_run_dir, reuse_path=run_dir)
         console.print(f"[bold cyan]📁 Continuing run log in: {run_dir}[/]")
     else:
-        run_logger = RunLogger(base_dir=args.run_dir)
+        run_logger = RunLogger(base_dir=absolute_run_dir)
         run_dir = run_logger.get_base_dir()
         _lp_module.run_dir = run_dir
         console.print(f"[bold cyan]📁 Run logging to: {run_logger.path}[/]")
