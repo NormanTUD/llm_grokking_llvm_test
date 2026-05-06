@@ -4572,15 +4572,22 @@ def train(args: argparse.Namespace):
     # ════════════════════════════════════════════════════════════════════
     total_runtime = time.time() - timer.start_time
 
+    results_str = (
+        f"LOSS: {train_losses_hist[-1]:.6f}\n"
+        f"VAL_LOSS: {val_losses_hist[-1]:.6f}\n"
+        f"BEST_VAL_LOSS: {best_val_loss:.6f}\n"
+        f"TOTAL_SAMPLES: {total_samples}\n"
+        f"PARAMS: {actual_params}\n"
+        f"LR_FINAL: {optimizer.param_groups[0]['lr']:.2e}\n"
+        f"RUNTIME: {total_runtime:.1f}"
+    )
+
     original_print("\n" + "=" * 60)
-    original_print(f"LOSS: {train_losses_hist[-1]:.6f}")
-    original_print(f"VAL_LOSS: {val_losses_hist[-1]:.6f}")
-    original_print(f"BEST_VAL_LOSS: {best_val_loss:.6f}")
-    original_print(f"TOTAL_SAMPLES: {total_samples}")
-    original_print(f"PARAMS: {actual_params}")
-    original_print(f"LR_FINAL: {optimizer.param_groups[0]['lr']:.2e}")
-    original_print(f"RUNTIME: {total_runtime:.1f}")
+    original_print(results_str)
     original_print("=" * 60 + "\n")
+
+    with open(f"{run_dir}/results.txt", "w") as f:
+        f.write(results_str)
 
     return model, tokenizer
 
