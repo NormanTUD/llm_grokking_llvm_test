@@ -127,13 +127,14 @@ from jinja2 import Environment, BaseLoader
 class LLVMGPTConfig:
     model_type = "llvm_gpt"
     def __init__(self, vocab_size=90, d_model=64, n_heads=4, n_layers=4,
-                 max_seq_len=2048, dropout=0.1, **kwargs):
+                 max_seq_len=2048, dropout=0.1, d_ff=None, **kwargs):
         self.vocab_size = vocab_size
         self.d_model = d_model
         self.n_heads = n_heads
         self.n_layers = n_layers
         self.max_seq_len = max_seq_len
         self.dropout = dropout
+        self.d_ff = d_ff  # None means use 4*d_model default
         self.hidden_size = d_model
         self.num_attention_heads = n_heads
         self.num_hidden_layers = n_layers
@@ -145,7 +146,6 @@ class LLVMGPTConfig:
         with open(os.path.join(path, "config.json"), "r") as f:
             data = json.load(f)
         return cls(**data)
-
 
 class CausalSelfAttention(nn.Module):
     def __init__(self, d_model, n_heads, max_seq_len, dropout=0.1):
@@ -206,9 +206,13 @@ class TinyClassifierGPT(nn.Module):
         self.max_seq_len = config.max_seq_len
         self.tok_emb = nn.Embedding(config.vocab_size, config.d_model)
         self.pos_emb = nn.Embedding(config.max_seq_len, config.d_model)
+        
+        # Determine MLP hidden dimension: use d_ff from config if available, else 4*d_model
+        d_ff = getattr(config, 'd_ff', None) or getattr(config, 'intermediate_size', None) or getattr(config, 'mlp_dim', None) or 4 * config.d_model
+        
         self.blocks = nn.ModuleList([
             TransformerBlock(config.d_model, config.n_heads,
-                            config.max_seq_len, dropout=0.0)
+                            config.max_seq_len, dropout=0.0, d_ff=d_ff)
             for _ in range(config.n_layers)
         ])
         self.ln_f = nn.LayerNorm(config.d_model)
@@ -252,7 +256,6 @@ class TinyClassifierGPT(nn.Module):
 
     def count_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TOKENIZER
@@ -1753,11 +1756,11 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
     # Load tokenizer
     tokenizer = BPETokenizer.from_pretrained(run_path)
 
-    # Load model config and architecture — USE TinyClassifierGPT
+    # Load model config
     config = LLVMGPTConfig.from_pretrained(run_path)
-    model = TinyClassifierGPT(config)
 
-    # Determine which weights to load
+    # ── Load state_dict FIRST to infer d_ff if not in config ────────────
+    state_dict = None
     if checkpoint_path and os.path.exists(checkpoint_path):
         print(f"   Loading weights from: {checkpoint_path}")
 
@@ -1792,11 +1795,23 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
                 print(f"   ⏭️  Skipping non-tensor key: {k} (type: {type(v).__name__})")
                 continue
 
-        result = model.load_state_dict(cleaned_state_dict, strict=False)
-        if result.missing_keys:
-            print(f"   ⚠️  Missing keys: {result.missing_keys}")
-        if result.unexpected_keys:
-            print(f"   ⚠️  Unexpected keys: {result.unexpected_keys}")
+        # ── Infer d_ff from checkpoint weights if not in config ─────────
+        mlp_weight_key = "blocks.0.mlp.0.weight"
+        if mlp_weight_key in cleaned_state_dict and not hasattr(config, 'd_ff'):
+            inferred_d_ff = cleaned_state_dict[mlp_weight_key].shape[0]
+            expected_d_ff = 4 * config.d_model
+            if inferred_d_ff != expected_d_ff:
+                print(f"   🔧 Inferred d_ff={inferred_d_ff} from checkpoint "
+                      f"(default would be {expected_d_ff})")
+                config.d_ff = inferred_d_ff
+        elif mlp_weight_key in cleaned_state_dict and hasattr(config, 'd_ff'):
+            # Validate config d_ff matches checkpoint
+            inferred_d_ff = cleaned_state_dict[mlp_weight_key].shape[0]
+            if inferred_d_ff != config.d_ff:
+                print(f"   🔧 Config d_ff={config.d_ff} doesn't match checkpoint "
+                      f"d_ff={inferred_d_ff}, using checkpoint value")
+                config.d_ff = inferred_d_ff
+
     else:
         bin_path = os.path.join(run_path, "pytorch_model.bin")
         if os.path.exists(bin_path):
@@ -1805,9 +1820,29 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
                 state_dict = torch.load(bin_path, map_location=device, weights_only=True)
             except Exception:
                 state_dict = torch.load(bin_path, map_location=device, weights_only=False)
-            model.load_state_dict(state_dict)
+            cleaned_state_dict = state_dict
+
+            # Also infer d_ff from this state_dict
+            mlp_weight_key = "blocks.0.mlp.0.weight"
+            if mlp_weight_key in cleaned_state_dict:
+                inferred_d_ff = cleaned_state_dict[mlp_weight_key].shape[0]
+                if inferred_d_ff != 4 * config.d_model:
+                    print(f"   🔧 Inferred d_ff={inferred_d_ff} from weights")
+                    config.d_ff = inferred_d_ff
         else:
             print(f"   ⚠️  No checkpoint found, using random weights!")
+            cleaned_state_dict = None
+
+    # ── Now build the model with the correct config ─────────────────────
+    model = TinyClassifierGPT(config)
+
+    # ── Load weights into model ─────────────────────────────────────────
+    if cleaned_state_dict is not None:
+        result = model.load_state_dict(cleaned_state_dict, strict=False)
+        if result.missing_keys:
+            print(f"   ⚠️  Missing keys: {result.missing_keys}")
+        if result.unexpected_keys:
+            print(f"   ⚠️  Unexpected keys: {result.unexpected_keys}")
 
     model = model.to(device)
     model.eval()
@@ -1816,7 +1851,6 @@ def load_model_and_tokenizer(run_path: str, device: str = 'cpu',
     print(f"   ✅ Model loaded successfully ({n_params:,} parameters)")
 
     return model, tokenizer
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PATH RESOLUTION HELPERS
