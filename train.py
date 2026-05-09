@@ -1727,6 +1727,13 @@ class CausalSelfAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         try:
             B, T, C = x.shape
+            
+            # ── Dynamically expand causal mask if input exceeds max_seq_len ──
+            if T > self.mask.shape[-1]:
+                self.mask = torch.tril(
+                    torch.ones(T, T, device=x.device)
+                ).unsqueeze(0).unsqueeze(0)
+            
             qkv = self.qkv(x).reshape(B, T, 3, self.n_heads, self.head_dim)
             qkv = qkv.permute(2, 0, 3, 1, 4)  # (3, B, n_heads, T, head_dim)
             q, k, v = qkv[0], qkv[1], qkv[2]
