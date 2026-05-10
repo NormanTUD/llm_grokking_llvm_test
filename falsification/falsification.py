@@ -16,6 +16,27 @@
 # ]
 # ///
 
+"""
+SBATCH launch (all models, 1 GPU):
+
+    sbatch -N 1 --gres=gpu:1 --mem=32G --time=04:00:00 \
+           --job-name=koch_falsify --output=falsify_%j.out \
+           falsification.py --compare-all --device cuda
+
+Or embed directly via magic cookie (uncomment the block below):
+"""
+
+#SBATCH --job-name=koch_falsify
+#SBATCH --partition=gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=48G
+#SBATCH --time=06:00:00
+#SBATCH --output=koch_falsify_%j.out
+#SBATCH --error=koch_falsify_%j.err
+
 import os
 import sys
 from datetime import datetime, timedelta
