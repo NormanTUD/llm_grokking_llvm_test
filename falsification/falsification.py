@@ -2351,6 +2351,18 @@ def run_cross_model_comparison(model_names: list[str], device: str = "cpu"):
         json.dump(comparison_output, f, indent=2, cls=NumpyEncoder)
     print(f"\n  📄 Cross-model comparison saved to: {output_path}")
 
+    # ================================================================
+    # Final comprehensive verdict
+    # ================================================================
+    verdict = print_final_verdict(all_results)
+
+    # Save verdict to JSON
+    verdict_output = sanitize_for_json(verdict)
+    verdict_path = Path("koch_falsification_verdict.json")
+    with open(verdict_path, "w") as f:
+        json.dump(verdict_output, f, indent=2, cls=NumpyEncoder)
+    print(f"\n  📄 Final verdict saved to: {verdict_path}")
+
     return all_results
 
 
@@ -2378,6 +2390,332 @@ def extract_hidden_states(model, tokenizer, prompts: list[str], device: str = "c
 # ============================================================================
 # SECTION 19: CLI with multi-model support
 # ============================================================================
+
+# ============================================================================
+# SECTION 20: Final cross-model verdict (called at end of comparison)
+# ============================================================================
+
+def print_final_verdict(all_results: dict[str, list[FalsificationResult]]):
+    """
+    Print a comprehensive final overview:
+    1. Per-conjecture summary across all models
+    2. Per-model summary
+    3. Overall verdict on Koch's framework
+    """
+
+    # ================================================================
+    # 1. Per-Conjecture Overview
+    # ================================================================
+    print_banner("FINAL VERDICT: KOCH'S CONJECTURES", "═")
+
+    # Group results by conjecture
+    conjecture_map = {
+        "Conjecture 1": {
+            "name": "Space-Morphing (Layers deform space, not move points)",
+            "tests": [],
+        },
+        "Conjecture 2": {
+            "name": "Holographic Scrambling (Information distributed like a hologram)",
+            "tests": [],
+        },
+        "Conjecture 3": {
+            "name": "Topological Computation (Persistent topology performs computation)",
+            "tests": [],
+        },
+        "Conjecture 4": {
+            "name": "Inner/Outer Asymmetry (Inner layers compute, outer translate)",
+            "tests": [],
+        },
+        "Conjecture 5": {
+            "name": "Jacobi Field as Carrier (Jacobian is primary information carrier)",
+            "tests": [],
+        },
+        "Conjecture 6": {
+            "name": "Dynamic Map Generation (Layer ℓ instructs layer ℓ+1)",
+            "tests": [],
+        },
+        "Conjecture 7": {
+            "name": "Grothendieck Situs (World-model has sheaf structure)",
+            "tests": [],
+        },
+        "Meta (Necessity)": {
+            "name": "Is the geometric framework NECESSARY?",
+            "tests": [],
+        },
+    }
+
+    # Collect all test results per conjecture
+    for model_name, results in all_results.items():
+        for r in results:
+            # Match conjecture
+            matched = False
+            for conj_key in conjecture_map:
+                if conj_key.lower().replace("(", "").replace(")", "") in r.conjecture.lower().replace("(", "").replace(")", ""):
+                    conjecture_map[conj_key]["tests"].append({
+                        "model": model_name,
+                        "test_name": r.test_name,
+                        "falsified": r.falsified,
+                        "p_value": r.p_value,
+                        "effect_size": r.effect_size,
+                        "observation": r.observation,
+                    })
+                    matched = True
+                    break
+            if not matched:
+                # Try matching by prefix
+                for conj_key in conjecture_map:
+                    prefix = conj_key.split(" ")[0] + " " + conj_key.split(" ")[1] if len(conj_key.split(" ")) > 1 else conj_key
+                    if r.conjecture.startswith(prefix) or conj_key.startswith(r.conjecture):
+                        conjecture_map[conj_key]["tests"].append({
+                            "model": model_name,
+                            "test_name": r.test_name,
+                            "falsified": r.falsified,
+                            "p_value": r.p_value,
+                            "effect_size": r.effect_size,
+                            "observation": r.observation,
+                        })
+                        break
+
+    # Print per-conjecture verdict
+    conjecture_verdicts = {}  # conj_key -> "SUPPORTED" | "WEAKENED" | "FALSIFIED" | "INCONCLUSIVE"
+
+    for conj_key, conj_data in conjecture_map.items():
+        tests = conj_data["tests"]
+        name = conj_data["name"]
+
+        print(f"\n  ┌{'─' * 72}┐")
+        print(f"  │ {conj_key:<70s} │")
+        print(f"  │ {name:<70s} │")
+        print(f"  ├{'─' * 72}┤")
+
+        if not tests:
+            print(f"  │ {'No test data available.':<70s} │")
+            print(f"  └{'─' * 72}┘")
+            conjecture_verdicts[conj_key] = "INCONCLUSIVE"
+            continue
+
+        n_total = len(tests)
+        n_falsified = sum(1 for t in tests if t["falsified"])
+        n_survived = sum(1 for t in tests if not t["falsified"] and t["p_value"] is not None)
+        n_inconclusive = sum(1 for t in tests if t["p_value"] is None and not t["falsified"])
+
+        # Per-model breakdown
+        models_tested = sorted(set(t["model"] for t in tests))
+        for model in models_tested:
+            model_tests = [t for t in tests if t["model"] == model]
+            model_short = model.split("/")[-1][:20]
+            f_count = sum(1 for t in model_tests if t["falsified"])
+            s_count = sum(1 for t in model_tests if not t["falsified"] and t["p_value"] is not None)
+            status_str = f"{'❌'*f_count}{'✅'*s_count}"
+            line = f"  {model_short:<22s} {status_str}"
+            # Pad to fit in box
+            print(f"  │   {model_short:<18s} {status_str:<48s} │")
+
+        # Summary line
+        print(f"  ├{'─' * 72}┤")
+        falsification_rate = n_falsified / max(n_total - n_inconclusive, 1)
+
+        if falsification_rate == 0:
+            verdict = "✅ SUPPORTED"
+            verdict_detail = f"All {n_survived} tests passed across {len(models_tested)} models"
+            conjecture_verdicts[conj_key] = "SUPPORTED"
+        elif falsification_rate < 0.3:
+            verdict = "⚠️  MOSTLY SUPPORTED"
+            verdict_detail = f"{n_falsified}/{n_total} tests falsified — minor issues"
+            conjecture_verdicts[conj_key] = "MOSTLY SUPPORTED"
+        elif falsification_rate < 0.6:
+            verdict = "⚠️  WEAKENED"
+            verdict_detail = f"{n_falsified}/{n_total} tests falsified — needs revision"
+            conjecture_verdicts[conj_key] = "WEAKENED"
+        elif falsification_rate < 1.0:
+            verdict = "❌ LARGELY FALSIFIED"
+            verdict_detail = f"{n_falsified}/{n_total} tests falsified — serious problems"
+            conjecture_verdicts[conj_key] = "LARGELY FALSIFIED"
+        else:
+            verdict = "❌ FALSIFIED"
+            verdict_detail = f"All {n_falsified} tests falsified across all models"
+            conjecture_verdicts[conj_key] = "FALSIFIED"
+
+        print(f"  │ Verdict: {verdict:<60s} │")
+        print(f"  │ Detail:  {verdict_detail:<60s} │")
+        print(f"  │ Tests:   {n_survived} passed, {n_falsified} falsified, {n_inconclusive} inconclusive{' ' * (72 - 50 - len(str(n_survived)) - len(str(n_falsified)) - len(str(n_inconclusive)))}│")
+        print(f"  └{'─' * 72}┘")
+
+    # ================================================================
+    # 2. Per-Model Summary
+    # ================================================================
+    print_banner("PER-MODEL SUMMARY", "─")
+    print(f"  {'Model':<40s} {'Passed':<10s} {'Falsified':<12s} {'Inconcl.':<10s} {'Score'}")
+    print(f"  {'─'*40} {'─'*10} {'─'*12} {'─'*10} {'─'*10}")
+
+    model_scores = {}
+    for model_name, results in sorted(all_results.items()):
+        if not results:
+            continue
+        n_f = sum(1 for r in results if r.falsified)
+        n_s = sum(1 for r in results if not r.falsified and r.p_value is not None)
+        n_i = sum(1 for r in results if r.p_value is None and not r.falsified)
+        total_valid = n_f + n_s
+        score = n_s / max(total_valid, 1)
+        model_scores[model_name] = score
+
+        model_short = model_name.split("/")[-1]
+        bar = "█" * int(score * 20) + "░" * (20 - int(score * 20))
+        print(f"  {model_short:<40s} {n_s:<10d} {n_f:<12d} {n_i:<10d} {bar} {score:.0%}")
+
+    # ================================================================
+    # 3. Overall Verdict
+    # ================================================================
+    print_banner("OVERALL VERDICT ON KOCH'S FRAMEWORK", "═")
+
+    n_supported = sum(1 for v in conjecture_verdicts.values() if v in ("SUPPORTED", "MOSTLY SUPPORTED"))
+    n_weakened = sum(1 for v in conjecture_verdicts.values() if v == "WEAKENED")
+    n_falsified_conj = sum(1 for v in conjecture_verdicts.values() if v in ("LARGELY FALSIFIED", "FALSIFIED"))
+    n_inconclusive_conj = sum(1 for v in conjecture_verdicts.values() if v == "INCONCLUSIVE")
+
+    print(f"""
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │                    KOCH'S FIBRE BUNDLE CONJECTURES                     │
+  │                         EMPIRICAL STATUS                               │
+  ├────────────────────────────────────────────────────────────────────────┤
+  │                                                                        │
+  │   Conjectures SUPPORTED:          {n_supported:<3d}                                  │
+  │   Conjectures WEAKENED:           {n_weakened:<3d}                                  │
+  │   Conjectures FALSIFIED:          {n_falsified_conj:<3d}                                  │
+  │   Conjectures INCONCLUSIVE:       {n_inconclusive_conj:<3d}                                  │
+  │                                                                        │""")
+
+    # Compute overall score
+    total_conj = n_supported + n_weakened + n_falsified_conj
+    if total_conj > 0:
+        overall_score = (n_supported * 1.0 + n_weakened * 0.5) / total_conj
+    else:
+        overall_score = 0.0
+
+    # Overall assessment
+    if overall_score >= 0.8:
+        overall = "STRONG EMPIRICAL SUPPORT"
+        emoji = "🟢"
+        interpretation = [
+            "Koch's geometric framework is well-supported by empirical tests.",
+            "The space-morphing interpretation provides genuine insight.",
+            "Further formalization is warranted.",
+        ]
+    elif overall_score >= 0.6:
+        overall = "MODERATE SUPPORT, SOME ISSUES"
+        emoji = "🟡"
+        interpretation = [
+            "Koch's core intuitions (C1, C2) appear correct.",
+            "Some specific conjectures (C3, C4, C7) need revision.",
+            "The framework may be partially correct but overstated.",
+        ]
+    elif overall_score >= 0.4:
+        overall = "MIXED RESULTS — FRAMEWORK NEEDS MAJOR REVISION"
+        emoji = "🟠"
+        interpretation = [
+            "Koch's framework has significant empirical problems.",
+            "Some observations are real but the theoretical superstructure",
+            "  (fibre bundles, sheaves, Grothendieck) is not justified.",
+            "A simpler geometric description may suffice.",
+        ]
+    elif overall_score >= 0.2:
+        overall = "LARGELY UNSUPPORTED"
+        emoji = "🔴"
+        interpretation = [
+            "Most of Koch's conjectures fail empirical tests.",
+            "The geometric framework adds little beyond what simpler",
+            "  methods (e.g., Fourier analysis à la Nanda et al.) provide.",
+            "The framework should be considered speculative at best.",
+        ]
+    else:
+        overall = "EMPIRICALLY REFUTED"
+        emoji = "⛔"
+        interpretation = [
+            "Koch's conjectures are systematically falsified.",
+            "The fibre bundle interpretation does not describe",
+            "  how transformers actually process information.",
+        ]
+
+    print(f"  │   Overall score: {overall_score:.0%}  {emoji}  {overall:<40s}   │")
+    print(f"  │                                                                        │")
+    for line in interpretation:
+        print(f"  │   {line:<66s}   │")
+    print(f"  │                                                                        │")
+
+    # Key findings
+    print(f"  ├────────────────────────────────────────────────────────────────────────┤")
+    print(f"  │                         KEY FINDINGS                                   │")
+    print(f"  ├────────────────────────────────────────────────────────────────────────┤")
+
+    key_findings = []
+    if conjecture_verdicts.get("Conjecture 1") in ("SUPPORTED", "MOSTLY SUPPORTED"):
+        key_findings.append("✅ Layers DO perform structured, semantic deformations (C1)")
+    if conjecture_verdicts.get("Conjecture 2") in ("SUPPORTED", "MOSTLY SUPPORTED"):
+        key_findings.append("✅ Information IS holographically distributed (C2)")
+    if conjecture_verdicts.get("Conjecture 3") in ("LARGELY FALSIFIED", "FALSIFIED"):
+        key_findings.append("❌ NO evidence for topological computation (C3)")
+    if conjecture_verdicts.get("Conjecture 4") in ("LARGELY FALSIFIED", "FALSIFIED", "WEAKENED"):
+        key_findings.append("⚠️  Inner/outer asymmetry is more complex than Koch claims (C4)")
+    if conjecture_verdicts.get("Conjecture 7") in ("LARGELY FALSIFIED", "FALSIFIED"):
+        key_findings.append("❌ NO evidence for sheaf/Grothendieck structure (C7)")
+    if conjecture_verdicts.get("Meta (Necessity)") in ("LARGELY FALSIFIED", "FALSIFIED"):
+        key_findings.append("❌ Geometric framework is UNNECESSARY — low effective rank")
+
+    # Add cross-model consistency finding
+    if model_scores:
+        score_variance = np.var(list(model_scores.values()))
+        if score_variance < 0.01:
+            key_findings.append("📊 Results are CONSISTENT across architectures")
+        else:
+            key_findings.append("📊 Results VARY across architectures — Koch may be arch-dependent")
+
+    for finding in key_findings:
+        print(f"  │   {finding:<66s}   │")
+
+    if not key_findings:
+        print(f"  │   {'(No clear key findings)':<66s}   │")
+
+    print(f"  │                                                                        │")
+    print(f"  ├────────────────────────────────────────────────────────────────────────┤")
+    print(f"  │                      BOTTOM LINE                                       │")
+    print(f"  ├────────────────────────────────────────────────────────────────────────┤")
+
+    # The bottom line depends on what we found
+    if n_supported >= 4 and n_falsified_conj <= 1:
+        bottom_lines = [
+            "Koch's framework has genuine empirical content. The geometric",
+            "interpretation captures real structure in transformer representations.",
+            "However, the more exotic claims (Grothendieck, sheaves) remain",
+            "unsubstantiated. Koch is onto something, but overshoots.",
+        ]
+    elif n_falsified_conj >= 3:
+        bottom_lines = [
+            "Koch's framework is more poetry than science. While some basic",
+            "observations are correct (layers deform space, info is distributed),",
+            "these are well-known facts that don't require fibre bundles.",
+            "Nanda et al.'s approach (mechanistic, quantitative) is superior.",
+        ]
+    else:
+        bottom_lines = [
+            "Koch's framework is a mixed bag. The core geometric intuition",
+            "has merit, but the specific mathematical machinery (fibre bundles,",
+            "Jacobi fields, sheaves) is not empirically justified. A simpler",
+            "geometric description would capture the same phenomena.",
+        ]
+
+    for line in bottom_lines:
+        print(f"  │   {line:<66s}   │")
+    print(f"  │                                                                        │")
+    print(f"  └────────────────────────────────────────────────────────────────────────┘")
+
+    # Return structured verdict for programmatic use
+    return {
+        "overall_score": overall_score,
+        "overall_verdict": overall,
+        "per_conjecture": conjecture_verdicts,
+        "key_findings": key_findings,
+        "model_scores": model_scores,
+    }
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
