@@ -1155,27 +1155,247 @@ def get_semantic_pairs():
     ]
 
 
+# ============================================================================
+# SECTION 10: Main runner (IMPROVED)
+# ============================================================================
+
+# Custom JSON encoder to handle numpy types
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types gracefully."""
+    def default(self, obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        if isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        if isinstance(obj, (bool,)):
+            return bool(obj)
+        return super().default(obj)
+
+
+def sanitize_for_json(obj):
+    """Recursively convert numpy types to Python native types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    return obj
+
+
+def print_banner(text: str, char: str = "=", width: int = 74):
+    """Print a centered banner."""
+    print(f"\n{char * width}")
+    print(f"{text:^{width}}")
+    print(f"{char * width}")
+
+
+def print_step(step_num: int, total: int, description: str):
+    """Print a step indicator with progress."""
+    bar_width = 30
+    filled = int(bar_width * step_num / total)
+    bar = "█" * filled + "░" * (bar_width - filled)
+    pct = 100 * step_num / total
+    print(f"\n  [{bar}] {pct:5.1f}%  Step {step_num}/{total}: {description}")
+
+
+def print_result_card(result: FalsificationResult, index: int):
+    """Print a single result as a nicely formatted card."""
+    if result.falsified:
+        status_icon = "❌ FALSIFIED"
+        status_color_start = "\033[91m"  # Red
+    elif result.p_value is None and not result.falsified:
+        status_icon = "⚠️  INCONCLUSIVE"
+        status_color_start = "\033[93m"  # Yellow
+    else:
+        status_icon = "✅ NOT FALSIFIED"
+        status_color_start = "\033[92m"  # Green
+    status_color_end = "\033[0m"
+
+    print(f"\n  ┌{'─' * 70}┐")
+    print(f"  │ Test {index:2d}: {result.conjecture:<20s} — {result.test_name:<27s}│")
+    print(f"  ├{'─' * 70}┤")
+    print(f"  │ Status: {status_color_start}{status_icon}{status_color_end}{' ' * (59 - len(status_icon))}│")
+
+    # Wrap prediction text
+    pred_lines = _wrap_text(f"Prediction: {result.prediction}", 68)
+    for line in pred_lines:
+        print(f"  │ {line:<68s} │")
+
+    # Wrap observation text
+    obs_lines = _wrap_text(f"Observed:   {result.observation}", 68)
+    for line in obs_lines:
+        print(f"  │ {line:<68s} │")
+
+    if result.p_value is not None:
+        print(f"  │ p-value: {result.p_value:<12.6f}  effect size: {result.effect_size:<12.4f}{' ' * 20}│")
+
+    print(f"  └{'─' * 70}┘")
+
+
+def _wrap_text(text: str, width: int) -> list[str]:
+    """Simple word-wrap for display in fixed-width cards."""
+    words = text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        if len(current_line) + len(word) + 1 <= width:
+            current_line = f"{current_line} {word}" if current_line else word
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines if lines else [""]
+
+
+def print_summary_table(results: list[FalsificationResult]):
+    """Print a summary table of all results."""
+    print_banner("SUMMARY TABLE", "═")
+    print(f"  {'#':<4} {'Conjecture':<22} {'Test':<35} {'Result':<15}")
+    print(f"  {'─'*4} {'─'*22} {'─'*35} {'─'*15}")
+
+    for i, r in enumerate(results, 1):
+        if r.falsified:
+            status = "❌ FALSIFIED"
+        elif r.p_value is None and not r.falsified:
+            status = "⚠️  INCONCLUSIVE"
+        else:
+            status = "✅ SURVIVED"
+        # Truncate test name if needed
+        test_short = r.test_name[:33] + ".." if len(r.test_name) > 35 else r.test_name
+        print(f"  {i:<4} {r.conjecture:<22} {test_short:<35} {status:<15}")
+
+    n_falsified = sum(1 for r in results if r.falsified)
+    n_survived = sum(1 for r in results if not r.falsified and r.p_value is not None)
+    n_inconclusive = sum(1 for r in results if r.p_value is None and not r.falsified)
+
+    print(f"\n  {'─'*76}")
+    print(f"  TOTAL: {n_falsified} falsified, {n_survived} survived, {n_inconclusive} inconclusive "
+          f"out of {len(results)} tests")
+    print(f"  {'─'*76}")
+
+    # Verdict
+    if n_falsified == 0:
+        verdict = "Koch's framework SURVIVES all tests. (But survival ≠ proof.)"
+    elif n_falsified <= 2:
+        verdict = "Koch's framework is WEAKENED but not destroyed. Some conjectures need revision."
+    elif n_falsified <= 4:
+        verdict = "Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail."
+    else:
+        verdict = "Koch's framework is LARGELY FALSIFIED. Most predictions do not hold."
+
+    print(f"\n  VERDICT: {verdict}")
+
+
+def get_test_prompts():
+    """Return a diverse set of test prompts."""
+    return [
+        "The cat sat on the mat and looked at the bird outside the window.",
+        "Quantum mechanics describes the behavior of particles at the atomic scale.",
+        "The president signed the new trade agreement with neighboring countries.",
+        "She walked through the forest, listening to the birds singing in the trees.",
+        "The derivative of x squared is two x, a fundamental result in calculus.",
+        "The restaurant served excellent pasta with a rich tomato sauce.",
+        "Machine learning models can exhibit emergent behavior at scale.",
+        "The ancient ruins were discovered beneath the modern city center.",
+        "Water boils at one hundred degrees Celsius at standard atmospheric pressure.",
+        "The symphony orchestra performed Beethoven's ninth to a standing ovation.",
+        "Neural networks learn distributed representations of their input data.",
+        "The stock market crashed following unexpected changes in monetary policy.",
+    ]
+
+
+def get_semantic_pairs():
+    """Return pairs of prompts with known semantic similarity/dissimilarity."""
+    return [
+        # (prompt_a, prompt_b, is_similar)
+        ("The cat sat on the mat.", "The dog sat on the mat.", True),
+        ("The sky is blue today.", "The sky is red today.", True),
+        ("She likes chocolate ice cream.", "She likes vanilla ice cream.", True),
+        ("The car drove down the road.", "The truck drove down the road.", True),
+        ("He read the book carefully.", "He read the paper carefully.", True),
+        ("The cat sat on the mat.", "Quantum mechanics is fascinating.", False),
+        ("The sky is blue today.", "The stock market crashed yesterday.", False),
+        ("She likes chocolate ice cream.", "The derivative of x squared is two x.", False),
+        ("The car drove down the road.", "Beethoven composed nine symphonies.", False),
+        ("He read the book carefully.", "Water boils at one hundred degrees.", False),
+        ("The president gave a speech.", "Proteins fold into complex shapes.", False),
+        ("The garden was full of flowers.", "The algorithm has quadratic complexity.", False),
+    ]
+
+
 def run_all_tests(model_name: str = "gpt2", device: str = "cpu"):
-    """Run all falsification tests and report results."""
+    """
+    Run all falsification tests for Koch's fibre bundle conjectures.
+
+    Pipeline:
+      1. Load model and tokenizer from HuggingFace
+      2. Extract hidden states for 12 diverse prompts (all layers)
+      3. Extract hidden states for 12 semantic pairs (similar/dissimilar)
+      4. Run 10 falsification tests across 7 conjectures + 1 meta-test
+      5. Print detailed results with formatted cards
+      6. Print summary table with verdict
+      7. Save results to JSON
+
+    Args:
+        model_name: HuggingFace model identifier (e.g., 'gpt2', 'gpt2-medium')
+        device: 'cpu' or 'cuda'
+
+    Returns:
+        List of FalsificationResult objects
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    logger.info(f"Loading model: {model_name}")
+    total_steps = 14  # Total pipeline steps
+
+    # ================================================================
+    # STEP 1: Load model
+    # ================================================================
+    print_banner(f"KOCH FALSIFICATION SUITE — {model_name}", "═")
+    print_step(1, total_steps, f"Loading model '{model_name}'...")
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
-
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
     model.eval()
 
-    # ---- Extract hidden states for main prompts ----
-    prompts = get_test_prompts()
-    logger.info(f"Extracting hidden states for {len(prompts)} prompts...")
-    hidden_states = extract_hidden_states(model, tokenizer, prompts, device)
+    n_params = sum(p.numel() for p in model.parameters())
+    n_layers = len(get_transformer_blocks(model))
+    hidden_dim = model.config.hidden_size
+    print(f"         Model loaded: {n_params/1e6:.1f}M params, {n_layers} layers, "
+          f"d={hidden_dim}, device={device}")
 
-    # ---- Extract hidden states for semantic pairs ----
+    # ================================================================
+    # STEP 2: Extract hidden states for main prompts
+    # ================================================================
+    prompts = get_test_prompts()
+    print_step(2, total_steps, f"Extracting hidden states for {len(prompts)} diverse prompts...")
+    hidden_states = extract_hidden_states(model, tokenizer, prompts, device)
+    print(f"         Extracted: {len(hidden_states)} prompts × {n_layers+1} layers")
+
+    # ================================================================
+    # STEP 3: Extract hidden states for semantic pairs
+    # ================================================================
     semantic_pairs = get_semantic_pairs()
-    logger.info(f"Extracting hidden states for {len(semantic_pairs)} semantic pairs...")
+    n_similar = sum(1 for _, _, s in semantic_pairs if s)
+    n_dissimilar = sum(1 for _, _, s in semantic_pairs if not s)
+    print_step(3, total_steps,
+               f"Extracting hidden states for {len(semantic_pairs)} semantic pairs "
+               f"({n_similar} similar, {n_dissimilar} dissimilar)...")
+
     pair_states = []
     pair_labels = []
     for prompt_a, prompt_b, is_similar in semantic_pairs:
@@ -1188,90 +1408,92 @@ def run_all_tests(model_name: str = "gpt2", device: str = "cpu"):
         states_b = np.stack([h.squeeze(0).cpu().numpy() for h in out_b.hidden_states], axis=0)
         pair_states.append((states_a, states_b))
         pair_labels.append((prompt_a, prompt_b, is_similar))
+    print(f"         Extracted: {len(pair_states)} pairs")
 
-    # ---- Run all tests ----
+    # ================================================================
+    # STEPS 4-13: Run falsification tests
+    # ================================================================
+    print_banner("RUNNING FALSIFICATION TESTS", "─")
+
     results = []
 
-    logger.info("=" * 70)
-    logger.info("RUNNING FALSIFICATION TESTS")
-    logger.info("=" * 70)
+    test_configs = [
+        (4,  "C1: Structured deformation (SV distribution)",
+         lambda: test_conjecture_1_structured_deformation(hidden_states, prompts)),
+        (5,  "C1: Semantic sensitivity of deformations",
+         lambda: test_conjecture_1_semantic_sensitivity(pair_states, pair_labels)),
+        (6,  "C2: Holographic distribution (ablation uniformity)",
+         lambda: test_conjecture_2_holographic_distribution(hidden_states)),
+        (7,  "C3: Persistent topology (H1 features)",
+         lambda: test_conjecture_3_persistent_topology(hidden_states)),
+        (8,  "C4: Inner/outer layer asymmetry",
+         lambda: test_conjecture_4_inner_outer_asymmetry(hidden_states)),
+        (9,  "C5: Jacobian as information carrier",
+         lambda: test_conjecture_5_jacobian_information(hidden_states)),
+        (10, "C5: Procrustes connection structure",
+         lambda: test_conjecture_5_procrustes_connection(hidden_states)),
+        (11, "C6: Layer dependency (dynamic map generation)",
+         lambda: test_conjecture_6_layer_dependency(hidden_states)),
+        (12, "C7: Local consistency (sheaf resolution)",
+         lambda: test_conjecture_7_local_consistency(hidden_states, prompts)),
+        (13, "META: Necessity of geometric framework",
+         lambda: test_meta_necessity(hidden_states)),
+    ]
 
-    # Conjecture 1: Structured deformation
-    results.append(test_conjecture_1_structured_deformation(hidden_states, prompts))
+    for step_num, description, test_fn in test_configs:
+        print_step(step_num, total_steps, description)
+        result = test_fn()
+        results.append(result)
+        # Inline mini-result
+        status = "❌ FALSIFIED" if result.falsified else "✅ survived"
+        if result.p_value is None and not result.falsified:
+            status = "⚠️  inconclusive"
+        print(f"         → {status}")
 
-    # Conjecture 1: Semantic sensitivity
-    results.append(test_conjecture_1_semantic_sensitivity(pair_states, pair_labels))
+    # ================================================================
+    # STEP 14: Report
+    # ================================================================
+    print_step(total_steps, total_steps, "Generating report...")
 
-    # Conjecture 2: Holographic distribution
-    results.append(test_conjecture_2_holographic_distribution(hidden_states))
+    # Detailed cards
+    print_banner("DETAILED RESULTS", "═")
+    for i, r in enumerate(results, 1):
+        print_result_card(r, i)
 
-    # Conjecture 3: Topological computation
-    results.append(test_conjecture_3_persistent_topology(hidden_states))
-
-    # Conjecture 4: Inner/outer asymmetry
-    results.append(test_conjecture_4_inner_outer_asymmetry(hidden_states))
-
-    # Conjecture 5: Jacobian information carrier
-    results.append(test_conjecture_5_jacobian_information(hidden_states))
-
-    # Conjecture 5 supplement: Procrustes connection
-    results.append(test_conjecture_5_procrustes_connection(hidden_states))
-
-    # Conjecture 6: Layer dependency
-    results.append(test_conjecture_6_layer_dependency(hidden_states))
-
-    # Conjecture 7: Local consistency / sheaf structure
-    results.append(test_conjecture_7_local_consistency(hidden_states, prompts))
-
-    # Meta-test: Necessity
-    results.append(test_meta_necessity(hidden_states))
-
-    # ---- Report ----
-    logger.info("\n" + "=" * 70)
-    logger.info("FALSIFICATION REPORT")
-    logger.info("=" * 70)
-
-    n_falsified = 0
-    n_not_falsified = 0
-    n_inconclusive = 0
-
-    for r in results:
-        print(r.summary())
-        if r.p_value is None and not r.falsified:
-            n_inconclusive += 1
-        elif r.falsified:
-            n_falsified += 1
-        else:
-            n_not_falsified += 1
-
-    print("=" * 70)
-    print(f"SUMMARY: {n_falsified} FALSIFIED, {n_not_falsified} NOT FALSIFIED, "
-          f"{n_inconclusive} INCONCLUSIVE out of {len(results)} tests")
-    print("=" * 70)
+    # Summary table
+    print_summary_table(results)
 
     # Interpretation guide
-    print("\nINTERPRETATION GUIDE:")
-    print("-" * 70)
-    print("FALSIFIED means the specific testable prediction derived from Koch's")
-    print("conjecture was NOT supported by the data. This does not necessarily")
-    print("mean the entire conjecture is wrong — it may mean our operationalization")
-    print("was too narrow, or that the conjecture needs refinement.")
-    print()
-    print("NOT FALSIFIED means the prediction was supported. This does not mean")
-    print("the conjecture is PROVEN — only that this particular test did not")
-    print("refute it. The conjecture may still be wrong for reasons not tested here.")
-    print()
-    print("INCONCLUSIVE means we could not run the test (insufficient data,")
-    print("missing dependencies, etc.)")
-    print()
-    print("KEY QUESTION: Even if no conjecture is falsified, ask whether the")
-    print("geometric framework provides ADDITIONAL explanatory power beyond")
-    print("simpler descriptions (e.g., Fourier analysis à la Nanda et al.).")
-    print("The meta-test addresses this directly.")
+    print_banner("INTERPRETATION GUIDE", "─")
+    print("""
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
 
-    # Save results to JSON
-    output = {
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    """)
+
+    # ================================================================
+    # Save results to JSON (with numpy type handling)
+    # ================================================================
+    output = sanitize_for_json({
         "model": model_name,
+        "model_info": {
+            "n_params": n_params,
+            "n_layers": n_layers,
+            "hidden_dim": hidden_dim,
+        },
         "n_prompts": len(prompts),
         "n_semantic_pairs": len(semantic_pairs),
         "results": [
@@ -1288,19 +1510,18 @@ def run_all_tests(model_name: str = "gpt2", device: str = "cpu"):
             for r in results
         ],
         "summary": {
-            "n_falsified": n_falsified,
-            "n_not_falsified": n_not_falsified,
-            "n_inconclusive": n_inconclusive,
+            "n_falsified": sum(1 for r in results if r.falsified),
+            "n_not_falsified": sum(1 for r in results if not r.falsified and r.p_value is not None),
+            "n_inconclusive": sum(1 for r in results if r.p_value is None and not r.falsified),
         }
-    }
+    })
 
     output_path = Path(f"koch_falsification_{model_name.replace('/', '_')}.json")
     with open(output_path, "w") as f:
-        json.dump(output, f, indent=2)
-    logger.info(f"Results saved to {output_path}")
+        json.dump(output, f, indent=2, cls=NumpyEncoder)
+    print(f"\n  📄 Results saved to: {output_path}")
 
     return results
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Falsification tests for Koch's fibre bundle conjectures")
