@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=koch_falsify
+#SBATCH --job-name=falsify
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -7,8 +7,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --time=06:00:00
-#SBATCH --output=koch_falsify_%j.out
-#SBATCH --error=koch_falsify_%j.err
+#SBATCH --output=falsify_%j.out
+#SBATCH --error=falsify_%j.err
 
 set -euo pipefail
 
