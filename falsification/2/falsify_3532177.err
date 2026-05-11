@@ -1,0 +1,301 @@
+2026-05-11 07:24:45,218 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:24:45,401 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-11 07:24:45,401 [WARNING] Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-11 07:24:45,568 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:24:45,687 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:24:45,806 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:24:45,926 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:24:46,395 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/config.json "HTTP/1.1 200 OK"
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights:   1%|▏         | 2/148 [00:00<00:52,  2.81it/s]Loading weights:   7%|▋         | 10/148 [00:01<00:18,  7.62it/s]Loading weights:  15%|█▍        | 22/148 [00:02<00:12,  9.88it/s]Loading weights:  23%|██▎       | 34/148 [00:03<00:08, 13.45it/s]Loading weights:  32%|███▏      | 48/148 [00:03<00:06, 16.35it/s]Loading weights:  39%|███▉      | 58/148 [00:03<00:04, 19.12it/s]Loading weights:  41%|████      | 61/148 [00:04<00:05, 16.85it/s]Loading weights:  47%|████▋     | 70/148 [00:05<00:07, 10.67it/s]Loading weights:  65%|██████▍   | 96/148 [00:06<00:02, 20.54it/s]Loading weights:  80%|███████▉  | 118/148 [00:06<00:01, 29.90it/s]Loading weights:  83%|████████▎ | 123/148 [00:06<00:00, 29.73it/s]Loading weights:  89%|████████▉ | 132/148 [00:07<00:00, 26.34it/s]Loading weights: 100%|██████████| 148/148 [00:09<00:00, 14.07it/s]Loading weights: 100%|██████████| 148/148 [00:09<00:00, 16.25it/s]
+2026-05-11 07:24:56,640 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:24:56,792 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:25:10,056 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:25:10,142 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:25:10,144 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:25:10,182 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:25:10,286 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:25:10,324 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+/home/s3811141/.cache/uv/environments-v2/falsification-4fa44f57e6c00209/lib/python3.14/site-packages/persim/landscapes/visuals.py:310: SyntaxWarning: "\l" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\l"? A raw string is also an option.
+  ax.plot(ls[:, 0], ls[:, 1], label=f"$\lambda_{{{depth}}}$", alpha=alpha)
+/home/s3811141/.cache/uv/environments-v2/falsification-4fa44f57e6c00209/lib/python3.14/site-packages/persim/landscapes/visuals.py:469: SyntaxWarning: "\l" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\l"? A raw string is also an option.
+  ax.plot(domain, l, label=f"$\lambda_{{{depth}}}$", alpha=alpha)
+2026-05-11 07:25:11,871 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:25:12,003 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:25:12,005 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:25:12,024 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:25:12,059 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:25:13,732 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:25:14,396 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:25:14,405 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:25:14,413 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:25:14,736 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:25:14,898 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:25:15,075 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:25:15,199 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:25:15,318 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-medium/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:25:15,443 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:25:15,816 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights:   1%|          | 2/292 [00:01<03:25,  1.41it/s]Loading weights:   3%|▎         | 10/292 [00:01<00:34,  8.18it/s]Loading weights:   5%|▍         | 14/292 [00:02<00:52,  5.29it/s]Loading weights:   8%|▊         | 22/292 [00:03<00:32,  8.30it/s]Loading weights:   9%|▉         | 26/292 [00:04<00:43,  6.12it/s]Loading weights:  12%|█▏        | 36/292 [00:04<00:23, 10.96it/s]Loading weights:  13%|█▎        | 39/292 [00:04<00:23, 10.94it/s]Loading weights:  16%|█▌        | 46/292 [00:05<00:25,  9.51it/s]Loading weights:  16%|█▋        | 48/292 [00:05<00:26,  9.05it/s]Loading weights:  20%|█▉        | 58/292 [00:07<00:32,  7.28it/s]Loading weights:  25%|██▍       | 72/292 [00:07<00:17, 12.41it/s]Loading weights:  26%|██▌       | 75/292 [00:08<00:17, 12.38it/s]Loading weights:  28%|██▊       | 82/292 [00:08<00:14, 14.73it/s]Loading weights:  29%|██▉       | 85/292 [00:08<00:16, 12.72it/s]Loading weights:  32%|███▏      | 94/292 [00:09<00:17, 11.29it/s]Loading weights:  34%|███▎      | 98/292 [00:09<00:15, 12.40it/s]Loading weights:  36%|███▋      | 106/292 [00:10<00:11, 16.70it/s]Loading weights:  37%|███▋      | 109/292 [00:11<00:17, 10.46it/s]Loading weights:  38%|███▊      | 111/292 [00:11<00:17, 10.62it/s]Loading weights:  40%|████      | 118/292 [00:11<00:17, 10.09it/s]Loading weights:  41%|████      | 120/292 [00:12<00:25,  6.74it/s]Loading weights:  45%|████▍     | 130/292 [00:13<00:15, 10.58it/s]Loading weights:  49%|████▊     | 142/292 [00:13<00:08, 16.92it/s]Loading weights:  50%|████▉     | 145/292 [00:14<00:16,  8.70it/s]Loading weights:  53%|█████▎    | 156/292 [00:15<00:14,  9.19it/s]Loading weights:  57%|█████▋    | 166/292 [00:16<00:12, 10.28it/s]Loading weights:  58%|█████▊    | 170/292 [00:17<00:12,  9.70it/s]Loading weights:  61%|██████    | 178/292 [00:17<00:10, 11.23it/s]Loading weights:  62%|██████▏   | 180/292 [00:17<00:09, 11.53it/s]Loading weights:  65%|██████▌   | 190/292 [00:18<00:07, 12.91it/s]Loading weights:  69%|██████▉   | 202/292 [00:19<00:06, 13.21it/s]Loading weights:  70%|██████▉   | 204/292 [00:19<00:07, 12.32it/s]Loading weights:  74%|███████▍  | 216/292 [00:20<00:05, 14.38it/s]Loading weights:  79%|███████▉  | 230/292 [00:21<00:04, 14.21it/s]Loading weights:  83%|████████▎ | 242/292 [00:22<00:03, 13.20it/s]Loading weights:  86%|████████▌ | 250/292 [00:23<00:03, 11.69it/s]Loading weights:  90%|█████████ | 264/292 [00:24<00:02, 12.99it/s]Loading weights:  95%|█████████▍| 276/292 [00:25<00:01, 11.50it/s]Loading weights: 100%|█████████▉| 291/292 [00:25<00:00, 17.07it/s]Loading weights: 100%|██████████| 292/292 [00:29<00:00,  9.87it/s]
+2026-05-11 07:25:45,895 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:25:46,091 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:25:46,906 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:25:47,065 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:25:47,068 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:25:47,146 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:25:47,400 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:25:47,482 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:25:47,764 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:25:48,032 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:25:48,036 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:25:48,085 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:25:48,178 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:25:51,784 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:25:53,672 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:25:53,691 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:25:53,708 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:25:54,104 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:25:54,284 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:25:54,458 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-large/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:25:54,586 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-large/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:25:54,709 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-large/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:25:54,833 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-large/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:25:55,229 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/436 [00:00<?, ?it/s]Loading weights:   0%|          | 2/436 [00:01<05:56,  1.22it/s]Loading weights:   2%|▏         | 10/436 [00:01<00:59,  7.18it/s]Loading weights:   3%|▎         | 14/436 [00:02<01:20,  5.22it/s]Loading weights:   5%|▌         | 22/436 [00:05<01:46,  3.88it/s]Loading weights:   8%|▊         | 36/436 [00:05<00:53,  7.51it/s]Loading weights:   9%|▊         | 38/436 [00:07<01:12,  5.49it/s]Loading weights:  11%|█         | 46/436 [00:07<00:57,  6.80it/s]Loading weights:  11%|█         | 48/436 [00:08<01:11,  5.45it/s]Loading weights:  14%|█▍        | 60/436 [00:09<00:49,  7.60it/s]Loading weights:  16%|█▌        | 70/436 [00:10<00:42,  8.59it/s]Loading weights:  17%|█▋        | 72/436 [00:11<00:46,  7.89it/s]Loading weights:  17%|█▋        | 74/436 [00:11<00:43,  8.40it/s]Loading weights:  19%|█▉        | 82/436 [00:12<00:47,  7.44it/s]Loading weights:  20%|█▉        | 86/436 [00:13<00:47,  7.43it/s]Loading weights:  22%|██▏       | 94/436 [00:13<00:35,  9.70it/s]Loading weights:  22%|██▏       | 98/436 [00:14<00:39,  8.56it/s]Loading weights:  24%|██▍       | 106/436 [00:14<00:28, 11.55it/s]Loading weights:  25%|██▍       | 108/436 [00:15<00:51,  6.37it/s]Loading weights:  27%|██▋       | 118/436 [00:16<00:33,  9.40it/s]Loading weights:  28%|██▊       | 120/436 [00:17<00:49,  6.40it/s]Loading weights:  30%|██▉       | 130/436 [00:17<00:34,  8.92it/s]Loading weights:  31%|███       | 134/436 [00:18<00:35,  8.42it/s]Loading weights:  31%|███       | 136/436 [00:18<00:34,  8.74it/s]Loading weights:  33%|███▎      | 142/436 [00:19<00:37,  7.94it/s]Loading weights:  33%|███▎      | 146/436 [00:20<00:49,  5.84it/s]Loading weights:  36%|███▌      | 156/436 [00:20<00:28,  9.99it/s]Loading weights:  36%|███▌      | 158/436 [00:21<00:26, 10.54it/s]Loading weights:  38%|███▊      | 166/436 [00:22<00:34,  7.75it/s]Loading weights:  39%|███▊      | 168/436 [00:23<00:46,  5.72it/s]Loading weights:  41%|████      | 178/436 [00:24<00:32,  7.95it/s]Loading weights:  41%|████▏     | 180/436 [00:24<00:30,  8.49it/s]Loading weights:  42%|████▏     | 182/436 [00:24<00:27,  9.13it/s]Loading weights:  42%|████▏     | 184/436 [00:24<00:26,  9.68it/s]Loading weights:  44%|████▎     | 190/436 [00:26<00:43,  5.60it/s]Loading weights:  44%|████▍     | 192/436 [00:26<00:43,  5.60it/s]Loading weights:  44%|████▍     | 194/436 [00:26<00:40,  5.92it/s]Loading weights:  47%|████▋     | 204/436 [00:28<00:40,  5.67it/s]Loading weights:  47%|████▋     | 206/436 [00:28<00:37,  6.18it/s]Loading weights:  50%|████▉     | 216/436 [00:29<00:26,  8.41it/s]Loading weights:  52%|█████▏    | 226/436 [00:30<00:22,  9.51it/s]Loading weights:  52%|█████▏    | 228/436 [00:30<00:24,  8.53it/s]Loading weights:  55%|█████▍    | 238/436 [00:32<00:25,  7.76it/s]Loading weights:  56%|█████▌    | 242/436 [00:32<00:21,  9.15it/s]Loading weights:  57%|█████▋    | 250/436 [00:33<00:19,  9.58it/s]Loading weights:  58%|█████▊    | 252/436 [00:33<00:23,  7.87it/s]Loading weights:  58%|█████▊    | 254/436 [00:34<00:21,  8.42it/s]Loading weights:  60%|██████    | 262/436 [00:35<00:24,  7.25it/s]Loading weights:  61%|██████    | 264/436 [00:35<00:25,  6.84it/s]Loading weights:  63%|██████▎   | 274/436 [00:36<00:15, 10.45it/s]Loading weights:  64%|██████▍   | 278/436 [00:36<00:19,  8.27it/s]Loading weights:  66%|██████▌   | 286/436 [00:37<00:12, 12.18it/s]Loading weights:  66%|██████▋   | 289/436 [00:37<00:11, 13.04it/s]Loading weights:  67%|██████▋   | 292/436 [00:38<00:18,  7.92it/s]Loading weights:  69%|██████▉   | 300/436 [00:39<00:17,  7.58it/s]Loading weights:  71%|███████   | 310/436 [00:39<00:12, 10.02it/s]Loading weights:  72%|███████▏  | 312/436 [00:40<00:17,  7.17it/s]Loading weights:  74%|███████▍  | 322/436 [00:41<00:12,  8.87it/s]Loading weights:  77%|███████▋  | 334/436 [00:42<00:09, 11.30it/s]Loading weights:  77%|███████▋  | 336/436 [00:42<00:09, 10.09it/s]Loading weights:  78%|███████▊  | 338/436 [00:43<00:14,  6.98it/s]Loading weights:  80%|███████▉  | 348/436 [00:44<00:10,  8.77it/s]Loading weights:  80%|████████  | 350/436 [00:44<00:09,  8.81it/s]Loading weights:  82%|████████▏ | 358/436 [00:45<00:07, 10.30it/s]Loading weights:  83%|████████▎ | 360/436 [00:46<00:10,  7.30it/s]Loading weights:  83%|████████▎ | 362/436 [00:46<00:09,  8.05it/s]Loading weights:  85%|████████▍ | 370/436 [00:46<00:06, 10.15it/s]Loading weights:  85%|████████▌ | 372/436 [00:47<00:06,  9.83it/s]Loading weights:  86%|████████▌ | 374/436 [00:47<00:07,  8.47it/s]Loading weights:  88%|████████▊ | 382/436 [00:47<00:03, 14.84it/s]Loading weights:  88%|████████▊ | 385/436 [00:48<00:06,  7.64it/s]Loading weights:  91%|█████████ | 396/436 [00:49<00:03, 11.23it/s]Loading weights:  93%|█████████▎| 406/436 [00:49<00:02, 12.14it/s]Loading weights:  94%|█████████▎| 408/436 [00:50<00:02, 11.65it/s]Loading weights:  96%|█████████▌| 418/436 [00:51<00:01, 11.26it/s]Loading weights:  99%|█████████▊| 430/436 [00:51<00:00, 17.54it/s]Loading weights: 100%|█████████▉| 434/436 [00:52<00:00,  9.04it/s]Loading weights: 100%|██████████| 436/436 [00:56<00:00,  7.72it/s]
+2026-05-11 07:26:52,227 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:26:52,397 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:26:53,419 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:26:53,710 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:26:53,715 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:26:53,837 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:26:54,306 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:26:54,454 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:26:54,906 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:26:55,330 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:26:55,337 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:26:55,423 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:26:55,588 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:27:01,258 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:27:04,919 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:27:04,949 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:27:04,978 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:27:05,406 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:27:05,684 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:27:05,855 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-xl/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:27:05,978 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-xl/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:27:06,102 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-xl/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:27:06,232 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-xl/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:27:06,617 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/580 [00:00<?, ?it/s]Loading weights:   0%|          | 2/580 [00:02<13:03,  1.36s/it]Loading weights:   2%|▏         | 12/580 [00:02<01:47,  5.30it/s]Loading weights:   3%|▎         | 15/580 [00:03<02:05,  4.50it/s]Loading weights:   4%|▍         | 22/580 [00:06<02:37,  3.55it/s]Loading weights:   6%|▌         | 36/580 [00:08<01:58,  4.57it/s]Loading weights:   7%|▋         | 38/580 [00:09<01:57,  4.60it/s]Loading weights:   8%|▊         | 48/580 [00:11<02:09,  4.09it/s]Loading weights:  10%|█         | 60/580 [00:13<01:42,  5.07it/s]Loading weights:  12%|█▏        | 70/580 [00:13<01:12,  7.01it/s]Loading weights:  12%|█▏        | 72/580 [00:15<01:35,  5.29it/s]Loading weights:  13%|█▎        | 76/580 [00:15<01:20,  6.28it/s]Loading weights:  14%|█▍        | 82/580 [00:15<01:03,  7.79it/s]Loading weights:  15%|█▍        | 86/580 [00:16<01:13,  6.75it/s]Loading weights:  16%|█▌        | 94/580 [00:17<01:09,  6.94it/s]Loading weights:  17%|█▋        | 96/580 [00:17<01:05,  7.35it/s]Loading weights:  17%|█▋        | 98/580 [00:18<01:13,  6.52it/s]Loading weights:  18%|█▊        | 106/580 [00:20<01:27,  5.44it/s]Loading weights:  19%|█▉        | 110/580 [00:20<01:08,  6.87it/s]Loading weights:  20%|██        | 118/580 [00:22<01:26,  5.33it/s]Loading weights:  21%|██        | 122/580 [00:22<01:18,  5.83it/s]Loading weights:  22%|██▏       | 130/580 [00:23<01:03,  7.05it/s]Loading weights:  23%|██▎       | 132/580 [00:25<01:45,  4.25it/s]Loading weights:  25%|██▍       | 144/580 [00:26<01:15,  5.81it/s]Loading weights:  25%|██▌       | 146/580 [00:27<01:19,  5.47it/s]Loading weights:  27%|██▋       | 154/580 [00:27<00:52,  8.15it/s]Loading weights:  27%|██▋       | 156/580 [00:29<01:30,  4.69it/s]Loading weights:  29%|██▊       | 166/580 [00:29<00:55,  7.50it/s]Loading weights:  29%|██▉       | 168/580 [00:30<01:19,  5.16it/s]Loading weights:  29%|██▉       | 170/580 [00:30<01:13,  5.60it/s]Loading weights:  30%|██▉       | 172/580 [00:31<01:13,  5.58it/s]Loading weights:  31%|███       | 178/580 [00:32<01:17,  5.17it/s]Loading weights:  31%|███       | 180/580 [00:33<01:25,  4.69it/s]Loading weights:  33%|███▎      | 190/580 [00:35<01:22,  4.71it/s]Loading weights:  33%|███▎      | 192/580 [00:35<01:26,  4.51it/s]Loading weights:  35%|███▍      | 202/580 [00:37<01:10,  5.33it/s]Loading weights:  36%|███▌      | 206/580 [00:37<01:01,  6.10it/s]Loading weights:  37%|███▋      | 214/580 [00:39<01:07,  5.39it/s]Loading weights:  37%|███▋      | 216/580 [00:39<01:05,  5.56it/s]Loading weights:  39%|███▉      | 226/580 [00:42<01:14,  4.73it/s]Loading weights:  41%|████      | 238/580 [00:43<00:58,  5.89it/s]Loading weights:  42%|████▏     | 242/580 [00:45<01:08,  4.90it/s]Loading weights:  43%|████▎     | 252/580 [00:46<00:55,  5.92it/s]Loading weights:  44%|████▍     | 254/580 [00:46<00:53,  6.05it/s]Loading weights:  45%|████▌     | 262/580 [00:46<00:39,  8.01it/s]Loading weights:  46%|████▌     | 264/580 [00:47<00:42,  7.38it/s]Loading weights:  46%|████▌     | 266/580 [00:47<00:40,  7.83it/s]Loading weights:  47%|████▋     | 274/580 [00:48<00:35,  8.65it/s]Loading weights:  48%|████▊     | 276/580 [00:49<01:02,  4.89it/s]Loading weights:  49%|████▉     | 286/580 [00:50<00:36,  8.06it/s]Loading weights:  50%|████▉     | 288/580 [00:50<00:35,  8.32it/s]Loading weights:  50%|█████     | 290/580 [00:51<00:48,  5.93it/s]Loading weights:  51%|█████▏    | 298/580 [00:51<00:32,  8.61it/s]Loading weights:  52%|█████▏    | 300/580 [00:52<00:47,  5.96it/s]Loading weights:  53%|█████▎    | 310/580 [00:54<00:46,  5.85it/s]Loading weights:  54%|█████▍    | 312/580 [00:54<00:44,  5.98it/s]Loading weights:  54%|█████▍    | 314/580 [00:55<00:45,  5.91it/s]Loading weights:  56%|█████▌    | 322/580 [00:56<00:47,  5.44it/s]Loading weights:  58%|█████▊    | 334/580 [00:59<00:47,  5.19it/s]Loading weights:  60%|█████▉    | 346/580 [01:01<00:40,  5.71it/s]Loading weights:  62%|██████▏   | 358/580 [01:01<00:28,  7.82it/s]Loading weights:  62%|██████▏   | 360/580 [01:03<00:43,  5.10it/s]Loading weights:  64%|██████▍   | 370/580 [01:03<00:28,  7.38it/s]Loading weights:  64%|██████▍   | 372/580 [01:05<00:38,  5.42it/s]Loading weights:  66%|██████▌   | 382/580 [01:06<00:29,  6.82it/s]Loading weights:  66%|██████▌   | 384/580 [01:07<00:36,  5.39it/s]Loading weights:  68%|██████▊   | 394/580 [01:09<00:36,  5.11it/s]Loading weights:  70%|███████   | 406/580 [01:10<00:28,  6.00it/s]Loading weights:  71%|███████   | 410/580 [01:10<00:24,  6.91it/s]Loading weights:  72%|███████▏  | 418/580 [01:12<00:28,  5.64it/s]Loading weights:  74%|███████▍  | 430/580 [01:13<00:19,  7.68it/s]Loading weights:  74%|███████▍  | 432/580 [01:14<00:22,  6.58it/s]Loading weights:  75%|███████▍  | 434/580 [01:14<00:22,  6.60it/s]Loading weights:  76%|███████▌  | 442/580 [01:16<00:26,  5.17it/s]Loading weights:  77%|███████▋  | 446/580 [01:17<00:24,  5.58it/s]Loading weights:  79%|███████▊  | 456/580 [01:19<00:24,  5.07it/s]Loading weights:  81%|████████  | 468/580 [01:20<00:15,  7.06it/s]Loading weights:  81%|████████▏ | 472/580 [01:20<00:14,  7.47it/s]Loading weights:  82%|████████▏ | 478/580 [01:21<00:11,  8.57it/s]Loading weights:  83%|████████▎ | 480/580 [01:21<00:13,  7.17it/s]Loading weights:  83%|████████▎ | 482/580 [01:22<00:20,  4.87it/s]Loading weights:  84%|████████▍ | 490/580 [01:23<00:11,  8.05it/s]Loading weights:  85%|████████▍ | 492/580 [01:24<00:20,  4.39it/s]Loading weights:  87%|████████▋ | 504/580 [01:27<00:16,  4.64it/s]Loading weights:  89%|████████▊ | 514/580 [01:27<00:09,  6.97it/s]Loading weights:  89%|████████▉ | 518/580 [01:29<00:11,  5.28it/s]Loading weights:  91%|█████████ | 526/580 [01:29<00:07,  6.94it/s]Loading weights:  91%|█████████▏| 530/580 [01:31<00:10,  4.96it/s]Loading weights:  93%|█████████▎| 538/580 [01:32<00:06,  6.10it/s]Loading weights:  93%|█████████▎| 540/580 [01:32<00:06,  5.77it/s]Loading weights:  95%|█████████▍| 550/580 [01:35<00:07,  4.20it/s]Loading weights:  95%|█████████▌| 552/580 [01:36<00:06,  4.23it/s]Loading weights:  97%|█████████▋| 564/580 [01:36<00:02,  7.28it/s]Loading weights:  98%|█████████▊| 566/580 [01:37<00:02,  5.28it/s]Loading weights:  99%|█████████▉| 576/580 [01:38<00:00,  7.95it/s]Loading weights: 100%|█████████▉| 579/580 [01:38<00:00,  7.83it/s]Loading weights: 100%|██████████| 580/580 [01:45<00:00,  5.49it/s]
+2026-05-11 07:28:53,004 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:28:53,180 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:28:54,447 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:28:54,923 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:28:54,930 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:28:55,105 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:28:55,861 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:28:56,106 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:28:56,754 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:28:57,357 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:28:57,368 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:28:57,502 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:28:57,766 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:29:05,884 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:29:11,931 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:29:11,973 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:29:12,019 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:29:12,500 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:12,508 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:12,700 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:12,708 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:12,903 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-70m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:13,027 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-70m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:29:13,349 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:13,357 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/76 [00:00<?, ?it/s]Loading weights:  20%|█▉        | 15/76 [00:00<00:00, 149.65it/s]Loading weights:  50%|█████     | 38/76 [00:00<00:00, 193.49it/s]Loading weights: 100%|██████████| 76/76 [00:00<00:00, 307.55it/s]
+2026-05-11 07:29:19,553 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:19,679 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:19,686 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:19,812 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:20,692 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:29:20,714 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:29:20,715 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:29:20,733 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:29:20,770 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:29:20,782 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:29:20,836 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:29:20,900 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:29:20,901 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:29:20,909 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:29:20,921 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:29:21,706 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:29:21,882 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:29:21,886 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:29:21,890 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:29:22,186 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:22,194 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:22,505 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:22,513 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:22,696 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-160m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:22,831 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-160m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:29:23,131 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:23,138 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights:  13%|█▎        | 19/148 [00:00<00:00, 155.62it/s]Loading weights:  26%|██▌       | 38/148 [00:00<00:00, 155.14it/s]Loading weights:  46%|████▌     | 68/148 [00:00<00:00, 200.42it/s]Loading weights:  66%|██████▌   | 98/148 [00:00<00:00, 204.88it/s]Loading weights:  86%|████████▋ | 128/148 [00:00<00:00, 217.23it/s]Loading weights: 100%|██████████| 148/148 [00:00<00:00, 222.29it/s]
+2026-05-11 07:29:32,598 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:32,718 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:32,725 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:32,852 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:33,682 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:29:33,743 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:29:33,745 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:29:33,782 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:29:33,884 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:29:33,917 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:29:34,043 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:29:34,173 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:29:34,175 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:29:34,195 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:29:34,230 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:29:35,896 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:29:36,578 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:29:36,587 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:29:36,595 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:29:36,911 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:36,918 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:37,086 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:37,094 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:29:37,260 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-410m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:29:37,388 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-410m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:29:37,776 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:29:37,783 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights:   4%|▍         | 13/292 [00:00<00:02, 110.64it/s]Loading weights:   9%|▉         | 27/292 [00:00<00:02, 122.50it/s]Loading weights:  15%|█▌        | 44/292 [00:00<00:01, 128.88it/s]Loading weights:  20%|█▉        | 57/292 [00:00<00:02, 115.38it/s]Loading weights:  24%|██▎       | 69/292 [00:00<00:02, 104.03it/s]Loading weights:  27%|██▋       | 80/292 [00:00<00:02, 101.90it/s]Loading weights:  34%|███▎      | 98/292 [00:00<00:01, 122.34it/s]Loading weights:  38%|███▊      | 111/292 [00:00<00:01, 119.95it/s]Loading weights:  43%|████▎     | 125/292 [00:01<00:01, 106.84it/s]Loading weights:  53%|█████▎    | 154/292 [00:01<00:01, 137.53it/s]Loading weights:  62%|██████▏   | 181/292 [00:01<00:00, 167.54it/s]Loading weights:  68%|██████▊   | 199/292 [00:01<00:00, 153.18it/s]Loading weights:  74%|███████▎  | 215/292 [00:01<00:00, 142.92it/s]Loading weights:  79%|███████▉  | 231/292 [00:01<00:00, 144.73it/s]Loading weights:  84%|████████▍ | 246/292 [00:01<00:00, 132.52it/s]Loading weights:  93%|█████████▎| 272/292 [00:02<00:00, 149.94it/s]Loading weights: 100%|██████████| 292/292 [00:02<00:00, 138.78it/s]
+2026-05-11 07:30:04,151 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:30:04,275 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:30:04,286 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:30:04,413 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:30:05,370 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:30:05,530 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:30:05,533 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:30:05,611 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:30:05,861 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:30:05,944 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:30:06,226 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:30:06,495 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:30:06,499 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:30:06,549 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:30:06,644 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:30:10,259 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:30:12,228 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:30:12,247 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:30:12,264 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:30:12,647 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:30:12,658 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:30:12,854 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:30:12,864 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:30:13,053 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:30:13,182 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:30:13,475 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:30:13,486 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s]Loading weights:   5%|▌         | 10/196 [00:00<00:01, 99.66it/s]Loading weights:  13%|█▎        | 26/196 [00:00<00:01, 91.15it/s]Loading weights:  23%|██▎       | 46/196 [00:00<00:01, 101.71it/s]Loading weights:  33%|███▎      | 65/196 [00:00<00:01, 113.75it/s]Loading weights:  41%|████▏     | 81/196 [00:00<00:00, 125.70it/s]Loading weights:  48%|████▊     | 95/196 [00:01<00:01, 82.18it/s] Loading weights:  54%|█████▍    | 106/196 [00:01<00:01, 76.21it/s]Loading weights:  59%|█████▊    | 115/196 [00:01<00:01, 75.83it/s]Loading weights:  63%|██████▎   | 124/196 [00:01<00:00, 75.33it/s]Loading weights:  73%|███████▎  | 143/196 [00:01<00:00, 91.07it/s]Loading weights:  81%|████████  | 159/196 [00:01<00:00, 94.97it/s]Loading weights:  90%|████████▉ | 176/196 [00:01<00:00, 103.18it/s]Loading weights: 100%|██████████| 196/196 [00:01<00:00, 100.96it/s]
+2026-05-11 07:31:11,687 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:31:11,813 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:31:11,821 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:31:11,946 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:31:13,725 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:31:13,928 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:31:13,931 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:31:13,997 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:31:14,279 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:31:14,383 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:31:14,612 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:31:14,842 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:31:14,846 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:31:14,904 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:31:15,006 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:31:17,987 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:31:20,467 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:31:20,484 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:31:20,504 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:31:20,903 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:31:20,914 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:31:21,098 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:31:21,109 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:31:21,288 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1.4b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:31:21,424 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1.4b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:31:21,780 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:31:21,791 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights:   7%|▋         | 21/292 [00:00<00:01, 209.77it/s]Loading weights:  14%|█▍        | 42/292 [00:00<00:01, 130.14it/s]Loading weights:  21%|██        | 61/292 [00:00<00:01, 144.40it/s]Loading weights:  26%|██▋       | 77/292 [00:00<00:01, 141.02it/s]Loading weights:  32%|███▏      | 92/292 [00:00<00:01, 124.14it/s]Loading weights:  36%|███▋      | 106/292 [00:00<00:01, 108.01it/s]Loading weights:  40%|████      | 118/292 [00:00<00:01, 104.96it/s]Loading weights:  46%|████▌     | 133/292 [00:01<00:01, 110.90it/s]Loading weights:  50%|█████     | 146/292 [00:01<00:01, 111.34it/s]Loading weights:  54%|█████▍    | 158/292 [00:01<00:01, 103.03it/s]Loading weights:  58%|█████▊    | 170/292 [00:01<00:01, 96.24it/s] Loading weights:  63%|██████▎   | 185/292 [00:01<00:01, 106.07it/s]Loading weights:  67%|██████▋   | 196/292 [00:01<00:00, 106.05it/s]Loading weights:  72%|███████▏  | 209/292 [00:01<00:00, 85.26it/s] Loading weights:  80%|███████▉  | 233/292 [00:02<00:00, 109.80it/s]Loading weights:  84%|████████▍ | 245/292 [00:02<00:00, 107.35it/s]Loading weights:  89%|████████▉ | 260/292 [00:02<00:00, 114.86it/s]Loading weights:  93%|█████████▎| 272/292 [00:02<00:00, 104.82it/s]Loading weights: 100%|██████████| 292/292 [00:02<00:00, 114.82it/s]
+2026-05-11 07:33:10,450 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:33:10,578 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:33:10,589 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:33:10,719 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:33:12,510 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:33:12,819 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:33:12,823 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:33:12,921 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:33:13,355 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:33:13,509 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:33:13,864 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:33:14,214 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:33:14,220 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:33:14,310 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:33:14,478 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:33:18,960 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:33:22,824 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:33:22,852 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:33:22,881 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:33:23,316 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:33:23,324 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:33:23,511 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:33:23,518 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:33:23,671 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-2.8b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:33:23,810 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-2.8b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:33:24,167 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:33:24,175 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/388 [00:00<?, ?it/s]Loading weights:   4%|▎         | 14/388 [00:00<00:04, 82.76it/s]Loading weights:   7%|▋         | 28/388 [00:00<00:03, 104.20it/s]Loading weights:  10%|█         | 39/388 [00:00<00:04, 75.91it/s] Loading weights:  16%|█▌        | 62/388 [00:00<00:02, 108.80it/s]Loading weights:  19%|█▉        | 74/388 [00:00<00:03, 99.50it/s] Loading weights:  24%|██▎       | 92/388 [00:00<00:02, 112.27it/s]Loading weights:  27%|██▋       | 104/388 [00:01<00:02, 101.50it/s]Loading weights:  31%|███       | 119/388 [00:01<00:03, 82.99it/s] Loading weights:  33%|███▎      | 129/388 [00:01<00:03, 73.74it/s]Loading weights:  36%|███▋      | 141/388 [00:01<00:03, 72.73it/s]Loading weights:  41%|████      | 160/388 [00:01<00:02, 83.98it/s]Loading weights:  45%|████▍     | 173/388 [00:01<00:02, 88.60it/s]Loading weights:  48%|████▊     | 185/388 [00:02<00:02, 93.85it/s]Loading weights:  50%|█████     | 195/388 [00:02<00:02, 90.61it/s]Loading weights:  53%|█████▎    | 206/388 [00:02<00:02, 90.87it/s]Loading weights:  56%|█████▌    | 216/388 [00:02<00:02, 79.16it/s]Loading weights:  61%|██████    | 235/388 [00:02<00:01, 93.80it/s]Loading weights:  65%|██████▌   | 253/388 [00:02<00:01, 107.54it/s]Loading weights:  68%|██████▊   | 265/388 [00:02<00:01, 94.54it/s] Loading weights:  73%|███████▎  | 284/388 [00:03<00:00, 109.35it/s]Loading weights:  76%|███████▋  | 296/388 [00:03<00:00, 96.80it/s] Loading weights:  80%|███████▉  | 309/388 [00:03<00:00, 99.58it/s]Loading weights:  82%|████████▏ | 320/388 [00:03<00:00, 85.56it/s]Loading weights:  87%|████████▋ | 338/388 [00:03<00:00, 103.84it/s]Loading weights:  90%|█████████ | 350/388 [00:03<00:00, 98.04it/s] Loading weights:  93%|█████████▎| 361/388 [00:03<00:00, 95.90it/s]Loading weights:  96%|█████████▌| 371/388 [00:04<00:00, 82.20it/s]Loading weights: 100%|██████████| 388/388 [00:04<00:00, 95.00it/s]
+2026-05-11 07:36:49,837 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:36:49,961 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:36:49,982 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:36:50,110 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:36:52,147 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:36:52,635 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:36:52,641 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:36:52,789 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:36:53,535 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:36:53,786 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:36:54,282 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:36:54,760 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:36:54,770 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:36:54,903 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:36:55,152 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:37:01,645 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:37:08,210 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:37:08,246 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:37:08,291 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:37:08,767 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:37:08,788 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:37:08,992 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:37:09,000 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:37:09,150 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:37:09,158 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:37:09,284 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-1_5/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:37:09,409 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-1_5/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:37:09,801 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:37:09,810 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/341 [00:00<?, ?it/s]Loading weights:   4%|▍         | 13/341 [00:00<00:03, 95.66it/s]Loading weights:   8%|▊         | 26/341 [00:00<00:03, 98.85it/s]Loading weights:  12%|█▏        | 40/341 [00:00<00:02, 107.49it/s]Loading weights:  16%|█▌        | 53/341 [00:00<00:02, 107.18it/s]Loading weights:  24%|██▍       | 82/341 [00:00<00:01, 131.34it/s]Loading weights:  31%|███▏      | 107/341 [00:00<00:01, 138.74it/s]Loading weights:  40%|████      | 138/341 [00:00<00:01, 176.98it/s]Loading weights:  48%|████▊     | 164/341 [00:01<00:00, 185.84it/s]Loading weights:  60%|██████    | 205/341 [00:01<00:00, 242.75it/s]Loading weights:  69%|██████▉   | 235/341 [00:01<00:00, 233.30it/s]Loading weights:  80%|████████  | 273/341 [00:01<00:00, 261.28it/s]Loading weights:  89%|████████▊ | 302/341 [00:01<00:00, 257.25it/s]Loading weights: 100%|██████████| 341/341 [00:01<00:00, 208.03it/s]
+2026-05-11 07:39:15,478 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:39:15,486 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:39:15,665 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:39:19,507 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:39:19,808 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:39:19,812 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:39:19,909 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:39:20,343 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:39:20,498 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:39:20,845 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:39:21,186 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:39:21,193 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:39:21,276 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:39:21,433 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:39:25,898 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
