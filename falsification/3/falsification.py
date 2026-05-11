@@ -2136,12 +2136,6 @@ MODEL_REGISTRY = {
         "arch": "llama",
         "min_ram_gb": 32,
     },
-    "deepseek-ai/DeepSeek-R1-Distill-Llama-70B": {
-        "description": "DeepSeek R1 Distill Llama 70B (reasoning, distilled)",
-        "size": "xxxl",
-        "arch": "llama",
-        "min_ram_gb": 140,
-    },
 
     # ---- Mistral / Mixtral ----
     "mistralai/Mistral-7B-v0.3": {
