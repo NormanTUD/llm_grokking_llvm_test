@@ -1,0 +1,358 @@
+{
+  "model": "EleutherAI/pythia-1.4b",
+  "model_info": {
+    "n_params": 1414647808,
+    "n_layers": 24,
+    "hidden_dim": 2048,
+    "device": "cuda"
+  },
+  "n_prompts": 12,
+  "n_semantic_pairs": 12,
+  "n_tests": 15,
+  "results": [
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Structured deformation (SV distribution)",
+      "prediction": "Layer deltas have structured (non-random) singular value distributions",
+      "observation": "KS stat=1.0000, p=0.000000. Median condition: real=6.68, random=1.15",
+      "p_value": 2.4333925226320105e-172,
+      "effect_size": 0.2646752857357463,
+      "falsified": false,
+      "details": {
+        "real_median_condition": 6.678065299987793,
+        "random_median_condition": 1.1450020007687456,
+        "ks_statistic": 1.0
+      }
+    },
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Semantic sensitivity of deformations",
+      "prediction": "Semantically similar prompts produce more similar deformations than dissimilar prompts",
+      "observation": "Mean deformation diff: similar=0.034650, dissimilar=0.110542",
+      "p_value": 0.0012626262614503503,
+      "effect_size": 1.9849318265914917,
+      "falsified": false,
+      "details": {
+        "mean_similar": 0.034650448709726334,
+        "mean_dissimilar": 0.11054234206676483,
+        "n_similar": 5,
+        "n_dissimilar": 7
+      }
+    },
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Curvature concentration (heavy-tailedness)",
+      "prediction": "Curvature distribution is heavy-tailed (excess kurtosis > 1, non-Gaussian)",
+      "observation": "Excess kurtosis=360.7812, normality test p=0.000000. Mean curvature=0.0640, median=0.0179",
+      "p_value": 0.0,
+      "effect_size": 360.7811654980875,
+      "falsified": false,
+      "details": {
+        "excess_kurtosis": 360.7811654980875,
+        "normality_p": 0.0,
+        "mean_curvature": 0.06396114519265268,
+        "median_curvature": 0.017931658855419037,
+        "percentile_95": 0.08090105872955018,
+        "percentile_99": 0.1811607613217464,
+        "n_measurements": 3672
+      }
+    },
+    {
+      "conjecture": "Conjecture 2",
+      "test_name": "Holographic distribution (ablation uniformity)",
+      "prediction": "Ablation damage is uniform across tokens (CV < 0.5)",
+      "observation": "Mean CV of per-token ablation error: 0.0267",
+      "p_value": null,
+      "effect_size": 0.026660641290963148,
+      "falsified": false,
+      "details": {
+        "mean_cv": 0.026660641290963148,
+        "std_cv": 0.015530118117473336,
+        "n_measurements": 276,
+        "threshold": 0.5
+      }
+    },
+    {
+      "conjecture": "Conjecture 2",
+      "test_name": "Drift coherence (token delta alignment)",
+      "prediction": "Per-token drift directions within a layer are more aligned than random",
+      "observation": "Mean cosine coherence: real=0.4151, random=-0.0002",
+      "p_value": 4.362916360632744e-96,
+      "effect_size": 1.7523011836234479,
+      "falsified": false,
+      "details": {
+        "mean_real_coherence": 0.4151414930820465,
+        "mean_random_coherence": -0.0002053671911953506,
+        "n_measurements": 288
+      }
+    },
+    {
+      "conjecture": "Conjecture 3",
+      "test_name": "Persistent topology (H1 total persistence)",
+      "prediction": "Real representations have significantly more persistent H1 features than random point clouds",
+      "observation": "Mean total H1 persistence: real=3.0538, random=40.8458",
+      "p_value": 1.0,
+      "effect_size": -1.1303842946889644,
+      "falsified": true,
+      "details": {
+        "mean_real_persistence": 3.0537709913391997,
+        "mean_random_persistence": 40.845806311869964,
+        "n_measurements": 276
+      }
+    },
+    {
+      "conjecture": "Conjecture 3",
+      "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+      "prediction": "Topological change between layers is non-uniform (CV > 0.2)",
+      "observation": "Mean CV of Wasserstein distances: 1.2630",
+      "p_value": null,
+      "effect_size": 1.2629511087038627,
+      "falsified": false,
+      "details": {
+        "mean_cv": 1.2629511087038627,
+        "per_prompt_cvs": [
+          1.1977424491784763,
+          1.1475078713875246,
+          1.2964574918063305,
+          0.832925328350458,
+          0.9862201610910117,
+          1.9563321308992454,
+          1.7968062515026793,
+          1.1838634300050845,
+          0.967648805970145,
+          1.0004158092891458,
+          1.3269419963477016,
+          1.462551578618549
+        ],
+        "n_prompts": 12
+      }
+    },
+    {
+      "conjecture": "Conjecture 4",
+      "test_name": "Inner/outer layer asymmetry",
+      "prediction": "Peak deformation in middle layers AND last layer reverses first layer",
+      "observation": "Peak deformation at layer 23/24 (NOT MIDDLE); Mean first-last cosine: -0.0564 (REVERSAL)",
+      "p_value": null,
+      "effect_size": null,
+      "falsified": true,
+      "details": {
+        "avg_deformation_profile": [
+          28.967330932617188,
+          15.328422546386719,
+          14.369232177734375,
+          79.38114166259766,
+          35.09783172607422,
+          18.81473731994629,
+          20.8411922454834,
+          16.689695358276367,
+          17.890296936035156,
+          16.845626831054688,
+          17.21404266357422,
+          18.42683219909668,
+          19.136178970336914,
+          19.147371292114258,
+          22.01227569580078,
+          21.898000717163086,
+          24.92270851135254,
+          22.09387969970703,
+          28.9787540435791,
+          31.579421997070312,
+          24.556337356567383,
+          23.447328567504883,
+          38.844173431396484,
+          226.0399932861328
+        ],
+        "peak_layer": 23,
+        "n_transitions": 24,
+        "mean_reversal_cosine": -0.05637620389461517,
+        "peak_in_middle": false,
+        "has_reversal": true
+      }
+    },
+    {
+      "conjecture": "Conjecture 4",
+      "test_name": "Isotropy profile (inner vs outer layers)",
+      "prediction": "Inner layers have lower isotropy (more structured) than outer layers",
+      "observation": "Min isotropy at layer 5/25 (NOT MIDDLE). Middle avg=0.014815, outer avg=0.053248 (DIP)",
+      "p_value": null,
+      "effect_size": null,
+      "falsified": false,
+      "details": {
+        "avg_isotropy_profile": [
+          0.2598496973514557,
+          0.08350900560617447,
+          0.09436988085508347,
+          0.09666255861520767,
+          0.01448985654860735,
+          0.012838122434914112,
+          0.013572276569902897,
+          0.013610017485916615,
+          0.014232986606657505,
+          0.014174354262650013,
+          0.014311949722468853,
+          0.014294308610260487,
+          0.014343775808811188,
+          0.014880982227623463,
+          0.015442444942891598,
+          0.016839735209941864,
+          0.018395675346255302,
+          0.0202725138515234,
+          0.021778574213385582,
+          0.023613445460796356,
+          0.024587159976363182,
+          0.02616673707962036,
+          0.02760210633277893,
+          0.03273174166679382,
+          0.12117473036050797
+        ],
+        "min_layer": 5,
+        "middle_avg_isotropy": 0.014815067872405052,
+        "outer_avg_isotropy": 0.05324847996234894,
+        "min_in_middle": false,
+        "has_dip": true
+      }
+    },
+    {
+      "conjecture": "Conjecture 5",
+      "test_name": "Jacobian as information carrier (effective dimensionality)",
+      "prediction": "Jacobian field (layer deltas) has effective dimensionality >= 50% of hidden states",
+      "observation": "Mean effective dim: hidden=2.75, jacobian=7.94, ratio=2.8849",
+      "p_value": 1.0,
+      "effect_size": 2.884936809539795,
+      "falsified": false,
+      "details": {
+        "mean_hidden_eff_dim": 2.7533371448516846,
+        "mean_jacobian_eff_dim": 7.943203926086426,
+        "ratio": 2.884936809539795
+      }
+    },
+    {
+      "conjecture": "Conjecture 5",
+      "test_name": "Procrustes connection structure (variability)",
+      "prediction": "Procrustes deviation varies meaningfully across tokens/layers (CV > 0.1)",
+      "observation": "CV of Procrustes deviations: 1.2149, mean=0.7432, std=0.9029",
+      "p_value": null,
+      "effect_size": 1.2148769375691542,
+      "falsified": false,
+      "details": {
+        "cv": 1.2148769375691542,
+        "mean_deviation": 0.7431911932382184,
+        "std_deviation": 0.9028858409910999,
+        "n_measurements": 3672
+      }
+    },
+    {
+      "conjecture": "Conjecture 6",
+      "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+      "prediction": "Consecutive layer deformations are more correlated than non-consecutive ones",
+      "observation": "Mean |corr|: consecutive=0.0759, non-consecutive=0.0393",
+      "p_value": 1.8247165240419935e-36,
+      "effect_size": 0.9641215251930427,
+      "falsified": false,
+      "details": {
+        "mean_consecutive_corr": 0.07587400143649059,
+        "mean_nonconsecutive_corr": 0.039332222047883766,
+        "n_consecutive": 276,
+        "n_nonconsecutive": 516
+      }
+    },
+    {
+      "conjecture": "Conjecture 6",
+      "test_name": "Cross-prompt deformation structure (shared variance)",
+      "prediction": "PC1 of cross-prompt deformations explains >20% variance (shared template from weights)",
+      "observation": "Mean PC1 variance explained: 0.2171 (21.7%)",
+      "p_value": null,
+      "effect_size": 0.2170853465795517,
+      "falsified": false,
+      "details": {
+        "mean_shared_variance": 0.2170853465795517,
+        "per_layer_shared_variance": [
+          0.20003916323184967,
+          0.2458912581205368,
+          0.24231667816638947,
+          0.7566454410552979,
+          0.32204824686050415,
+          0.16324102878570557,
+          0.16827157139778137,
+          0.15665507316589355,
+          0.1718897670507431,
+          0.1688472032546997,
+          0.15372471511363983,
+          0.1697046309709549,
+          0.16574496030807495,
+          0.1675729602575302,
+          0.15232834219932556,
+          0.16485148668289185,
+          0.16196370124816895,
+          0.1636696308851242,
+          0.1655932068824768,
+          0.16043417155742645,
+          0.16397711634635925,
+          0.16987185180187225,
+          0.19465455412864685,
+          0.46011102199554443
+        ]
+      }
+    },
+    {
+      "conjecture": "Conjecture 7",
+      "test_name": "Local consistency (sheaf resolution across layers)",
+      "prediction": "Within-prompt / between-prompt distance ratio decreases with layer depth (later layers resolve semantic structure)",
+      "observation": "Spearman correlation between layer depth and distance ratio: r=-0.2546, p=0.219347. Early ratio=3.3434, late ratio=1.5611",
+      "p_value": 0.2193465644118854,
+      "effect_size": -0.25461538461538463,
+      "falsified": true,
+      "details": {
+        "layer_ratios": [
+          3.3433515162106566,
+          2.5036202609068,
+          2.4589682339617465,
+          2.5935717689366027,
+          6.865341873226571,
+          7.412839047544485,
+          7.322354886128331,
+          7.274180177798699,
+          7.247672554643445,
+          7.047133367158798,
+          7.113154159870735,
+          6.8822170891638095,
+          6.836419060867387,
+          6.5782063944900235,
+          6.386926959147605,
+          5.862905426407133,
+          5.544858009329863,
+          5.046300016754738,
+          4.721523671531229,
+          4.288162566761444,
+          3.964400272954731,
+          3.761484852397739,
+          3.6468809299781695,
+          3.306563585366553,
+          1.5611245991771296
+        ],
+        "spearman_r": -0.25461538461538463,
+        "early_ratio": 3.3433515162106566,
+        "late_ratio": 1.5611245991771296
+      }
+    },
+    {
+      "conjecture": "Meta (Necessity)",
+      "test_name": "Effective dimensionality of representations",
+      "prediction": "Representations use a significant fraction (>10%) of available dimensions, justifying high-dimensional geometric analysis",
+      "observation": "Mean effective rank: 5.14 / 2048 = 0.0025",
+      "p_value": null,
+      "effect_size": 0.0025117567274719477,
+      "falsified": true,
+      "details": {
+        "mean_effective_rank": 5.144077777862549,
+        "hidden_dim": 2048.0,
+        "rank_fraction": 0.0025117567274719477
+      }
+    }
+  ],
+  "summary": {
+    "n_falsified": 4,
+    "n_not_falsified": 6,
+    "n_inconclusive": 5
+  }
+}
