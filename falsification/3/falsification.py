@@ -1091,73 +1091,116 @@ def test_meta_necessity(hidden_states: dict) -> FalsificationResult:
     META-TEST: Even if Koch's conjectures are technically true, they may be
     UNNECESSARY — i.e., simpler descriptions may suffice.
 
-    Nanda et al. showed that for modular addition, Fourier analysis provides
-    complete understanding without any geometric framework.
+    REVISED REASONING: Koch's framework is about the MAPS (Jacobian fields,
+    deformations), not about the point cloud. The effective rank of the token
+    cloud is bounded by min(n_tokens, d) and is always low for short sequences.
+    This is irrelevant to whether the geometric framework adds value.
 
-    We test: Can a simple linear probe on the hidden states predict the next
-    token as well as the full model? If so, the geometric structure is
-    epiphenomenal — it exists but doesn't add explanatory power.
+    BETTER TEST: Does the DEFORMATION (layer delta) use more dimensions than
+    a simple rank-1 shift would? If all tokens move in essentially the same
+    direction (rank-1 delta), then the "space morphing" is just a global
+    translation and the geometric machinery is overkill. If the delta has
+    high effective rank (different tokens deformed differently), the geometric
+    framework captures real structure that a simple "shift all points" model misses.
 
-    Specifically: we measure the effective rank of the hidden states at each
-    layer. If the effective rank is LOW (much less than d), then the
-    representations live on a low-dimensional subspace and the full geometric
-    machinery of fibre bundles, Jacobian fields, etc. is overkill.
+    FALSIFICATION: If the layer deltas are consistently near rank-1 (all tokens
+    shifted the same way), the space-morphing interpretation adds nothing over
+    "the model applies a global bias at each layer."
     """
     logger.info("Meta-test: Is the geometric framework necessary?...")
 
-    effective_ranks = []  # Per layer
+    delta_effective_ranks = []
+    max_possible_ranks = []
 
     for prompt_idx, states in hidden_states.items():
         n_layers, seq_len, hidden_dim = states.shape
-        if seq_len < 3:
+        if seq_len < 4:
             continue
 
-        for ell in range(n_layers):
-            h = states[ell]
-            svs = svdvals(h)
+        for ell in range(n_layers - 1):
+            delta = states[ell + 1] - states[ell]  # (seq_len, hidden_dim)
+
+            # Effective rank of the delta matrix
+            # If rank ≈ 1, all tokens move the same way (global shift, no "morphing")
+            # If rank >> 1, different tokens are deformed differently (real space-morphing)
+            svs = svdvals(delta)
             svs = svs[svs > 1e-10]
-            if len(svs) == 0:
+            if len(svs) < 2:
                 continue
 
-            # Effective rank via entropy of normalized singular values
-            p = svs / np.sum(svs)
-            entropy = -np.sum(p * np.log(p + 1e-10))
-            eff_rank = np.exp(entropy)
-            effective_ranks.append((ell, eff_rank, hidden_dim))
+            # Participation ratio as effective rank
+            pr = (np.sum(svs) ** 2) / (np.sum(svs ** 2) + 1e-10)
+            delta_effective_ranks.append(pr)
+            max_possible_ranks.append(min(seq_len, hidden_dim))
 
-    if len(effective_ranks) < 5:
+    if len(delta_effective_ranks) < 10:
         return FalsificationResult(
-            conjecture="Meta",
-            test_name="Necessity of geometric framework",
-            prediction="Representations use a significant fraction of available dimensions",
+            conjecture="Meta (Necessity)",
+            test_name="Effective dimensionality of deformations",
+            prediction="Layer deformations are multi-dimensional (not rank-1 shifts)",
             observation="Insufficient data",
             falsified=False
         )
 
-    layers, ranks, dims = zip(*effective_ranks)
-    mean_rank = np.mean(ranks)
-    mean_dim = np.mean(dims)
-    rank_fraction = mean_rank / mean_dim
+    ranks = np.array(delta_effective_ranks)
+    max_ranks = np.array(max_possible_ranks)
 
-    # If representations use less than 10% of available dimensions on average,
-    # the full d-dimensional geometric framework is massive overkill
-    falsified = rank_fraction < 0.10
+    mean_rank = np.mean(ranks)
+    # What fraction of the maximum possible rank is used?
+    # Maximum possible = min(seq_len, hidden_dim), but practically bounded by seq_len
+    mean_max = np.mean(max_ranks)
+
+    # The key question: is the deformation multi-dimensional?
+    # If mean effective rank > 2, the deformation is NOT a simple global shift
+    # and the geometric framework captures real per-token structure.
+    # If mean effective rank ≈ 1, it's just a bias term and geometry is overkill.
+    
+    # Also compute: what fraction of tokens have deformations that differ
+    # substantially from the mean deformation?
+    deformation_diversity_scores = []
+    for prompt_idx, states in hidden_states.items():
+        n_layers, seq_len, hidden_dim = states.shape
+        if seq_len < 4:
+            continue
+        for ell in range(n_layers - 1):
+            delta = states[ell + 1] - states[ell]
+            mean_delta = delta.mean(axis=0, keepdims=True)
+            residual = delta - mean_delta
+            # Fraction of variance NOT explained by the mean shift
+            total_var = np.sum(delta ** 2)
+            residual_var = np.sum(residual ** 2)
+            if total_var > 1e-10:
+                diversity = residual_var / total_var
+                deformation_diversity_scores.append(diversity)
+
+    mean_diversity = np.mean(deformation_diversity_scores) if deformation_diversity_scores else 0.0
+
+    # Koch's framework is UNNECESSARY if:
+    # 1. Effective rank of deltas is very low (≈ 1-2), meaning all tokens move together
+    # 2. Deformation diversity is very low (< 0.1), meaning the mean shift explains >90%
+    #
+    # Koch's framework IS necessary if deformations are genuinely multi-dimensional
+    # and token-specific (high rank, high diversity)
+    
+    falsified = mean_rank < 2.0 and mean_diversity < 0.10
 
     return FalsificationResult(
         conjecture="Meta (Necessity)",
-        test_name="Effective dimensionality of representations",
-        prediction="Representations use a significant fraction (>10%) of available dimensions, "
-                   "justifying high-dimensional geometric analysis",
-        observation=f"Mean effective rank: {mean_rank:.2f} / {mean_dim:.0f} = {rank_fraction:.4f}",
-        effect_size=rank_fraction,
+        test_name="Effective dimensionality of deformations",
+        prediction="Layer deformations are multi-dimensional (effective rank > 2) and "
+                   "token-specific (diversity > 10%), justifying geometric analysis",
+        observation=f"Mean effective rank of deltas: {mean_rank:.2f} (max possible: {mean_max:.0f}). "
+                    f"Mean deformation diversity: {mean_diversity:.4f} ({mean_diversity*100:.1f}% "
+                    f"variance NOT explained by global shift)",
+        effect_size=mean_rank,
         falsified=falsified,
         details={
             "mean_effective_rank": float(mean_rank),
-            "hidden_dim": float(mean_dim),
-            "rank_fraction": float(rank_fraction),
+            "mean_max_possible_rank": float(mean_max),
+            "mean_deformation_diversity": float(mean_diversity),
+            "n_measurements": len(delta_effective_ranks),
         }
     )
-
 
 # ============================================================================
 # SECTION 9: Additional test — Procrustes connection (Conjecture 5 supplement)
