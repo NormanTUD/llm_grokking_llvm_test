@@ -2100,30 +2100,269 @@ def list_models(max_ram_gb: float = None):
 
 
 def get_transformer_blocks_extended(model):
-    """Extended version that handles more architectures."""
-    # GPT-2 style
-    if hasattr(model, "transformer") and hasattr(model.transformer, "h"):
-        return list(model.transformer.h)
-    # GPT-NeoX / Pythia style
-    if hasattr(model, "gpt_neox") and hasattr(model.gpt_neox, "layers"):
-        return list(model.gpt_neox.layers)
-    # LLaMA / Mistral / Gemma / Qwen style
+    """
+    Extended version that handles a wide range of transformer architectures.
+    
+    Supports:
+      - GPT-2 / GPT-Neo / GPT-J (EleutherAI)
+      - GPT-NeoX / Pythia (EleutherAI)
+      - LLaMA / LLaMA-2 / LLaMA-3 (Meta)
+      - Mistral / Mixtral (Mistral AI)
+      - DeepSeek / DeepSeek-V2 / DeepSeek-V3 / DeepSeek-R1 (DeepSeek AI)
+      - DeepSeek R1 Distilled (Qwen-based and Llama-based)
+      - Qwen / Qwen2 / Qwen2.5 (Alibaba)
+      - Phi / Phi-2 / Phi-3 (Microsoft)
+      - Gemma / Gemma-2 (Google)
+      - OPT (Meta)
+      - Falcon (TII)
+      - BLOOM / BLOOMZ (BigScience)
+      - MPT (MosaicML / Databricks)
+      - StableLM (Stability AI)
+      - InternLM / InternLM2 (Shanghai AI Lab)
+      - Yi (01.AI)
+      - Baichuan / Baichuan2 (Baichuan Inc.)
+      - Command-R (Cohere)
+      - Jamba (AI21 Labs, Mamba-Transformer hybrid)
+      - RWKV (if wrapped in HF-compatible interface)
+      - Mamba / Mamba-2 (state-space models with HF wrapper)
+      - DBRX (Databricks)
+      - Cohere Command
+      - Arctic (Snowflake)
+      - Grok (xAI, if weights available)
+    
+    Returns:
+        List of transformer block modules (nn.Module instances).
+    
+    Raises:
+        ValueError if no transformer blocks can be identified.
+    """
+    
+    # ================================================================
+    # Strategy 1: Direct attribute access (most common patterns)
+    # ================================================================
+    
+    # --- GPT-2 / GPT-Neo / GPT-J style ---
+    # model.transformer.h (ModuleList of blocks)
+    if hasattr(model, "transformer"):
+        transformer = model.transformer
+        if hasattr(transformer, "h"):
+            return list(transformer.h)
+        # GPT-J / GPT-Neo variant
+        if hasattr(transformer, "blocks"):
+            return list(transformer.blocks)
+        # Some models use "layers" directly under transformer
+        if hasattr(transformer, "layers"):
+            return list(transformer.layers)
+    
+    # --- GPT-NeoX / Pythia style ---
+    # model.gpt_neox.layers (ModuleList of blocks)
+    if hasattr(model, "gpt_neox"):
+        if hasattr(model.gpt_neox, "layers"):
+            return list(model.gpt_neox.layers)
+    
+    # --- LLaMA / Mistral / Gemma / Qwen / DeepSeek / Yi / InternLM / Baichuan ---
+    # model.model.layers (ModuleList of blocks)
+    # This is the most common pattern for modern decoder-only models
+    if hasattr(model, "model"):
+        inner_model = model.model
+        if hasattr(inner_model, "layers"):
+            return list(inner_model.layers)
+        # OPT style: model.model.decoder.layers
+        if hasattr(inner_model, "decoder"):
+            decoder = inner_model.decoder
+            if hasattr(decoder, "layers"):
+                return list(decoder.layers)
+            if hasattr(decoder, "block"):
+                return list(decoder.block)
+        # Some models nest further: model.model.model.layers
+        if hasattr(inner_model, "model"):
+            if hasattr(inner_model.model, "layers"):
+                return list(inner_model.model.layers)
+    
+    # --- DeepSeek V2/V3 specific (MoE with custom architecture) ---
+    # DeepSeek V2/V3 uses model.model.layers but with MoE sublayers
+    # The distilled versions use standard Qwen/Llama architecture
+    # Full DeepSeek models may have: model.model.layers where each layer
+    # contains a DeepseekV2DecoderLayer with MoE FFN
     if hasattr(model, "model") and hasattr(model.model, "layers"):
-        return list(model.model.layers)
-    # OPT style
-    if hasattr(model, "model") and hasattr(model.model, "decoder"):
-        if hasattr(model.model.decoder, "layers"):
-            return list(model.model.decoder.layers)
-    # Phi style
+        layers = list(model.model.layers)
+        if len(layers) > 0:
+            # Verify these look like transformer blocks (have attention + FFN)
+            first_layer = layers[0]
+            layer_children = [name for name, _ in first_layer.named_children()]
+            # DeepSeek layers typically have 'self_attn' and 'mlp' (or 'moe')
+            if any("attn" in name.lower() for name in layer_children):
+                return layers
+    
+    # --- Mixtral MoE style ---
+    # Same as LLaMA but with MoE FFN layers
+    # model.model.layers (each layer has SparseMoeBlock)
+    # Already handled by the LLaMA pattern above
+    
+    # --- Falcon style ---
+    # model.transformer.h (similar to GPT-2 but different internals)
+    if hasattr(model, "transformer"):
+        if hasattr(model.transformer, "h"):
+            return list(model.transformer.h)
+    
+    # --- BLOOM / BLOOMZ style ---
+    # model.transformer.h
+    if hasattr(model, "transformer"):
+        if hasattr(model.transformer, "h"):
+            return list(model.transformer.h)
+    
+    # --- MPT style (MosaicML) ---
+    # model.transformer.blocks
+    if hasattr(model, "transformer"):
+        if hasattr(model.transformer, "blocks"):
+            return list(model.transformer.blocks)
+    
+    # --- DBRX style (Databricks) ---
+    # model.transformer.blocks
+    if hasattr(model, "transformer"):
+        if hasattr(model.transformer, "blocks"):
+            return list(model.transformer.blocks)
+    
+    # --- StableLM style ---
+    # model.model.layers (same as LLaMA)
+    # Already handled above
+    
+    # --- Phi-3 style (Microsoft) ---
+    # model.model.layers (same as LLaMA)
+    # Already handled above
+    
+    # --- Cohere Command-R style ---
+    # model.model.layers
+    # Already handled above
+    
+    # --- Jamba style (AI21, Mamba-Transformer hybrid) ---
+    # model.model.layers (mix of Mamba and Attention layers)
     if hasattr(model, "model") and hasattr(model.model, "layers"):
-        return list(model.model.layers)
-    # Fallback: search for ModuleList
+        layers = list(model.model.layers)
+        if len(layers) > 0:
+            return layers
+    
+    # --- RWKV style (if using HF wrapper) ---
+    if hasattr(model, "rwkv"):
+        if hasattr(model.rwkv, "blocks"):
+            return list(model.rwkv.blocks)
+        if hasattr(model.rwkv, "layers"):
+            return list(model.rwkv.layers)
+    
+    # --- Mamba / Mamba-2 style (state-space, HF wrapper) ---
+    if hasattr(model, "backbone"):
+        if hasattr(model.backbone, "layers"):
+            return list(model.backbone.layers)
+        if hasattr(model.backbone, "blocks"):
+            return list(model.backbone.blocks)
+    
+    # --- Arctic (Snowflake) style ---
+    # model.model.layers (MoE, similar to Mixtral)
+    # Already handled above
+    
+    # ================================================================
+    # Strategy 2: Search by known class names
+    # ================================================================
+    
+    # Some models have non-standard nesting. Search for known block class names.
+    known_block_class_substrings = [
+        "DecoderLayer",      # LLaMA, Mistral, Qwen, DeepSeek, Gemma, etc.
+        "TransformerBlock",  # Various
+        "Block",             # GPT-2, MPT, Falcon
+        "Layer",             # Pythia, OPT
+        "MambaLayer",        # Mamba
+        "JambaLayer",        # Jamba
+    ]
+    
+    # Collect all ModuleLists and check if their children match known patterns
+    candidate_lists = []
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.ModuleList) and len(module) > 2:
-            # Heuristic: the longest ModuleList is probably the transformer blocks
-            return list(module)
-    raise ValueError(f"Cannot find transformer blocks in {type(model).__name__}. "
-                     f"Top-level modules: {[n for n, _ in model.named_children()]}")
+            # Check if children look like transformer blocks
+            first_child = module[0]
+            child_class_name = type(first_child).__name__
+            
+            # Check against known patterns
+            is_block_list = any(
+                substr.lower() in child_class_name.lower()
+                for substr in known_block_class_substrings
+            )
+            
+            # Also check if the child has attention-like submodules
+            if not is_block_list:
+                child_submodule_names = [n for n, _ in first_child.named_children()]
+                has_attention = any(
+                    "attn" in n.lower() or "attention" in n.lower() or "self_attn" in n.lower()
+                    for n in child_submodule_names
+                )
+                has_ffn = any(
+                    "mlp" in n.lower() or "ffn" in n.lower() or "feed_forward" in n.lower()
+                    or "moe" in n.lower() or "experts" in n.lower()
+                    for n in child_submodule_names
+                )
+                is_block_list = has_attention and has_ffn
+            
+            if is_block_list:
+                candidate_lists.append((name, module))
+    
+    if candidate_lists:
+        # If multiple candidates, pick the longest one (most likely the main stack)
+        best_name, best_list = max(candidate_lists, key=lambda x: len(x[1]))
+        return list(best_list)
+    
+    # ================================================================
+    # Strategy 3: Brute-force search for the longest ModuleList
+    # ================================================================
+    
+    # Last resort: find the longest ModuleList anywhere in the model
+    longest_list = None
+    longest_len = 0
+    longest_name = ""
+    
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.ModuleList) and len(module) > longest_len:
+            # Sanity check: each element should have > 1M parameters
+            # (to filter out things like embedding layers or small projection lists)
+            first_child = module[0]
+            n_params = sum(p.numel() for p in first_child.parameters())
+            if n_params > 100_000:  # At least 100K params per block
+                longest_list = module
+                longest_len = len(module)
+                longest_name = name
+    
+    if longest_list is not None and longest_len >= 2:
+        import warnings
+        warnings.warn(
+            f"Using heuristic block detection: found {longest_len} blocks at '{longest_name}' "
+            f"(class: {type(longest_list[0]).__name__}). Verify this is correct for your model.",
+            stacklevel=2,
+        )
+        return list(longest_list)
+    
+    # ================================================================
+    # Strategy 4: Give up with a helpful error message
+    # ================================================================
+    
+    # Collect diagnostic info for the error message
+    top_level = [(name, type(module).__name__) for name, module in model.named_children()]
+    all_module_lists = [
+        (name, len(module))
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.ModuleList)
+    ]
+    
+    raise ValueError(
+        f"Cannot find transformer blocks in {type(model).__name__}.\n"
+        f"  Top-level children: {top_level}\n"
+        f"  All ModuleLists found: {all_module_lists}\n"
+        f"\n"
+        f"  To fix this, inspect your model with:\n"
+        f"    for name, module in model.named_modules():\n"
+        f"        if isinstance(module, torch.nn.ModuleList):\n"
+        f"            print(name, len(module), type(module[0]).__name__)\n"
+        f"\n"
+        f"  Then add a handler for your architecture above."
+    )
 
 
 def run_all_tests(model_name: str = "gpt2", device: str = "cpu"):
