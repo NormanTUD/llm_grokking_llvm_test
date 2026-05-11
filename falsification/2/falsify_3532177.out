@@ -1,0 +1,3051 @@
+Using uv: /home/s3811141/.local/bin/uv
+Node: c8
+GPU:  NVIDIA H100
+Starting falsification at Mon May 11 07:23:37 AM CEST 2026
+
+══════════════════════════════════════════════════════════════════════════
+             KOCH FALSIFICATION SUITE v2.0 — MULTI-MODEL MODE             
+══════════════════════════════════════════════════════════════════════════
+  Testing 32 models: gpt2, gpt2-medium, gpt2-large, gpt2-xl, EleutherAI/pythia-70m, EleutherAI/pythia-160m, EleutherAI/pythia-410m, EleutherAI/pythia-1b, EleutherAI/pythia-1.4b, EleutherAI/pythia-2.8b, microsoft/phi-1_5, microsoft/phi-2, facebook/opt-125m, facebook/opt-350m, facebook/opt-1.3b, TinyLlama/TinyLlama-1.1B-Chat-v1.0, google/gemma-2b, Qwen/Qwen2-0.5B, Qwen/Qwen2-1.5B, deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, deepseek-ai/DeepSeek-R1-Distill-Qwen-7B, deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, deepseek-ai/DeepSeek-R1-Distill-Llama-8B, deepseek-ai/DeepSeek-R1-Distill-Llama-70B, mistralai/Mistral-7B-v0.3, mistralai/Mixtral-8x7B-v0.1, meta-llama/Llama-3.1-8B, meta-llama/Llama-3.1-70B, Qwen/Qwen2.5-7B, Qwen/Qwen2.5-14B, Qwen/Qwen2.5-72B
+  Device: cuda
+
+══════════════════════════════════════════════════════════════════════════
+                          CROSS-MODEL COMPARISON                          
+══════════════════════════════════════════════════════════════════════════
+  Models: gpt2, gpt2-medium, gpt2-large, gpt2-xl, EleutherAI/pythia-70m, EleutherAI/pythia-160m, EleutherAI/pythia-410m, EleutherAI/pythia-1b, EleutherAI/pythia-1.4b, EleutherAI/pythia-2.8b, microsoft/phi-1_5, microsoft/phi-2, facebook/opt-125m, facebook/opt-350m, facebook/opt-1.3b, TinyLlama/TinyLlama-1.1B-Chat-v1.0, google/gemma-2b, Qwen/Qwen2-0.5B, Qwen/Qwen2-1.5B, deepseek-ai/DeepSeek-V3, deepseek-ai/DeepSeek-R1, deepseek-ai/DeepSeek-R1-Distill-Qwen-7B, deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, deepseek-ai/DeepSeek-R1-Distill-Llama-8B, deepseek-ai/DeepSeek-R1-Distill-Llama-70B, mistralai/Mistral-7B-v0.3, mistralai/Mixtral-8x7B-v0.1, meta-llama/Llama-3.1-8B, meta-llama/Llama-3.1-70B, Qwen/Qwen2.5-7B, Qwen/Qwen2.5-14B, Qwen/Qwen2.5-72B
+  Device: cuda
+
+──────────────────────────────────────────────────────────────────────────
+                              Testing: gpt2                               
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+                   KOCH FALSIFICATION SUITE v2.0 — gpt2                   
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'gpt2'...
+         Model loaded: 124.4M params, 12 layers, d=768, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 13 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=15.45,  │
+  │ random=1.24                                                          │
+  │ p-value: 0.000000      effect size: 0.2074                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.063676,                   │
+  │ dissimilar=0.249664                                                  │
+  │ p-value: 0.001263      effect size: 2.0125                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=11.9006, normality test p=0.000000. Mean   │
+  │ curvature=0.0506, median=0.0250                                      │
+  │ p-value: 0.000000      effect size: 11.9006                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0524                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.4361, random=-0.0002         │
+  │ p-value: 0.000000      effect size: 1.6582                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=5.1189, random=108.9933    │
+  │ p-value: 1.000000      effect size: -1.2055                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 0.9733                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 11/12 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.4245 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 3/13 (NOT MIDDLE). Middle            │
+  │ avg=0.009405, outer avg=0.027288 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=2.22, jacobian=5.36,            │
+  │ ratio=2.4191                                                         │
+  │ p-value: 1.000000      effect size: 2.4191                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 0.8596, mean=1.1213,          │
+  │ std=0.9639                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.2110, non-consecutive=0.1682    │
+  │ p-value: 0.000000      effect size: 0.3315                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.3215 (32.2%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.1429, p=0.641516. Early ratio=4.0591, late ratio=3.2404  │
+  │ p-value: 0.641516      effect size: -0.1429                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 4.04 / 768 = 0.0053                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_gpt2.json
+
+──────────────────────────────────────────────────────────────────────────
+                           Testing: gpt2-medium                           
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+               KOCH FALSIFICATION SUITE v2.0 — gpt2-medium                
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'gpt2-medium'...
+         Model loaded: 354.8M params, 24 layers, d=1024, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 25 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=8.40,   │
+  │ random=1.21                                                          │
+  │ p-value: 0.000000      effect size: 0.1302                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.142952,                   │
+  │ dissimilar=0.508325                                                  │
+  │ p-value: 0.001263      effect size: 1.9969                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=29.4204, normality test p=0.000000. Mean   │
+  │ curvature=0.0384, median=0.0177                                      │
+  │ p-value: 0.000000      effect size: 29.4204                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0537                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.4038, random=-0.0001         │
+  │ p-value: 0.000000      effect size: 1.6162                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=10.0732, random=156.7502   │
+  │ p-value: 1.000000      effect size: -1.2174                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.2933                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 23/24 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.4395 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 4/25 (NOT MIDDLE). Middle            │
+  │ avg=0.011846, outer avg=0.027145 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=2.43, jacobian=7.63,            │
+  │ ratio=3.1430                                                         │
+  │ p-value: 1.000000      effect size: 3.1430                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.1809, mean=0.7634,          │
+  │ std=0.9015                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1390, non-consecutive=0.1179    │
+  │ p-value: 0.000010      effect size: 0.2356                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2297 (23.0%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.3231, p=0.115195. Early ratio=3.7122, late ratio=2.2879  │
+  │ p-value: 0.115195      effect size: -0.3231                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 4.32 / 1024 = 0.0042                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_gpt2-medium.json
+
+──────────────────────────────────────────────────────────────────────────
+                           Testing: gpt2-large                            
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+                KOCH FALSIFICATION SUITE v2.0 — gpt2-large                
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'gpt2-large'...
+         Model loaded: 774.0M params, 36 layers, d=1280, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 37 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=9.18,   │
+  │ random=1.19                                                          │
+  │ p-value: 0.000000      effect size: 0.3815                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.116781,                   │
+  │ dissimilar=0.364589                                                  │
+  │ p-value: 0.001263      effect size: 1.9986                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=58.6632, normality test p=0.000000. Mean   │
+  │ curvature=0.0196, median=0.0130                                      │
+  │ p-value: 0.000000      effect size: 58.6632                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0464                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.2607, random=0.0000          │
+  │ p-value: 0.000000      effect size: 1.4171                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=7.2709, random=80.0676     │
+  │ p-value: 1.000000      effect size: -1.0282                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.6096                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 35/36 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.2746 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 13/37 (MIDDLE). Middle avg=0.014145, │
+  │ outer avg=0.059192 (DIP)                                             │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=3.62, jacobian=7.26,            │
+  │ ratio=2.0040                                                         │
+  │ p-value: 1.000000      effect size: 2.0040                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.4108, mean=0.6187,          │
+  │ std=0.8729                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1327, non-consecutive=0.1127    │
+  │ p-value: 0.000001      effect size: 0.2866                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2407 (24.1%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.0721, p=0.671637. Early ratio=4.6078, late ratio=1.7049  │
+  │ p-value: 0.671637      effect size: -0.0721                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.91 / 1280 = 0.0046                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_gpt2-large.json
+
+──────────────────────────────────────────────────────────────────────────
+                             Testing: gpt2-xl                             
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+                 KOCH FALSIFICATION SUITE v2.0 — gpt2-xl                  
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'gpt2-xl'...
+         Model loaded: 1557.6M params, 48 layers, d=1600, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 49 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=10.08,  │
+  │ random=1.17                                                          │
+  │ p-value: 0.000000      effect size: 0.4579                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.182121,                   │
+  │ dissimilar=0.692882                                                  │
+  │ p-value: 0.001263      effect size: 1.8953                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=64.5676, normality test p=0.000000. Mean   │
+  │ curvature=0.0166, median=0.0112                                      │
+  │ p-value: 0.000000      effect size: 64.5676                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0334                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.2422, random=-0.0002         │
+  │ p-value: 0.000000      effect size: 1.4534                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=5.3648, random=152.6062    │
+  │ p-value: 1.000000      effect size: -1.1276                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.7956                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 47/48 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.2062 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 15/49 (NOT MIDDLE). Middle           │
+  │ avg=0.014040, outer avg=0.046862 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=3.33, jacobian=7.19,            │
+  │ ratio=2.1593                                                         │
+  │ p-value: 1.000000      effect size: 2.1593                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.6077, mean=0.5095,          │
+  │ std=0.8191                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1931, non-consecutive=0.1794    │
+  │ p-value: 0.000622      effect size: 0.0937                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2948 (29.5%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.1689, p=0.246057. Early ratio=4.0944, late ratio=1.7542  │
+  │ p-value: 0.246057      effect size: -0.1689                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.52 / 1600 = 0.0034                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_gpt2-xl.json
+
+──────────────────────────────────────────────────────────────────────────
+                      Testing: EleutherAI/pythia-70m                      
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+          KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-70m           
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-70m'...
+         Model loaded: 70.4M params, 6 layers, d=512, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 7 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=27.61,  │
+  │ random=1.32                                                          │
+  │ p-value: 0.000000      effect size: 0.9173                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.020519,                   │
+  │ dissimilar=0.141583                                                  │
+  │ p-value: 0.001263      effect size: 1.8471                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=85.7983, normality test p=0.000000. Mean   │
+  │ curvature=0.2525, median=0.0778                                      │
+  │ p-value: 0.000000      effect size: 85.7983                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0281                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.5059, random=0.0003          │
+  │ p-value: 0.000000      effect size: 1.6936                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=0.6652, random=5.0800      │
+  │ p-value: 1.000000      effect size: -1.0185                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.0296                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 5/6 (NOT MIDDLE); Mean           │
+  │ first-last cosine: 0.0224 (NO REVERSAL)                              │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 6/7 (NOT MIDDLE). Middle             │
+  │ avg=0.057888, outer avg=0.091336 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=4.96, jacobian=4.34,            │
+  │ ratio=0.8748                                                         │
+  │ p-value: 0.033297      effect size: 0.8748                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 0.5845, mean=1.5431,          │
+  │ std=0.9019                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1730, non-consecutive=0.0862    │
+  │ p-value: 0.000000      effect size: 1.2894                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.3760 (37.6%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=0.0000, p=1.000000. Early ratio=3.2731, late ratio=1.5990   │
+  │ p-value: 1.000000      effect size: 0.0000                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 7.25 / 512 = 0.0142                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-70m.json
+
+──────────────────────────────────────────────────────────────────────────
+                     Testing: EleutherAI/pythia-160m                      
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+          KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-160m          
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-160m'...
+         Model loaded: 162.3M params, 12 layers, d=768, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 13 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=17.67,  │
+  │ random=1.25                                                          │
+  │ p-value: 0.000000      effect size: 0.6326                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.019590,                   │
+  │ dissimilar=0.170412                                                  │
+  │ p-value: 0.001263      effect size: 1.8240                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=170.8894, normality test p=0.000000. Mean  │
+  │ curvature=0.1761, median=0.0522                                      │
+  │ p-value: 0.000000      effect size: 170.8894                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0359                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.4220, random=0.0006          │
+  │ p-value: 0.000000      effect size: 1.6547                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=0.9960, random=13.4578     │
+  │ p-value: 1.000000      effect size: -1.0996                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 0.9919                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 11/12 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.0753 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 6/13 (MIDDLE). Middle avg=0.013900,  │
+  │ outer avg=0.064832 (DIP)                                             │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=3.36, jacobian=5.44,            │
+  │ ratio=1.6188                                                         │
+  │ p-value: 1.000000      effect size: 1.6188                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 0.6484, mean=1.4533,          │
+  │ std=0.9424                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1069, non-consecutive=0.0616    │
+  │ p-value: 0.000000      effect size: 0.6697                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.3054 (30.5%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=0.0659, p=0.830542. Early ratio=3.2700, late ratio=1.7359   │
+  │ p-value: 0.830542      effect size: 0.0659                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.70 / 768 = 0.0074                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-160m.json
+
+──────────────────────────────────────────────────────────────────────────
+                     Testing: EleutherAI/pythia-410m                      
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+          KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-410m          
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-410m'...
+         Model loaded: 405.3M params, 24 layers, d=1024, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 25 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=8.32,   │
+  │ random=1.21                                                          │
+  │ p-value: 0.000000      effect size: 0.3466                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.032797,                   │
+  │ dissimilar=0.127017                                                  │
+  │ p-value: 0.001263      effect size: 1.9887                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=359.7692, normality test p=0.000000. Mean  │
+  │ curvature=0.0717, median=0.0250                                      │
+  │ p-value: 0.000000      effect size: 359.7692                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0255                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.3976, random=-0.0001         │
+  │ p-value: 0.000000      effect size: 1.8027                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=1.2249, random=33.1321     │
+  │ p-value: 1.000000      effect size: -1.0914                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.3191                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 23/24 (NOT MIDDLE); Mean         │
+  │ first-last cosine: 0.0223 (NO REVERSAL)                              │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 13/25 (MIDDLE). Middle avg=0.008691, │
+  │ outer avg=0.063911 (DIP)                                             │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=3.12, jacobian=7.38,            │
+  │ ratio=2.3666                                                         │
+  │ p-value: 1.000000      effect size: 2.3666                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 0.9461, mean=1.0201,          │
+  │ std=0.9651                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.0848, non-consecutive=0.0490    │
+  │ p-value: 0.000000      effect size: 0.7457                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2747 (27.5%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=0.0808, p=0.701128. Early ratio=3.2921, late ratio=1.5032   │
+  │ p-value: 0.701128      effect size: 0.0808                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.08 / 1024 = 0.0050                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-410m.json
+
+──────────────────────────────────────────────────────────────────────────
+                      Testing: EleutherAI/pythia-1b                       
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+           KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-1b           
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-1b'...
+         Model loaded: 1011.8M params, 16 layers, d=2048, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 17 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=7.72,   │
+  │ random=1.15                                                          │
+  │ p-value: 0.000000      effect size: 0.1992                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.025519,                   │
+  │ dissimilar=0.084314                                                  │
+  │ p-value: 0.001263      effect size: 1.9636                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=237.7570, normality test p=0.000000. Mean  │
+  │ curvature=0.0935, median=0.0277                                      │
+  │ p-value: 0.000000      effect size: 237.7570                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0227                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.3813, random=0.0003          │
+  │ p-value: 0.000000      effect size: 1.7198                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=2.3281, random=68.5773     │
+  │ p-value: 1.000000      effect size: -1.0841                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.4045                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 15/16 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.1638 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 6/17 (MIDDLE). Middle avg=0.008700,  │
+  │ outer avg=0.062061 (DIP)                                             │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=2.68, jacobian=6.88,            │
+  │ ratio=2.5723                                                         │
+  │ p-value: 1.000000      effect size: 2.5723                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 0.9807, mean=0.9677,          │
+  │ std=0.9490                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.0793, non-consecutive=0.0433    │
+  │ p-value: 0.000000      effect size: 0.8687                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2894 (28.9%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.0098, p=0.970211. Early ratio=3.3065, late ratio=1.5123  │
+  │ p-value: 0.970211      effect size: -0.0098                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.01 / 2048 = 0.0024                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-1b.json
+
+──────────────────────────────────────────────────────────────────────────
+                     Testing: EleutherAI/pythia-1.4b                      
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+          KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-1.4b          
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-1.4b'...
+         Model loaded: 1414.6M params, 24 layers, d=2048, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 25 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ❌ FALSIFIED
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=6.68,   │
+  │ random=1.15                                                          │
+  │ p-value: 0.000000      effect size: 0.2647                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.034650,                   │
+  │ dissimilar=0.110542                                                  │
+  │ p-value: 0.001263      effect size: 1.9849                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=360.7812, normality test p=0.000000. Mean  │
+  │ curvature=0.0640, median=0.0179                                      │
+  │ p-value: 0.000000      effect size: 360.7812                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0279                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.4151, random=-0.0001         │
+  │ p-value: 0.000000      effect size: 1.7522                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=3.0538, random=47.3291     │
+  │ p-value: 1.000000      effect size: -1.1494                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.2630                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 23/24 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.0564 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 5/25 (NOT MIDDLE). Middle            │
+  │ avg=0.014815, outer avg=0.053248 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=2.75, jacobian=7.94,            │
+  │ ratio=2.8849                                                         │
+  │ p-value: 1.000000      effect size: 2.8849                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.2149, mean=0.7432,          │
+  │ std=0.9029                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.0759, non-consecutive=0.0393    │
+  │ p-value: 0.000000      effect size: 0.9641                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2171 (21.7%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.2546, p=0.219347. Early ratio=3.3434, late ratio=1.5611  │
+  │ p-value: 0.219347      effect size: -0.2546                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.14 / 2048 = 0.0025                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ❌ FALSIFIED    
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 4 falsified, 6 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-1.4b.json
+
+──────────────────────────────────────────────────────────────────────────
+                     Testing: EleutherAI/pythia-2.8b                      
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+          KOCH FALSIFICATION SUITE v2.0 — EleutherAI/pythia-2.8b          
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'EleutherAI/pythia-2.8b'...
+         Model loaded: 2775.2M params, 32 layers, d=2560, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 33 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ✅ survived
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=13.87,  │
+  │ random=1.13                                                          │
+  │ p-value: 0.000000      effect size: 0.6698                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.038245,                   │
+  │ dissimilar=0.259811                                                  │
+  │ p-value: 0.001263      effect size: 1.8320                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=475.7414, normality test p=0.000000. Mean  │
+  │ curvature=0.0554, median=0.0123                                      │
+  │ p-value: 0.000000      effect size: 475.7414                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0328                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.4510, random=-0.0002         │
+  │ p-value: 0.000000      effect size: 1.6847                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=5.2717, random=51.7966     │
+  │ p-value: 1.000000      effect size: -1.1468                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.3674                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 31/32 (NOT MIDDLE); Mean         │
+  │ first-last cosine: 0.0206 (NO REVERSAL)                              │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 6/33 (NOT MIDDLE). Middle            │
+  │ avg=0.018143, outer avg=0.045226 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=2.67, jacobian=6.85,            │
+  │ ratio=2.5669                                                         │
+  │ p-value: 1.000000      effect size: 2.5669                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.2899, mean=0.7196,          │
+  │ std=0.9282                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.0716, non-consecutive=0.0468    │
+  │ p-value: 0.000000      effect size: 0.6045                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2410 (24.1%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.5445, p=0.001054. Early ratio=3.3550, late ratio=1.6163  │
+  │ p-value: 0.001054      effect size: -0.5445                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 5.15 / 2560 = 0.0020                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ✅ SURVIVED     
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 3 falsified, 7 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_EleutherAI_pythia-2.8b.json
+
+──────────────────────────────────────────────────────────────────────────
+                        Testing: microsoft/phi-1_5                        
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+            KOCH FALSIFICATION SUITE v2.0 — microsoft/phi-1_5             
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'microsoft/phi-1_5'...
+         Model loaded: 1418.3M params, 24 layers, d=2048, device=cuda
+
+  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Step 2/20: Extracting hidden states for 12 diverse prompts...
+         Extracted: 12 prompts × 25 layers
+
+  [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.0%  Step 3/20: Extracting hidden states for 12 semantic pairs (5 similar, 7 dissimilar)...
+         Extracted: 12 pairs
+
+──────────────────────────────────────────────────────────────────────────
+                       RUNNING FALSIFICATION TESTS                        
+──────────────────────────────────────────────────────────────────────────
+
+  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Step 4/20: C1: Structured deformation (SV distribution)
+         → ✅ survived
+
+  [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.0%  Step 5/20: C1: Semantic sensitivity of deformations
+         → ✅ survived
+
+  [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Step 6/20: C1: Curvature concentration [NEW]
+         → ✅ survived
+
+  [██████████░░░░░░░░░░░░░░░░░░░░]  35.0%  Step 7/20: C2: Holographic distribution (ablation uniformity)
+         → ⚠️  inconclusive
+
+  [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Step 8/20: C2: Drift coherence [NEW]
+         → ✅ survived
+
+  [█████████████░░░░░░░░░░░░░░░░░]  45.0%  Step 9/20: C3: Persistent topology (H1 features)
+         → ❌ FALSIFIED
+
+  [███████████████░░░░░░░░░░░░░░░]  50.0%  Step 10/20: C3: Topology evolution (Wasserstein) [NEW]
+         → ⚠️  inconclusive
+
+  [████████████████░░░░░░░░░░░░░░]  55.0%  Step 11/20: C4: Inner/outer layer asymmetry
+         → ❌ FALSIFIED
+
+  [██████████████████░░░░░░░░░░░░]  60.0%  Step 12/20: C4: Isotropy profile [NEW]
+         → ⚠️  inconclusive
+
+  [███████████████████░░░░░░░░░░░]  65.0%  Step 13/20: C5: Jacobian as information carrier
+         → ✅ survived
+
+  [█████████████████████░░░░░░░░░]  70.0%  Step 14/20: C5: Procrustes connection structure
+         → ⚠️  inconclusive
+
+  [██████████████████████░░░░░░░░]  75.0%  Step 15/20: C6: Layer dependency (consecutive correlation)
+         → ✅ survived
+
+  [████████████████████████░░░░░░]  80.0%  Step 16/20: C6: Cross-prompt deformation structure [NEW]
+         → ⚠️  inconclusive
+
+  [█████████████████████████░░░░░]  85.0%  Step 17/20: C7: Local consistency (sheaf resolution)
+         → ✅ survived
+
+  [███████████████████████████░░░]  90.0%  Step 18/20: META: Necessity of geometric framework
+         → ❌ FALSIFIED
+
+  [████████████████████████████░░]  95.0%  Step 19/20: Generating report...
+
+══════════════════════════════════════════════════════════════════════════
+                             DETAILED RESULTS                             
+══════════════════════════════════════════════════════════════════════════
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  1: Conjecture 1         — Structured deformation (SV distribution)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Layer deltas have structured (non-random) singular value │
+  │ distributions                                                        │
+  │ Observed: KS stat=1.0000, p=0.000000. Median condition: real=10.22,  │
+  │ random=1.14                                                          │
+  │ p-value: 0.000000      effect size: 0.6480                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  2: Conjecture 1         — Semantic sensitivity of deformations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Semantically similar prompts produce more similar        │
+  │ deformations than dissimilar prompts                                 │
+  │ Observed: Mean deformation diff: similar=0.052030,                   │
+  │ dissimilar=0.257974                                                  │
+  │ p-value: 0.001263      effect size: 1.8351                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  3: Conjecture 1         — Curvature concentration (heavy-tailedness)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Curvature distribution is heavy-tailed (excess kurtosis  │
+  │ > 1, non-Gaussian)                                                   │
+  │ Observed: Excess kurtosis=351.8720, normality test p=0.000000. Mean  │
+  │ curvature=0.0691, median=0.0139                                      │
+  │ p-value: 0.000000      effect size: 351.8720                        │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  4: Conjecture 2         — Holographic distribution (ablation uniformity)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Ablation damage is uniform across tokens (CV < 0.5)      │
+  │ Observed: Mean CV of per-token ablation error: 0.0332                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  5: Conjecture 2         — Drift coherence (token delta alignment)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Per-token drift directions within a layer are more       │
+  │ aligned than random                                                  │
+  │ Observed: Mean cosine coherence: real=0.2425, random=-0.0002         │
+  │ p-value: 0.000000      effect size: 1.8064                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  6: Conjecture 3         — Persistent topology (H1 total persistence)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Real representations have significantly more persistent  │
+  │ H1 features than random point clouds                                 │
+  │ Observed: Mean total H1 persistence: real=4.0314, random=52.4631     │
+  │ p-value: 1.000000      effect size: -1.1181                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  7: Conjecture 3         — Topology evolution (Wasserstein distance CV across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Topological change between layers is non-uniform (CV >   │
+  │ 0.2)                                                                 │
+  │ Observed: Mean CV of Wasserstein distances: 1.4868                   │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  8: Conjecture 4         — Inner/outer layer asymmetry│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Peak deformation in middle layers AND last layer         │
+  │ reverses first layer                                                 │
+  │ Observed: Peak deformation at layer 23/24 (NOT MIDDLE); Mean         │
+  │ first-last cosine: -0.4756 (REVERSAL)                                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test  9: Conjecture 4         — Isotropy profile (inner vs outer layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Inner layers have lower isotropy (more structured) than  │
+  │ outer layers                                                         │
+  │ Observed: Min isotropy at layer 5/25 (NOT MIDDLE). Middle            │
+  │ avg=0.020837, outer avg=0.064595 (DIP)                               │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 10: Conjecture 5         — Jacobian as information carrier (effective dimensionality)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Jacobian field (layer deltas) has effective              │
+  │ dimensionality >= 50% of hidden states                               │
+  │ Observed: Mean effective dim: hidden=3.32, jacobian=8.05,            │
+  │ ratio=2.4264                                                         │
+  │ p-value: 1.000000      effect size: 2.4264                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 11: Conjecture 5         — Procrustes connection structure (variability)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: Procrustes deviation varies meaningfully across          │
+  │ tokens/layers (CV > 0.1)                                             │
+  │ Observed: CV of Procrustes deviations: 1.3526, mean=0.6706,          │
+  │ std=0.9071                                                           │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 12: Conjecture 6         — Layer dependency (consecutive vs non-consecutive correlation)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Consecutive layer deformations are more correlated than  │
+  │ non-consecutive ones                                                 │
+  │ Observed: Mean |corr|: consecutive=0.1435, non-consecutive=0.1217    │
+  │ p-value: 0.000000      effect size: 0.3384                          │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 13: Conjecture 6         — Cross-prompt deformation structure (shared variance)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [93m⚠️  INCONCLUSIVE[0m                                           │
+  │ Prediction: PC1 of cross-prompt deformations explains >20% variance  │
+  │ (shared template from weights)                                       │
+  │ Observed: Mean PC1 variance explained: 0.2227 (22.3%)                │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 14: Conjecture 7         — Local consistency (sheaf resolution across layers)│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [92m✅ NOT FALSIFIED[0m                                            │
+  │ Prediction: Within-prompt / between-prompt distance ratio decreases  │
+  │ with layer depth (later layers resolve semantic structure)           │
+  │ Observed: Spearman correlation between layer depth and distance      │
+  │ ratio: r=-0.5885, p=0.001973. Early ratio=3.5621, late ratio=1.6777  │
+  │ p-value: 0.001973      effect size: -0.5885                         │
+  └──────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │ Test 15: Meta (Necessity)     — Effective dimensionality of representations│
+  ├──────────────────────────────────────────────────────────────────────┤
+  │ Status: [91m❌ FALSIFIED[0m                                                │
+  │ Prediction: Representations use a significant fraction (>10%) of     │
+  │ available dimensions, justifying high-dimensional geometric analysis │
+  │ Observed: Mean effective rank: 6.03 / 2048 = 0.0029                  │
+  └──────────────────────────────────────────────────────────────────────┘
+
+══════════════════════════════════════════════════════════════════════════
+                              SUMMARY TABLE                               
+══════════════════════════════════════════════════════════════════════════
+  #    Conjecture             Test                                Result         
+  ──── ────────────────────── ─────────────────────────────────── ───────────────
+  1    Conjecture 1           Structured deformation (SV distri.. ✅ SURVIVED     
+  2    Conjecture 1           Semantic sensitivity of deformati.. ✅ SURVIVED     
+  3    Conjecture 1           Curvature concentration (heavy-ta.. ✅ SURVIVED     
+  4    Conjecture 2           Holographic distribution (ablatio.. ⚠️  INCONCLUSIVE
+  5    Conjecture 2           Drift coherence (token delta alig.. ✅ SURVIVED     
+  6    Conjecture 3           Persistent topology (H1 total per.. ❌ FALSIFIED    
+  7    Conjecture 3           Topology evolution (Wasserstein d.. ⚠️  INCONCLUSIVE
+  8    Conjecture 4           Inner/outer layer asymmetry         ❌ FALSIFIED    
+  9    Conjecture 4           Isotropy profile (inner vs outer .. ⚠️  INCONCLUSIVE
+  10   Conjecture 5           Jacobian as information carrier (.. ✅ SURVIVED     
+  11   Conjecture 5           Procrustes connection structure (.. ⚠️  INCONCLUSIVE
+  12   Conjecture 6           Layer dependency (consecutive vs .. ✅ SURVIVED     
+  13   Conjecture 6           Cross-prompt deformation structur.. ⚠️  INCONCLUSIVE
+  14   Conjecture 7           Local consistency (sheaf resoluti.. ✅ SURVIVED     
+  15   Meta (Necessity)       Effective dimensionality of repre.. ❌ FALSIFIED    
+
+  ────────────────────────────────────────────────────────────────────────────
+  TOTAL: 3 falsified, 7 survived, 5 inconclusive out of 15 tests
+  ────────────────────────────────────────────────────────────────────────────
+
+  VERDICT: Koch's framework has SIGNIFICANT PROBLEMS. Multiple core predictions fail.
+
+──────────────────────────────────────────────────────────────────────────
+                           INTERPRETATION GUIDE                           
+──────────────────────────────────────────────────────────────────────────
+
+  FALSIFIED means the specific testable prediction derived from Koch's
+  conjecture was NOT supported by the data. This does not necessarily
+  mean the entire conjecture is wrong — it may mean our operationalization
+  was too narrow, or that the conjecture needs refinement.
+
+  NOT FALSIFIED means the prediction was supported. This does not mean
+  the conjecture is PROVEN — only that this particular test did not
+  refute it. The conjecture may still be wrong for reasons not tested here.
+
+  INCONCLUSIVE means we could not run the test (insufficient data,
+  missing dependencies, etc.)
+
+  KEY QUESTION: Even if no conjecture is falsified, ask whether the
+  geometric framework provides ADDITIONAL explanatory power beyond
+  simpler descriptions (e.g., Fourier analysis à la Nanda et al.).
+  The meta-test addresses this directly.
+    
+
+  [██████████████████████████████] 100.0%  Step 20/20: Saving results...
+
+  📄 Results saved to: koch_falsification_microsoft_phi-1_5.json
+
+──────────────────────────────────────────────────────────────────────────
+                         Testing: microsoft/phi-2                         
+──────────────────────────────────────────────────────────────────────────
+
+══════════════════════════════════════════════════════════════════════════
+             KOCH FALSIFICATION SUITE v2.0 — microsoft/phi-2              
+══════════════════════════════════════════════════════════════════════════
+
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Step 1/20: Loading model 'microsoft/phi-2'...
