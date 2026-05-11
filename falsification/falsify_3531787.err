@@ -1,0 +1,810 @@
+2026-05-11 00:20:25,181 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/config.json "HTTP/1.1 200 OK"
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-11 00:20:25,188 [WARNING] Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-11 00:20:25,703 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:25,960 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:26,131 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:26,282 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:20:26,405 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:20:26,527 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:20:26,648 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:20:26,776 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:26,933 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:27,379 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:20:27,535 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:20:27,924 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:20:28,109 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:20:28,251 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:28,502 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:29,008 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:20:29,298 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/config.json "HTTP/1.1 200 OK"
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+2026-05-11 00:20:31,585 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:20:32,050 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2/xet-read-token/607a30d783dfa663caf39e06633721c8d4cfcd7e "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights: 100%|██████████| 148/148 [00:00<00:00, 2183.99it/s]
+2026-05-11 00:20:37,683 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:37,821 [INFO] HTTP Request: GET https://huggingface.co/gpt2/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:20:37,981 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:20:56,273 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:20:56,336 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:20:56,338 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:20:56,376 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:20:56,478 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:20:56,512 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+/home/s3811141/.cache/uv/environments-v2/falsification-73a1d389b0df6158/lib/python3.14/site-packages/persim/landscapes/visuals.py:310: SyntaxWarning: "\l" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\l"? A raw string is also an option.
+  ax.plot(ls[:, 0], ls[:, 1], label=f"$\lambda_{{{depth}}}$", alpha=alpha)
+/home/s3811141/.cache/uv/environments-v2/falsification-73a1d389b0df6158/lib/python3.14/site-packages/persim/landscapes/visuals.py:469: SyntaxWarning: "\l" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\l"? A raw string is also an option.
+  ax.plot(domain, l, label=f"$\lambda_{{{depth}}}$", alpha=alpha)
+2026-05-11 00:20:59,346 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:20:59,477 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:20:59,480 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:20:59,500 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:20:59,535 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:21:01,214 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:21:01,878 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:21:01,887 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:21:01,895 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:21:02,269 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:02,672 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:02,864 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:03,022 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:03,159 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:21:03,300 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-medium/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:03,426 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-medium/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:21:03,551 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-medium/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:21:03,678 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:03,822 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:04,285 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:21:04,468 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:21:04,855 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:04,990 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:05,135 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:05,292 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:05,748 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:06,028 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:06,185 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:21:06,323 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-medium/xet-read-token/6dcaa7a952f72f9298047fd5137cd6e4f05f41da "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights:  55%|█████▍    | 160/292 [00:00<00:00, 1562.18it/s]Loading weights: 100%|██████████| 292/292 [00:00<00:00, 1344.96it/s]
+2026-05-11 00:21:20,081 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:20,237 [INFO] HTTP Request: GET https://huggingface.co/gpt2-medium/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:20,396 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-medium/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:21,206 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:21:21,372 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:21:21,375 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:21:21,453 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:21:21,710 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:21:21,792 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:21:22,077 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:21:22,349 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:21:22,353 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:21:22,403 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:21:22,499 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:21:26,096 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:21:27,988 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:21:28,008 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:21:28,025 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:21:28,407 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:28,732 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:28,932 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:29,060 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:29,284 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-large/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:21:29,403 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-large/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:29,527 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-large/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:21:29,651 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-large/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:21:29,785 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:29,937 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:30,366 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:21:30,502 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:21:30,892 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:31,033 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:31,180 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:31,326 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:31,525 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:21:31,796 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:31,948 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:21:32,079 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-large/xet-read-token/32b71b12589c2f8d625668d2335a01cac3249519 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/436 [00:00<?, ?it/s]Loading weights:  27%|██▋       | 118/436 [00:00<00:00, 1168.84it/s]Loading weights:  54%|█████▍    | 235/436 [00:00<00:00, 1158.65it/s]Loading weights:  81%|████████  | 351/436 [00:00<00:00, 1052.56it/s]Loading weights: 100%|██████████| 436/436 [00:00<00:00, 1002.17it/s]
+2026-05-11 00:21:59,093 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:59,226 [INFO] HTTP Request: GET https://huggingface.co/gpt2-large/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:21:59,386 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-large/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:22:00,385 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:22:00,689 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:22:00,694 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:22:00,818 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:22:01,290 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:22:01,439 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:22:01,900 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:22:02,332 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:22:02,339 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:22:02,426 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:22:02,597 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:22:08,281 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:22:11,904 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:22:11,936 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:22:11,966 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:22:12,372 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:12,577 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:12,795 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:12,968 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:13,118 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-xl/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:22:13,239 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-xl/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:22:13,364 [INFO] HTTP Request: GET https://huggingface.co/api/models/gpt2-xl/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:22:13,487 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-xl/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:22:13,612 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:13,786 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:14,544 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:22:14,726 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:22:15,086 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:22:15,253 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:22:15,399 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:15,564 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:16,087 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:22:16,366 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:22:16,505 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:22:16,647 [INFO] HTTP Request: GET https://huggingface.co/api/models/openai-community/gpt2-xl/xet-read-token/15ea56dee5df4983c59b2538573817e1667135e2 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/580 [00:00<?, ?it/s]Loading weights:   8%|▊         | 46/580 [00:00<00:01, 447.29it/s]Loading weights:  21%|██        | 122/580 [00:00<00:00, 598.33it/s]Loading weights:  33%|███▎      | 190/580 [00:00<00:00, 611.30it/s]Loading weights:  44%|████▍     | 254/580 [00:00<00:00, 614.30it/s]Loading weights:  56%|█████▌    | 326/580 [00:00<00:00, 641.86it/s]Loading weights:  68%|██████▊   | 394/580 [00:00<00:00, 643.27it/s]Loading weights:  79%|███████▉  | 459/580 [00:00<00:00, 597.12it/s]Loading weights:  90%|████████▉ | 520/580 [00:00<00:00, 600.36it/s]Loading weights: 100%|██████████| 580/580 [00:01<00:00, 578.62it/s]
+2026-05-11 00:23:10,989 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:11,160 [INFO] HTTP Request: GET https://huggingface.co/gpt2-xl/resolve/main/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:11,321 [INFO] HTTP Request: HEAD https://huggingface.co/gpt2-xl/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:13,051 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:23:13,563 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:23:13,570 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:23:13,747 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:23:14,503 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:23:14,746 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:23:15,406 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:23:16,019 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:23:16,030 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:23:16,172 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:23:16,449 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:23:24,587 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:23:30,611 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:23:30,654 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:23:30,700 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:23:31,184 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:31,191 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:31,405 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:31,627 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:31,633 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:31,674 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:31,873 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-70m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:31,998 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-70m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:23:32,120 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:32,281 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:32,417 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:32,425 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:32,446 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:32,614 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:32,753 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:32,760 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:32,807 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:33,092 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:33,348 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:33,357 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:33,596 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:23:33,801 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-70m/xet-read-token/a39f36b100fe8a5377810d56c3f4789b9c53ac42 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/76 [00:00<?, ?it/s]Loading weights: 100%|██████████| 76/76 [00:00<00:00, 20397.18it/s]
+2026-05-11 00:23:36,633 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:36,770 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:36,778 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-70m/a39f36b100fe8a5377810d56c3f4789b9c53ac42/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:36,932 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-70m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:38,008 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:23:38,030 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:23:38,031 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:23:38,049 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:23:38,087 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:23:38,099 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:23:38,153 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:23:38,217 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:23:38,218 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:23:38,226 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:23:38,238 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:23:39,027 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:23:39,204 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:23:39,208 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:23:39,211 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:23:39,520 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:39,527 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:39,786 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:40,225 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:40,232 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:40,273 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:40,566 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-160m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:40,696 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-160m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:23:40,823 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:40,992 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:41,125 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:41,149 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:41,194 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:41,361 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:41,505 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:41,526 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:41,582 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:41,739 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:41,963 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:41,971 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:42,122 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:23:42,277 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-160m/xet-read-token/50f5173d932e8e61f858120bcb800b97af589f46 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/148 [00:00<?, ?it/s]Loading weights: 100%|██████████| 148/148 [00:00<00:00, 18213.10it/s]
+2026-05-11 00:23:46,513 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:46,647 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:46,655 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-160m/50f5173d932e8e61f858120bcb800b97af589f46/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:46,843 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-160m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:47,560 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:23:47,622 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:23:47,624 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:23:47,661 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:23:47,766 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:23:47,799 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:23:47,926 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:23:48,057 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:23:48,059 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:23:48,079 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:23:48,115 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:23:49,807 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:23:50,483 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:23:50,492 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:23:50,500 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:23:50,907 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:50,914 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:51,042 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:51,269 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:51,277 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:51,332 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:51,493 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-410m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:51,622 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-410m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:23:51,746 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:51,922 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:52,061 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:52,079 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:52,143 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:52,315 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:52,452 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:52,471 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:52,513 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:52,670 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:23:52,883 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:23:52,890 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:23:53,045 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:23:53,176 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-410m/xet-read-token/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights: 100%|██████████| 292/292 [00:00<00:00, 20541.35it/s]
+2026-05-11 00:24:03,369 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:03,500 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:03,507 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-410m/9879c9b5f8bea9051dcb0e68dff21493d67e9d4f/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:03,647 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-410m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:04,576 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:24:04,740 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:24:04,743 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:24:04,822 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:24:05,073 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:24:05,156 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:24:05,444 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:24:05,716 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:24:05,720 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:24:05,770 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:24:05,866 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:24:09,506 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:24:11,457 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:24:11,476 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:24:11,494 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:24:11,899 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:11,909 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:12,119 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:12,337 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:12,348 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:12,408 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:12,565 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:12,699 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:24:12,833 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:13,017 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:13,160 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:13,170 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:13,230 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:13,411 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:13,558 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:13,570 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:13,605 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:13,750 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:13,978 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:13,988 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:14,146 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:24:14,297 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1b/xet-read-token/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s]Loading weights: 100%|██████████| 196/196 [00:00<00:00, 43367.99it/s]
+2026-05-11 00:24:37,347 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:37,485 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:37,495 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1b/f73d7dcc545c8bd326d8559c8ef84ffe92fea6b2/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:37,646 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:39,212 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:24:39,427 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:24:39,431 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:24:39,497 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:24:39,782 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:24:39,942 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:24:40,177 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:24:40,418 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:24:40,423 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:24:40,486 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:24:40,600 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:24:43,594 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:24:46,068 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:24:46,086 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:24:46,106 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:24:46,505 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:46,524 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:46,724 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:46,914 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:46,933 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:46,968 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:47,708 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1.4b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:47,840 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1.4b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:24:47,972 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:48,153 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:48,289 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:48,310 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:48,364 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:48,544 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:48,683 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:48,703 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:48,857 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:49,018 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:24:49,286 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:24:49,294 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:24:49,533 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:24:49,683 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-1.4b/xet-read-token/fedc38a16eea3bd36a96b906d78d11d2ce18ed79 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/292 [00:00<?, ?it/s]Loading weights: 100%|██████████| 292/292 [00:00<00:00, 27862.79it/s]
+2026-05-11 00:25:20,943 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:21,075 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:21,083 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-1.4b/fedc38a16eea3bd36a96b906d78d11d2ce18ed79/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:21,207 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-1.4b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:22,671 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:25:23,064 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:25:23,068 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:25:23,166 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:25:23,604 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:25:23,758 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:25:24,115 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:25:24,468 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:25:24,474 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:25:24,564 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:25:24,732 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:25:29,211 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:25:33,039 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:25:33,066 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:25:33,095 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:25:33,499 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:33,517 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:33,691 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:33,899 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:33,918 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:33,969 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:34,127 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-2.8b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:34,255 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-2.8b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:25:34,386 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:34,521 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:34,658 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:34,677 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:34,739 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:34,919 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:35,153 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:35,171 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:35,208 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:35,363 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:25:35,584 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:25:35,593 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:25:35,727 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:25:35,874 [INFO] HTTP Request: GET https://huggingface.co/api/models/EleutherAI/pythia-2.8b/xet-read-token/2a259cdd96a4beb1cdf467512e3904197345f6a9 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/388 [00:00<?, ?it/s]Loading weights: 100%|██████████| 388/388 [00:00<00:00, 22413.37it/s]
+2026-05-11 00:26:35,022 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/generation_config.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:26:35,159 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:35,169 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/EleutherAI/pythia-2.8b/2a259cdd96a4beb1cdf467512e3904197345f6a9/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:35,351 [INFO] HTTP Request: HEAD https://huggingface.co/EleutherAI/pythia-2.8b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:26:37,462 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:26:37,985 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:26:37,991 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:26:38,134 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:26:38,870 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:26:39,121 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:26:39,659 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:26:40,179 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:26:40,188 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:26:40,335 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:26:40,618 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:26:47,117 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:26:53,632 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:26:53,671 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:26:53,716 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:26:54,221 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:54,338 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:54,517 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:54,776 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:54,799 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:54,862 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,053 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:55,065 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,201 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-1_5/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:26:55,331 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-1_5/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,459 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:55,485 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,543 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,731 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:55,756 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,822 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:26:55,984 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/added_tokens.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:56,007 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:56,075 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:56,488 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:56,511 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:56,682 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:56,849 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:56,874 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:56,938 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:57,113 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:26:57,344 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:26:57,356 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:26:57,586 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:26:57,768 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-1_5/xet-read-token/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/341 [00:00<?, ?it/s]Loading weights: 100%|██████████| 341/341 [00:00<00:00, 25110.30it/s]
+2026-05-11 00:27:29,496 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:29,518 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:29,672 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-1_5/77aa61eeac94fbf33d492b9f2744c98b42d5b5eb/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:30,558 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-1_5/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:27:31,664 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:27:31,983 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:27:31,987 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:27:32,085 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:27:32,520 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:27:32,673 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:27:33,032 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:27:33,386 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:27:33,392 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:27:33,484 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:27:33,655 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:27:38,157 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:27:41,900 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:27:41,928 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:27:41,956 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:27:42,401 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:42,412 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:42,609 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:42,825 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:42,835 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:42,916 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:43,369 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:43,380 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:43,513 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:27:43,646 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:27:43,777 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:43,787 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:43,849 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,024 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:44,036 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,081 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,239 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/added_tokens.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:44,251 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,299 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,432 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:44,443 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,495 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,645 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:44,656 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,692 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:44,866 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:27:45,130 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:45,141 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:45,289 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:27:45,424 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/model.safetensors.index.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:27:45,435 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/model.safetensors.index.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:45,479 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/model.safetensors.index.json "HTTP/1.1 200 OK"
+2026-05-11 00:27:45,644 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/revision/main "HTTP/1.1 200 OK"
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]2026-05-11 00:27:45,779 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/810d367871c1d460086d9f82db8696f2e0a0fcd0/model-00001-of-00002.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:27:45,818 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/810d367871c1d460086d9f82db8696f2e0a0fcd0/model-00002-of-00002.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:27:45,954 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/xet-read-token/810d367871c1d460086d9f82db8696f2e0a0fcd0 "HTTP/1.1 200 OK"
+2026-05-11 00:27:45,964 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/xet-read-token/810d367871c1d460086d9f82db8696f2e0a0fcd0 "HTTP/1.1 200 OK"
+Fetching 2 files:  50%|█████     | 1/2 [00:49<00:49, 49.33s/it]Fetching 2 files: 100%|██████████| 2/2 [00:49<00:00, 24.66s/it]
+Loading weights:   0%|          | 0/453 [00:00<?, ?it/s]Loading weights: 100%|██████████| 453/453 [00:00<00:00, 14207.56it/s]
+2026-05-11 00:28:43,981 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:28:44,002 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:28:44,076 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:28:44,234 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:28:45,428 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:28:45,947 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:28:45,953 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:28:46,096 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:28:46,824 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:28:47,073 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:28:47,605 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:28:48,124 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:28:48,133 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:28:48,285 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:28:48,564 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:28:55,048 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:29:01,422 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:29:01,461 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:29:01,506 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:29:01,988 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:01,995 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,076 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,276 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:02,284 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,305 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,459 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:02,606 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,730 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:02,738 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,756 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,929 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:02,937 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:02,980 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:03,302 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:03,442 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:03,449 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:03,471 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:03,627 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/tokenizer.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:03,770 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:03,954 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:03,960 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:04,133 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:04,269 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:04,420 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/pytorch_model.bin "HTTP/1.1 302 Found"
+2026-05-11 00:29:04,554 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/xet-read-token/27dcfa74d334bc871f3234de431e71c6eeba5dd6 "HTTP/1.1 200 OK"
+2026-05-11 00:29:07,641 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:07,767 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/197 [00:00<?, ?it/s]Loading weights: 100%|██████████| 197/197 [00:00<00:00, 47805.94it/s]
+2026-05-11 00:29:07,906 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/commits/main "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,056 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,213 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/commits/refs%2Fpr%2F51 "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,333 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/refs%2Fpr%2F51/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:08,433 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:08,443 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,455 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/refs%2Fpr%2F51/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:29:08,463 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,594 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/xet-read-token/1f9886ce095904096e22b0f4d9e7ba932fa7df2a "HTTP/1.1 200 OK"
+2026-05-11 00:29:08,614 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:10,141 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:29:10,212 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:29:10,214 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:29:10,255 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:29:10,361 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:29:10,395 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:29:10,541 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:29:10,681 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:29:10,683 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:29:10,706 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:29:10,747 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:29:12,565 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:29:13,280 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:29:13,289 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:29:13,297 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:29:13,618 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:13,626 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:13,776 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:13,942 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:13,950 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:13,994 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,137 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:14,264 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,388 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:14,408 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,442 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,603 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:14,622 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,651 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,797 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:14,934 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:14,954 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:14,991 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:15,146 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/tokenizer.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:15,281 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:15,481 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:15,489 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:15,630 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:15,764 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:15,896 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/pytorch_model.bin "HTTP/1.1 302 Found"
+2026-05-11 00:29:16,024 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/xet-read-token/08ab08cc4b72ff5593870b5d527cf4230323703c "HTTP/1.1 200 OK"
+2026-05-11 00:29:22,760 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:22,884 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/388 [00:00<?, ?it/s]Loading weights: 100%|██████████| 388/388 [00:00<00:00, 52258.76it/s]
+2026-05-11 00:29:23,026 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/commits/main "HTTP/1.1 200 OK"
+2026-05-11 00:29:23,180 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 00:29:23,319 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/commits/refs%2Fpr%2F40 "HTTP/1.1 200 OK"
+2026-05-11 00:29:23,447 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/refs%2Fpr%2F40/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:23,573 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/refs%2Fpr%2F40/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:29:23,988 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/xet-read-token/dc18cb1d9753e32a3ca31571c6177b4a460f75b9 "HTTP/1.1 200 OK"
+2026-05-11 00:29:25,089 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:25,108 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:25,168 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:25,339 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:25,778 [ERROR] Failed to test facebook/opt-350m: all input arrays must have the same shape
+2026-05-11 00:29:26,080 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:26,099 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:26,228 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:26,411 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:26,429 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:26,500 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:26,668 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:26,822 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:29:27,106 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:27,136 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:27,281 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:27,801 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:27,823 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:27,876 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:29:28,046 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:28,257 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:28,276 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:28,330 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:28,560 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/tokenizer.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:28,708 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:28,905 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:29:28,925 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:29:29,077 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:29,233 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:29,391 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/pytorch_model.bin "HTTP/1.1 302 Found"
+2026-05-11 00:29:29,550 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/xet-read-token/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62 "HTTP/1.1 200 OK"
+2026-05-11 00:29:53,727 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:53,854 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b "HTTP/1.1 200 OK"
+2026-05-11 00:29:54,001 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/commits/main "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/389 [00:00<?, ?it/s]Loading weights: 100%|██████████| 389/389 [00:00<00:00, 56671.91it/s]
+2026-05-11 00:29:54,152 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 00:29:54,303 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/commits/refs%2Fpr%2F29 "HTTP/1.1 200 OK"
+2026-05-11 00:29:54,427 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/refs%2Fpr%2F29/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:29:54,558 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/refs%2Fpr%2F29/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:29:54,739 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/xet-read-token/af1bddda1383c62d4824067b33d75688490d1196 "HTTP/1.1 200 OK"
+2026-05-11 00:30:12,889 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:12,967 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:13,278 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:13,525 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:30:17,993 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:30:19,442 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:30:19,453 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:30:19,601 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:30:20,059 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:30:20,219 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:30:20,664 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:30:21,043 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:30:21,049 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:30:21,152 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:30:21,345 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:30:26,143 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:30:30,204 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:30:30,232 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:30:30,263 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:30:30,720 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:30,731 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:31,075 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:31,289 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:31,300 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:31,317 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:31,516 [INFO] HTTP Request: GET https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:30:31,668 [INFO] HTTP Request: GET https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:30:31,797 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer.model "HTTP/1.1 302 Found"
+2026-05-11 00:30:31,938 [INFO] HTTP Request: GET https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/xet-read-token/fe8a4ea1ffedaf415f4da2f062534de366a451e6 "HTTP/1.1 200 OK"
+2026-05-11 00:30:32,658 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:32,668 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:32,692 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:32,882 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:30:33,087 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:33,098 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:33,120 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:33,276 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:30:33,462 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:33,472 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:33,698 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:  24%|██▍       | 49/201 [00:00<00:00, 461.46it/s]Loading weights:  54%|█████▎    | 108/201 [00:00<00:00, 509.57it/s]Loading weights:  81%|████████  | 163/201 [00:00<00:00, 511.55it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 520.90it/s]
+2026-05-11 00:30:56,360 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:30:56,367 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:56,622 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:30:56,801 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:30:58,034 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:30:58,415 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:30:58,419 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:30:58,531 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:30:58,967 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:30:59,133 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:30:59,513 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:31:00,122 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:31:00,129 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:31:00,241 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:31:00,449 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:31:05,365 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:31:09,612 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:31:09,637 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:31:09,670 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:31:10,139 [INFO] HTTP Request: HEAD https://huggingface.co/google/gemma-2b/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+2026-05-11 00:31:10,257 [INFO] HTTP Request: HEAD https://huggingface.co/google/gemma-2b/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+2026-05-11 00:31:10,258 [ERROR] Failed to test google/gemma-2b: You are trying to access a gated repo.
+Make sure to have access to it at https://huggingface.co/google/gemma-2b.
+401 Client Error. (Request ID: Root=1-6a01072e-56ea85d3094f53432677099f;9e0403f2-8ba5-452f-94f0-a7f956da4c96)
+
+Cannot access gated repo for url https://huggingface.co/google/gemma-2b/resolve/main/config.json.
+Access to model google/gemma-2b is restricted. You must have access to it and be authenticated to access it. Please log in.
+2026-05-11 00:31:10,566 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:10,573 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:10,739 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:10,947 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:10,954 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:10,997 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,205 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:11,332 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,457 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:11,464 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,495 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,656 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:11,664 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,704 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,854 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:11,861 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:11,904 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:12,085 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:12,285 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:12,433 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:12,784 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B "HTTP/1.1 200 OK"
+2026-05-11 00:31:12,910 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:12,918 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:13,149 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:31:13,319 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B/xet-read-token/91d2aff3f957f99e4c74c962f2f408dcc88a18d8 "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:  59%|█████▉    | 172/290 [00:00<00:00, 1713.58it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 1947.47it/s]
+2026-05-11 00:31:23,272 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:23,283 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:23,343 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:23,508 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:24,419 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:31:24,559 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:31:24,562 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:31:24,637 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:31:24,868 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:31:24,941 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:31:25,211 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:31:25,469 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:31:25,473 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:31:25,516 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:31:25,599 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:31:29,021 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:31:30,711 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:31:30,728 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:31:30,744 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 00:31:31,138 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:31,149 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:31,433 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:31,643 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:31,654 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:31,719 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:31,879 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:32,018 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,147 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:32,170 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,196 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/vocab.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,387 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:32,398 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,448 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/merges.txt "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,606 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:32,618 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,658 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:32,824 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:33,022 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:33,173 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 00:31:33,521 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B "HTTP/1.1 200 OK"
+2026-05-11 00:31:33,650 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:31:33,660 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/config.json "HTTP/1.1 200 OK"
+2026-05-11 00:31:33,943 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-11 00:31:34,448 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B/xet-read-token/8a16abf2848eda07cc5253dec660bf1ce007ad7a "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:17<1:38:25, 17.52s/it]Loading weights: 100%|██████████| 338/338 [00:17<00:00, 19.28it/s]
+2026-05-11 00:32:21,014 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 00:32:21,025 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:32:21,085 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 00:32:21,251 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 00:32:22,879 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 00:32:23,159 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 00:32:23,162 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 00:32:23,264 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 00:32:23,679 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 00:32:23,815 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 00:32:24,186 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 00:32:24,543 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 00:32:24,549 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 00:32:24,628 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 00:32:24,778 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 00:32:29,449 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 00:32:32,909 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 00:32:32,936 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 00:32:32,963 [INFO] Meta-test: Is the geometric framework necessary?...
