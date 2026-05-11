@@ -299,3 +299,17 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 2026-05-11 07:39:21,276 [INFO] Testing Conjecture 5: Jacobian as information carrier...
 2026-05-11 07:39:21,433 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
 2026-05-11 07:39:25,898 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:39:29,660 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:39:29,688 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:39:29,716 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:39:30,158 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:39:30,167 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:39:30,359 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:39:30,366 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:39:30,533 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:39:30,541 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:39:30,675 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:39:30,794 [INFO] HTTP Request: GET https://huggingface.co/api/models/microsoft/phi-2/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:39:31,163 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:39:31,171 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/453 [00:00<?, ?it/s]Loading weights:   3%|▎         | 13/453 [00:00<00:04, 107.69it/s]Loading weights:   5%|▌         | 24/453 [00:00<00:07, 57.87it/s] Loading weights:   8%|▊         | 37/453 [00:00<00:05, 75.95it/s]Loading weights:  10%|█         | 46/453 [00:00<00:05, 78.40it/s]Loading weights:  12%|█▏        | 55/453 [00:00<00:05, 77.70it/s]Loading weights:  16%|█▋        | 74/453 [00:00<00:03, 104.47it/s]Loading weights:  20%|█▉        | 90/453 [00:00<00:03, 118.43it/s]Loading weights:  24%|██▍       | 110/453 [00:01<00:02, 133.02it/s]Loading weights:  29%|██▉       | 131/453 [00:01<00:02, 154.10it/s]Loading weights:  33%|███▎      | 150/453 [00:01<00:01, 154.02it/s]
