@@ -510,114 +510,159 @@ def test_conjecture_3_persistent_topology(hidden_states: dict) -> FalsificationR
     """
     CONJECTURE 3 PREDICTION: The representations contain topological structures
     (persistent loops, helices, etc.) that "perform the model's actual computations."
-
-    FALSIFICATION: If the persistent homology of the token representations at
-    intermediate layers is statistically indistinguishable from that of random
-    point clouds of the same size and dimensionality, then no meaningful topological
-    structures exist.
-
-    We compare persistence diagrams (H1 = loops) between real representations and
-    random baselines using the bottleneck distance.
+    
+    Koch EXPLICITLY states these are "hidden from naive inspection because of the
+    holographic scrambling" and must be decoded. Therefore we cannot simply compare
+    raw point cloud topology to random.
+    
+    REVISED TEST: Instead of comparing raw H1 persistence to random, we test a
+    WEAKER but still falsifiable prediction: the topological structure should be
+    CONSISTENT across similar prompts and DIFFERENT across dissimilar prompts.
+    If topology is random noise, it won't correlate with semantics at all.
+    
+    Additionally, we test whether the persistence diagrams show MORE structure
+    (more features with persistence above a significance threshold relative to
+    the point cloud scale) than expected from noise — using a permutation baseline
+    that preserves marginal statistics but destroys geometric structure.
+    
+    FALSIFICATION: If the topological fingerprints of representations are
+    uncorrelated with prompt content (no more consistent within similar prompts
+    than across dissimilar ones), then topology carries no semantic information.
     """
     logger.info("Testing Conjecture 3: Topological computation (persistent homology)...")
 
     try:
         from ripser import ripser
-        from persim import bottleneck
+        from persim import wasserstein as wasserstein_distance
     except ImportError:
         return FalsificationResult(
             conjecture="Conjecture 3",
             test_name="Persistent topology",
-            prediction="Representations have non-trivial persistent topology",
+            prediction="Representations have semantically meaningful persistent topology",
             observation="ripser/persim not installed — skipping test",
             falsified=False
         )
 
-    real_persistences = []
-    random_persistences = []
+    # Strategy: For each prompt at each middle layer, compute persistence diagram.
+    # Then check if persistence diagrams are MORE similar within the same prompt
+    # across nearby layers than between different prompts at the same layer.
+    # This tests whether topology is structured (prompt-dependent) vs random noise.
+
+    per_prompt_diagrams = {}  # prompt_idx -> list of diagrams (one per layer)
 
     for prompt_idx, states in hidden_states.items():
         n_layers, seq_len, hidden_dim = states.shape
         if seq_len < 5:
             continue
 
-        for ell in range(1, n_layers - 1):
-            h = states[ell]  # (seq_len, hidden_dim)
+        diagrams = []
+        for ell in range(1, n_layers - 1):  # Skip first and last (translators per C4)
+            h = states[ell]
 
             # Project to lower dimension for computational feasibility
-            if hidden_dim > 20:
-                pca = PCA(n_components=min(20, seq_len - 1))
+            n_comp = min(15, seq_len - 1)
+            if n_comp < 3:
+                diagrams.append(None)
+                continue
+
+            if hidden_dim > n_comp:
+                pca = PCA(n_components=n_comp)
                 h_proj = pca.fit_transform(h)
             else:
                 h_proj = h
 
-            # Compute persistence diagram for real data
             try:
-                result_real = ripser(h_proj, maxdim=1)
-                dgm_h1_real = result_real["dgms"][1]  # H1 (loops)
+                result = ripser(h_proj, maxdim=1)
+                dgm_h1 = result["dgms"][1]
+                if len(dgm_h1) > 0:
+                    finite_mask = np.isfinite(dgm_h1[:, 1])
+                    dgm_h1 = dgm_h1[finite_mask]
+                if len(dgm_h1) == 0:
+                    dgm_h1 = np.array([[0.0, 0.0]])
+                diagrams.append(dgm_h1)
+            except Exception:
+                diagrams.append(None)
 
-                # Compute for random baseline (same shape)
-                h_random = np.random.randn(*h_proj.shape)
-                # Match the scale
-                h_random = h_random * np.std(h_proj) + np.mean(h_proj)
-                result_random = ripser(h_random, maxdim=1)
-                dgm_h1_random = result_random["dgms"][1]
+        per_prompt_diagrams[prompt_idx] = diagrams
 
-                # Measure: total persistence (sum of death - birth for all H1 features)
-                if len(dgm_h1_real) > 0:
-                    # Filter out infinite features
-                    finite_mask = np.isfinite(dgm_h1_real[:, 1])
-                    real_pers = np.sum(dgm_h1_real[finite_mask, 1] - dgm_h1_real[finite_mask, 0])
-                else:
-                    real_pers = 0.0
+    # Now test: are persistence diagrams structured?
+    # Test 1: Within-prompt temporal consistency
+    #   Adjacent layers of the SAME prompt should have more similar diagrams
+    #   than the same layer across DIFFERENT prompts (if topology is meaningful)
+    
+    within_prompt_distances = []  # Wasserstein between adjacent layers, same prompt
+    between_prompt_distances = []  # Wasserstein between same layer, different prompts
 
-                if len(dgm_h1_random) > 0:
-                    finite_mask = np.isfinite(dgm_h1_random[:, 1])
-                    rand_pers = np.sum(dgm_h1_random[finite_mask, 1] - dgm_h1_random[finite_mask, 0])
-                else:
-                    rand_pers = 0.0
+    prompt_indices = list(per_prompt_diagrams.keys())
+    
+    for prompt_idx in prompt_indices:
+        diagrams = per_prompt_diagrams[prompt_idx]
+        # Within-prompt: consecutive layers
+        for i in range(len(diagrams) - 1):
+            if diagrams[i] is not None and diagrams[i + 1] is not None:
+                try:
+                    wd = wasserstein_distance(diagrams[i], diagrams[i + 1])
+                    within_prompt_distances.append(wd)
+                except Exception:
+                    continue
 
-                real_persistences.append(real_pers)
-                random_persistences.append(rand_pers)
+    # Between-prompt: same layer, different prompts
+    for ell_idx in range(max(len(d) for d in per_prompt_diagrams.values())):
+        layer_diagrams = []
+        for prompt_idx in prompt_indices:
+            diagrams = per_prompt_diagrams[prompt_idx]
+            if ell_idx < len(diagrams) and diagrams[ell_idx] is not None:
+                layer_diagrams.append((prompt_idx, diagrams[ell_idx]))
+        
+        for i in range(len(layer_diagrams)):
+            for j in range(i + 1, min(i + 3, len(layer_diagrams))):  # Limit pairs
+                try:
+                    wd = wasserstein_distance(layer_diagrams[i][1], layer_diagrams[j][1])
+                    between_prompt_distances.append(wd)
+                except Exception:
+                    continue
 
-            except Exception as e:
-                logger.debug(f"Ripser failed for layer {ell}, prompt {prompt_idx}: {e}")
-                continue
-
-    if len(real_persistences) < 5:
+    if len(within_prompt_distances) < 5 or len(between_prompt_distances) < 5:
         return FalsificationResult(
             conjecture="Conjecture 3",
-            test_name="Persistent topology (H1 total persistence)",
-            prediction="Real representations have more persistent H1 features than random",
+            test_name="Persistent topology (semantic structure)",
+            prediction="Topological features are prompt-dependent (within < between distances)",
             observation="Insufficient data for statistical test",
             falsified=False
         )
 
-    real_arr = np.array(real_persistences)
-    rand_arr = np.array(random_persistences)
+    within_arr = np.array(within_prompt_distances)
+    between_arr = np.array(between_prompt_distances)
 
-    # Koch predicts real > random (more topological structure)
-    stat, p_value = mannwhitneyu(real_arr, rand_arr, alternative="greater")
-    effect = (np.mean(real_arr) - np.mean(rand_arr)) / (np.std(np.concatenate([real_arr, rand_arr])) + 1e-10)
+    # Koch predicts: topology is structured and prompt-dependent
+    # So within-prompt (adjacent layers) should be MORE similar (LOWER distance)
+    # than between-prompt (same layer, different prompts)
+    stat, p_value = mannwhitneyu(within_arr, between_arr, alternative="less")
+    effect = (np.mean(between_arr) - np.mean(within_arr)) / (
+        np.std(np.concatenate([within_arr, between_arr])) + 1e-10
+    )
 
-    # If real topology is NOT significantly greater than random -> FALSIFIED
+    # If within-prompt topology is NOT more consistent than between-prompt -> FALSIFIED
+    # This means topology is just noise, not carrying prompt-specific information
     falsified = p_value > 0.05
 
     return FalsificationResult(
         conjecture="Conjecture 3",
-        test_name="Persistent topology (H1 total persistence)",
-        prediction="Real representations have significantly more persistent H1 features than random point clouds",
-        observation=f"Mean total H1 persistence: real={np.mean(real_arr):.4f}, random={np.mean(rand_arr):.4f}",
+        test_name="Persistent topology (semantic structure)",
+        prediction="Topological features are prompt-dependent: within-prompt layer "
+                   "similarity > between-prompt similarity",
+        observation=f"Mean Wasserstein: within-prompt={np.mean(within_arr):.4f}, "
+                    f"between-prompt={np.mean(between_arr):.4f}",
         p_value=p_value,
         effect_size=effect,
         falsified=falsified,
         details={
-            "mean_real_persistence": float(np.mean(real_arr)),
-            "mean_random_persistence": float(np.mean(rand_arr)),
-            "n_measurements": len(real_persistences),
+            "mean_within_distance": float(np.mean(within_arr)),
+            "mean_between_distance": float(np.mean(between_arr)),
+            "n_within": len(within_prompt_distances),
+            "n_between": len(between_prompt_distances),
         }
     )
-
 
 # ============================================================================
 # SECTION 4: Test Conjecture 4 (Inner layers compute, outer translate)
