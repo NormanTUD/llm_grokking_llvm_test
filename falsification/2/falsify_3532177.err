@@ -313,3 +313,306 @@ Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF
 2026-05-11 07:39:31,163 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
 2026-05-11 07:39:31,171 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/config.json "HTTP/1.1 200 OK"
 Loading weights:   0%|          | 0/453 [00:00<?, ?it/s]Loading weights:   3%|▎         | 13/453 [00:00<00:04, 107.69it/s]Loading weights:   5%|▌         | 24/453 [00:00<00:07, 57.87it/s] Loading weights:   8%|▊         | 37/453 [00:00<00:05, 75.95it/s]Loading weights:  10%|█         | 46/453 [00:00<00:05, 78.40it/s]Loading weights:  12%|█▏        | 55/453 [00:00<00:05, 77.70it/s]Loading weights:  16%|█▋        | 74/453 [00:00<00:03, 104.47it/s]Loading weights:  20%|█▉        | 90/453 [00:00<00:03, 118.43it/s]Loading weights:  24%|██▍       | 110/453 [00:01<00:02, 133.02it/s]Loading weights:  29%|██▉       | 131/453 [00:01<00:02, 154.10it/s]Loading weights:  33%|███▎      | 150/453 [00:01<00:01, 154.02it/s]Loading weights:  37%|███▋      | 166/453 [00:01<00:02, 128.41it/s]Loading weights:  40%|████      | 182/453 [00:01<00:02, 123.04it/s]Loading weights:  45%|████▌     | 206/453 [00:01<00:01, 130.07it/s]Loading weights:  49%|████▊     | 220/453 [00:01<00:02, 114.54it/s]Loading weights:  53%|█████▎    | 241/453 [00:02<00:01, 130.11it/s]Loading weights:  58%|█████▊    | 263/453 [00:02<00:01, 145.71it/s]Loading weights:  64%|██████▍   | 289/453 [00:02<00:00, 165.75it/s]Loading weights:  69%|██████▉   | 313/453 [00:02<00:00, 175.13it/s]Loading weights:  73%|███████▎  | 332/453 [00:02<00:00, 137.96it/s]Loading weights:  79%|███████▉  | 359/453 [00:02<00:00, 149.92it/s]Loading weights:  85%|████████▌ | 387/453 [00:02<00:00, 169.15it/s]Loading weights:  90%|█████████ | 409/453 [00:03<00:00, 179.11it/s]Loading weights:  94%|█████████▍| 428/453 [00:03<00:00, 133.23it/s]Loading weights:  98%|█████████▊| 444/453 [00:03<00:00, 126.95it/s]Loading weights: 100%|██████████| 453/453 [00:03<00:00, 132.45it/s]
+2026-05-11 07:43:12,103 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:12,114 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/microsoft/phi-2/810d367871c1d460086d9f82db8696f2e0a0fcd0/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:12,260 [INFO] HTTP Request: HEAD https://huggingface.co/microsoft/phi-2/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:21,226 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:43:21,720 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:43:21,726 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:43:21,867 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:43:22,601 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:43:22,859 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:43:23,374 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:43:23,873 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:43:23,882 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:43:24,021 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:43:24,285 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:43:30,721 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:43:37,148 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:43:37,183 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:43:37,228 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:43:37,718 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:37,726 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:37,920 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:37,928 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:38,095 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:38,221 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:43:38,517 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:38,525 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:38,692 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:38,812 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m "HTTP/1.1 200 OK"
+2026-05-11 07:43:38,947 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/commits/main "HTTP/1.1 200 OK"
+2026-05-11 07:43:39,101 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 07:43:39,257 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-125m/commits/refs%2Fpr%2F51 "HTTP/1.1 200 OK"
+2026-05-11 07:43:39,380 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/refs%2Fpr%2F51/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:39,504 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/refs%2Fpr%2F51/model.safetensors "HTTP/1.1 302 Found"
+Loading weights:   0%|          | 0/197 [00:00<?, ?it/s]Loading weights: 100%|██████████| 197/197 [00:00<00:00, 49451.07it/s]
+2026-05-11 07:43:45,215 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:45,226 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-125m/27dcfa74d334bc871f3234de431e71c6eeba5dd6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:45,386 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-125m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:46,103 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:43:46,194 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:43:46,196 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:43:46,237 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:43:46,341 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:43:46,375 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:43:46,508 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:43:46,644 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:43:46,646 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:43:46,668 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:43:46,707 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:43:48,499 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:43:49,212 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:43:49,221 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:43:49,229 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:43:49,544 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:49,553 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:49,738 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:49,748 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:49,918 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:50,051 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:43:50,406 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:43:50,417 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:43:50,552 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:50,703 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m "HTTP/1.1 200 OK"
+2026-05-11 07:43:50,847 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/commits/main "HTTP/1.1 200 OK"
+2026-05-11 07:43:50,997 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 07:43:51,139 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-350m/commits/refs%2Fpr%2F40 "HTTP/1.1 200 OK"
+2026-05-11 07:43:51,287 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/refs%2Fpr%2F40/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:43:51,414 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/refs%2Fpr%2F40/model.safetensors "HTTP/1.1 302 Found"
+Loading weights:   0%|          | 0/388 [00:00<?, ?it/s]Loading weights: 100%|██████████| 388/388 [00:00<00:00, 50665.94it/s]
+2026-05-11 07:44:05,979 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:44:05,987 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-350m/08ab08cc4b72ff5593870b5d527cf4230323703c/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:44:06,164 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-350m/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:44:06,586 [ERROR] Failed to test facebook/opt-350m: all input arrays must have the same shape
+2026-05-11 07:44:06,884 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:44:06,891 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:44:07,104 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:44:07,112 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:44:07,274 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:44:07,409 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:44:07,768 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:44:07,776 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:44:07,940 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 07:44:08,075 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b "HTTP/1.1 200 OK"
+2026-05-11 07:44:08,225 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/commits/main "HTTP/1.1 200 OK"
+2026-05-11 07:44:08,371 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/discussions?p=0 "HTTP/1.1 200 OK"
+2026-05-11 07:44:08,507 [INFO] HTTP Request: GET https://huggingface.co/api/models/facebook/opt-1.3b/commits/refs%2Fpr%2F29 "HTTP/1.1 200 OK"
+2026-05-11 07:44:08,626 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/refs%2Fpr%2F29/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:44:08,749 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/refs%2Fpr%2F29/model.safetensors "HTTP/1.1 302 Found"
+Loading weights:   0%|          | 0/389 [00:00<?, ?it/s]Loading weights: 100%|██████████| 389/389 [00:00<00:00, 63251.96it/s]
+2026-05-11 07:45:47,373 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:45:47,384 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/facebook/opt-1.3b/3f5c25d0bc631cb57ac65913f76e22c2dfb61d62/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:45:47,537 [INFO] HTTP Request: HEAD https://huggingface.co/facebook/opt-1.3b/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:45:48,437 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:45:48,770 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:45:48,774 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:45:48,880 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:45:49,331 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:45:49,490 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:45:49,858 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:45:50,217 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:45:50,223 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:45:50,318 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:45:50,496 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:45:55,269 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:45:59,356 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:45:59,381 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:45:59,412 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:45:59,842 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:45:59,850 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:46:00,051 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:46:00,058 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:46:00,218 [INFO] HTTP Request: GET https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:46:00,347 [INFO] HTTP Request: GET https://huggingface.co/api/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:46:00,644 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:46:00,651 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   0%|          | 1/201 [00:06<22:54,  6.87s/it]Loading weights:   6%|▋         | 13/201 [00:07<01:20,  2.34it/s]Loading weights:   7%|▋         | 15/201 [00:08<01:29,  2.07it/s]Loading weights:  11%|█         | 22/201 [00:12<01:23,  2.15it/s]Loading weights:  15%|█▌        | 31/201 [00:13<00:54,  3.12it/s]Loading weights:  20%|█▉        | 40/201 [00:14<00:39,  4.04it/s]Loading weights:  23%|██▎       | 46/201 [00:15<00:35,  4.36it/s]Loading weights:  24%|██▍       | 49/201 [00:16<00:32,  4.63it/s]Loading weights:  25%|██▌       | 51/201 [00:17<00:37,  3.95it/s]Loading weights:  29%|██▉       | 59/201 [00:18<00:31,  4.50it/s]Loading weights:  33%|███▎      | 67/201 [00:20<00:28,  4.66it/s]Loading weights:  36%|███▋      | 73/201 [00:20<00:22,  5.57it/s]Loading weights:  38%|███▊      | 76/201 [00:21<00:22,  5.57it/s]Loading weights:  38%|███▊      | 77/201 [00:21<00:23,  5.20it/s]Loading weights:  39%|███▉      | 78/201 [00:23<00:40,  3.06it/s]Loading weights:  43%|████▎     | 86/201 [00:24<00:22,  5.04it/s]Loading weights:  43%|████▎     | 87/201 [00:24<00:22,  5.04it/s]Loading weights:  47%|████▋     | 94/201 [00:25<00:21,  5.06it/s]Loading weights:  47%|████▋     | 95/201 [00:26<00:24,  4.31it/s]Loading weights:  51%|█████     | 103/201 [00:28<00:25,  3.80it/s]Loading weights:  52%|█████▏    | 105/201 [00:29<00:24,  3.86it/s]Loading weights:  56%|█████▌    | 112/201 [00:30<00:19,  4.67it/s]Loading weights:  57%|█████▋    | 114/201 [00:31<00:25,  3.43it/s]Loading weights:  61%|██████    | 122/201 [00:32<00:17,  4.45it/s]Loading weights:  65%|██████▍   | 130/201 [00:34<00:14,  4.97it/s]Loading weights:  68%|██████▊   | 136/201 [00:34<00:10,  6.46it/s]Loading weights:  69%|██████▉   | 139/201 [00:35<00:12,  5.06it/s]Loading weights:  70%|███████   | 141/201 [00:36<00:14,  4.26it/s]Loading weights:  74%|███████▍  | 149/201 [00:37<00:10,  5.11it/s]Loading weights:  78%|███████▊  | 157/201 [00:38<00:06,  6.34it/s]Loading weights:  79%|███████▊  | 158/201 [00:38<00:07,  6.09it/s]Loading weights:  82%|████████▏ | 164/201 [00:38<00:04,  8.67it/s]Loading weights:  83%|████████▎ | 166/201 [00:39<00:05,  6.42it/s]Loading weights:  84%|████████▎ | 168/201 [00:40<00:06,  5.16it/s]Loading weights:  87%|████████▋ | 175/201 [00:40<00:02,  8.88it/s]Loading weights:  89%|████████▊ | 178/201 [00:43<00:06,  3.34it/s]Loading weights:  94%|█████████▍| 189/201 [00:44<00:02,  5.40it/s]Loading weights:  95%|█████████▌| 191/201 [00:44<00:01,  5.88it/s]Loading weights:  96%|█████████▌| 193/201 [00:45<00:01,  5.31it/s]Loading weights:  97%|█████████▋| 195/201 [00:45<00:01,  5.11it/s]Loading weights: 100%|██████████| 201/201 [00:45<00:00,  4.42it/s]
+2026-05-11 07:46:49,859 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:46:49,867 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TinyLlama/TinyLlama-1.1B-Chat-v1.0/fe8a4ea1ffedaf415f4da2f062534de366a451e6/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:46:50,037 [INFO] HTTP Request: HEAD https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:46:51,189 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:46:51,540 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:46:51,545 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:46:51,655 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:46:52,095 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:46:52,260 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:46:52,629 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:46:53,186 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:46:53,193 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:46:53,294 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:46:53,482 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:46:58,395 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:47:02,699 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:47:02,723 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:47:02,756 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:47:03,201 [INFO] HTTP Request: HEAD https://huggingface.co/google/gemma-2b/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+2026-05-11 07:47:03,321 [INFO] HTTP Request: HEAD https://huggingface.co/google/gemma-2b/resolve/main/config.json "HTTP/1.1 401 Unauthorized"
+2026-05-11 07:47:03,322 [ERROR] Failed to test google/gemma-2b: You are trying to access a gated repo.
+Make sure to have access to it at https://huggingface.co/google/gemma-2b.
+401 Client Error. (Request ID: Root=1-6a016d57-2bf934da4de1c79a09cbc814;1ba91b22-17a8-4a2d-ba6c-d36ca983c4d2)
+
+Cannot access gated repo for url https://huggingface.co/google/gemma-2b/resolve/main/config.json.
+Access to model google/gemma-2b is restricted. You must have access to it and be authenticated to access it. Please log in.
+2026-05-11 07:47:03,630 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:03,640 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:47:03,871 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:03,882 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:47:04,051 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:47:04,179 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:47:04,587 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-0.5B "HTTP/1.1 200 OK"
+2026-05-11 07:47:04,709 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:04,719 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   0%|          | 1/290 [00:10<48:49, 10.14s/it]Loading weights:  38%|███▊      | 111/290 [00:10<00:12, 14.62it/s]Loading weights:  47%|████▋     | 135/290 [00:11<00:09, 16.13it/s]Loading weights:  50%|█████     | 146/290 [00:11<00:08, 17.83it/s]Loading weights:  53%|█████▎    | 155/290 [00:13<00:09, 14.88it/s]Loading weights:  59%|█████▉    | 171/290 [00:13<00:07, 16.17it/s]Loading weights:  61%|██████    | 176/290 [00:13<00:06, 16.98it/s]Loading weights:  63%|██████▎   | 183/290 [00:14<00:06, 15.70it/s]Loading weights:  64%|██████▍   | 186/290 [00:15<00:07, 13.13it/s]Loading weights:  70%|███████   | 203/290 [00:15<00:04, 21.61it/s]Loading weights:  72%|███████▏  | 209/290 [00:15<00:03, 21.09it/s]Loading weights:  76%|███████▌  | 219/290 [00:15<00:02, 26.50it/s]Loading weights:  78%|███████▊  | 225/290 [00:16<00:02, 24.32it/s]Loading weights:  80%|████████  | 232/290 [00:16<00:02, 23.76it/s]Loading weights:  84%|████████▍ | 244/290 [00:16<00:01, 27.28it/s]Loading weights:  86%|████████▌ | 248/290 [00:16<00:01, 25.67it/s]Loading weights:  88%|████████▊ | 256/290 [00:17<00:01, 25.92it/s]Loading weights:  93%|█████████▎| 269/290 [00:17<00:00, 29.22it/s]Loading weights:  97%|█████████▋| 281/290 [00:17<00:00, 38.43it/s]Loading weights: 100%|██████████| 290/290 [00:17<00:00, 16.37it/s]
+2026-05-11 07:47:23,995 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:24,007 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-0.5B/91d2aff3f957f99e4c74c962f2f408dcc88a18d8/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:47:24,178 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-0.5B/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:47:25,065 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:47:25,203 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:47:25,205 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:47:25,280 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:47:25,513 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:47:25,586 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:47:25,854 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:47:26,110 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:47:26,114 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:47:26,156 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:47:26,236 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:47:29,653 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:47:31,354 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:47:31,371 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:47:31,387 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:47:31,781 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:31,789 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:47:32,012 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:32,020 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:47:32,199 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:47:32,321 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:47:32,774 [INFO] HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen2-1.5B "HTTP/1.1 200 OK"
+2026-05-11 07:47:32,896 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:47:32,904 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:   0%|          | 1/338 [00:12<1:12:47, 12.96s/it]Loading weights:  22%|██▏       | 76/338 [00:14<00:35,  7.42it/s] Loading weights:  26%|██▋       | 89/338 [00:14<00:28,  8.65it/s]Loading weights:  29%|██▉       | 99/338 [00:15<00:24,  9.58it/s]Loading weights:  32%|███▏      | 107/338 [00:15<00:22, 10.19it/s]Loading weights:  33%|███▎      | 111/338 [00:16<00:24,  9.16it/s]Loading weights:  33%|███▎      | 113/338 [00:16<00:25,  8.87it/s]Loading weights:  36%|███▋      | 123/338 [00:18<00:29,  7.31it/s]Loading weights:  37%|███▋      | 125/338 [00:18<00:28,  7.43it/s]Loading weights:  40%|███▉      | 135/338 [00:19<00:21,  9.51it/s]Loading weights:  41%|████      | 137/338 [00:20<00:31,  6.39it/s]Loading weights:  44%|████▍     | 148/338 [00:21<00:22,  8.49it/s]Loading weights:  44%|████▍     | 150/338 [00:21<00:21,  8.55it/s]Loading weights:  47%|████▋     | 159/338 [00:22<00:23,  7.78it/s]Loading weights:  48%|████▊     | 161/338 [00:23<00:23,  7.38it/s]Loading weights:  51%|█████     | 171/338 [00:23<00:16, 10.30it/s]Loading weights:  53%|█████▎    | 179/338 [00:24<00:13, 11.62it/s]Loading weights:  54%|█████▍    | 183/338 [00:24<00:13, 11.30it/s]Loading weights:  55%|█████▍    | 185/338 [00:24<00:14, 10.70it/s]Loading weights:  58%|█████▊    | 195/338 [00:25<00:08, 16.16it/s]Loading weights:  58%|█████▊    | 197/338 [00:26<00:19,  7.22it/s]Loading weights:  61%|██████    | 207/338 [00:26<00:11, 11.35it/s]Loading weights:  62%|██████▏   | 210/338 [00:27<00:14,  8.97it/s]Loading weights:  65%|██████▍   | 219/338 [00:28<00:12,  9.60it/s]Loading weights:  68%|██████▊   | 231/338 [00:28<00:07, 14.89it/s]Loading weights:  69%|██████▉   | 234/338 [00:29<00:08, 12.69it/s]Loading weights:  72%|███████▏  | 243/338 [00:29<00:07, 12.48it/s]Loading weights:  75%|███████▌  | 255/338 [00:30<00:04, 19.15it/s]Loading weights:  79%|███████▉  | 267/338 [00:31<00:04, 14.85it/s]Loading weights:  83%|████████▎ | 279/338 [00:31<00:03, 17.86it/s]Loading weights:  83%|████████▎ | 282/338 [00:32<00:04, 13.69it/s]Loading weights:  86%|████████▌ | 291/338 [00:32<00:02, 16.51it/s]Loading weights:  87%|████████▋ | 294/338 [00:33<00:03, 13.11it/s]Loading weights:  90%|████████▉ | 303/338 [00:33<00:02, 17.00it/s]Loading weights:  91%|█████████ | 306/338 [00:33<00:02, 13.00it/s]Loading weights:  93%|█████████▎| 315/338 [00:34<00:01, 18.47it/s]Loading weights:  94%|█████████▍| 318/338 [00:34<00:01, 12.90it/s]Loading weights:  97%|█████████▋| 327/338 [00:35<00:00, 15.31it/s]Loading weights:  98%|█████████▊| 330/338 [00:35<00:00, 11.15it/s]Loading weights: 100%|██████████| 338/338 [00:35<00:00,  9.46it/s]
+2026-05-11 07:48:13,201 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:13,211 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen2-1.5B/8a16abf2848eda07cc5253dec660bf1ce007ad7a/generation_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:13,377 [INFO] HTTP Request: HEAD https://huggingface.co/Qwen/Qwen2-1.5B/resolve/main/custom_generate/generate.py "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:14,444 [INFO] Testing Conjecture 1: Structured deformation vs random...
+2026-05-11 07:48:14,710 [INFO] Testing Conjecture 1: Semantic sensitivity of deformations...
+2026-05-11 07:48:14,714 [INFO] Testing Conjecture 1 supplement: Curvature concentration...
+2026-05-11 07:48:14,816 [INFO] Testing Conjecture 2: Holographic distribution...
+2026-05-11 07:48:15,237 [INFO] Testing Conjecture 2 supplement: Drift coherence...
+2026-05-11 07:48:15,375 [INFO] Testing Conjecture 3: Topological computation (persistent homology)...
+2026-05-11 07:48:15,739 [INFO] Testing Conjecture 3 supplement: Topology evolution across layers...
+2026-05-11 07:48:16,088 [INFO] Testing Conjecture 4: Inner/outer layer asymmetry...
+2026-05-11 07:48:16,094 [INFO] Testing Conjecture 4 supplement: Isotropy profile...
+2026-05-11 07:48:16,170 [INFO] Testing Conjecture 5: Jacobian as information carrier...
+2026-05-11 07:48:16,314 [INFO] Testing Conjecture 5 supplement: Procrustes connection structure...
+2026-05-11 07:48:20,921 [INFO] Testing Conjecture 6: Layer dependency (dynamic map generation)...
+2026-05-11 07:48:24,416 [INFO] Testing Conjecture 6 supplement: Cross-prompt deformation structure...
+2026-05-11 07:48:24,440 [INFO] Testing Conjecture 7: Local consistency (sheaf structure)...
+2026-05-11 07:48:24,466 [INFO] Meta-test: Is the geometric framework necessary?...
+2026-05-11 07:48:24,897 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:24,916 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:24,973 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:25,125 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/configuration_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:25,237 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/configuration_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:25,379 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/configuration_deepseek.py "HTTP/1.1 200 OK"
+[transformers] A new version of the following files was downloaded from https://huggingface.co/deepseek-ai/DeepSeek-V3:
+- configuration_deepseek.py
+. Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+2026-05-11 07:48:25,533 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:25,540 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:25,665 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:25,778 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:25,905 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:26,031 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:26,039 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:26,163 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-V3/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:26,289 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-V3/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:48:26,421 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:26,429 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:26,582 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:26,895 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/tokenizer.model "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:27,035 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:27,158 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:27,282 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:27,914 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-V3 "HTTP/1.1 200 OK"
+2026-05-11 07:48:28,056 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:28,064 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:28,190 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/configuration_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:28,198 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/configuration_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:28,336 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/modeling_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:28,450 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/modeling_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:28,566 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-V3/e815299b0bcbac849fa540c768ef21845365c9eb/modeling_deepseek.py "HTTP/1.1 200 OK"
+[transformers] A new version of the following files was downloaded from https://huggingface.co/deepseek-ai/DeepSeek-V3:
+- modeling_deepseek.py
+. Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+2026-05-11 07:48:28,612 [ERROR] Failed to test deepseek-ai/DeepSeek-V3: cannot import name 'is_torch_fx_available' from 'transformers.utils.import_utils' (/home/s3811141/.cache/uv/environments-v2/falsification-4fa44f57e6c00209/lib/python3.14/site-packages/transformers/utils/import_utils.py)
+2026-05-11 07:48:28,907 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:28,915 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,078 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,224 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/configuration_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:29,245 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/configuration_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,270 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/configuration_deepseek.py "HTTP/1.1 200 OK"
+[transformers] A new version of the following files was downloaded from https://huggingface.co/deepseek-ai/DeepSeek-R1:
+- configuration_deepseek.py
+. Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+2026-05-11 07:48:29,407 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:29,415 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,537 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:29,652 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,768 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:29,896 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:29,904 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:30,029 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:30,160 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:48:30,292 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:30,408 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:30,538 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:31,197 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/tokenizer.model "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:31,330 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:31,455 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:31,580 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:32,208 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1 "HTTP/1.1 200 OK"
+2026-05-11 07:48:32,347 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:32,354 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:32,482 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/configuration_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:32,490 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/configuration_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:32,628 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1/resolve/main/modeling_deepseek.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:32,648 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/modeling_deepseek.py "HTTP/1.1 200 OK"
+2026-05-11 07:48:32,671 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1/56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad/modeling_deepseek.py "HTTP/1.1 200 OK"
+[transformers] A new version of the following files was downloaded from https://huggingface.co/deepseek-ai/DeepSeek-R1:
+- modeling_deepseek.py
+. Make sure to double-check they do not contain any added malicious code. To avoid downloading new versions of the code file, you can pin a revision.
+2026-05-11 07:48:32,709 [ERROR] Failed to test deepseek-ai/DeepSeek-R1: cannot import name 'is_torch_fx_available' from 'transformers.utils.import_utils' (/home/s3811141/.cache/uv/environments-v2/falsification-4fa44f57e6c00209/lib/python3.14/site-packages/transformers/utils/import_utils.py)
+2026-05-11 07:48:33,015 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:33,023 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,104 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,243 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:33,250 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,275 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,400 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:33,408 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,529 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:33,649 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-11 07:48:33,777 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/vocab.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:34,084 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/merges.txt "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:34,209 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:34,227 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:34,274 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:34,437 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:34,563 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:34,685 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:35,091 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B "HTTP/1.1 200 OK"
+2026-05-11 07:48:35,218 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:35,226 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/config.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:35,350 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-05-11 07:48:35,476 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/main/model.safetensors.index.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-11 07:48:35,495 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/model.safetensors.index.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:35,520 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/916b56a44061fd5cd7d6a8fb632557ed4f724f60/model.safetensors.index.json "HTTP/1.1 200 OK"
+2026-05-11 07:48:35,651 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/revision/main "HTTP/1.1 200 OK"
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]2026-05-11 07:48:35,778 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/916b56a44061fd5cd7d6a8fb632557ed4f724f60/model-00001-of-000002.safetensors "HTTP/1.1 302 Found"
+2026-05-11 07:48:35,864 [INFO] HTTP Request: HEAD https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/resolve/916b56a44061fd5cd7d6a8fb632557ed4f724f60/model-00002-of-000002.safetensors "HTTP/1.1 302 Found"
+2026-05-11 07:48:36,060 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/xet-read-token/916b56a44061fd5cd7d6a8fb632557ed4f724f60 "HTTP/1.1 200 OK"
+2026-05-11 07:48:36,067 [INFO] HTTP Request: GET https://huggingface.co/api/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B/xet-read-token/916b56a44061fd5cd7d6a8fb632557ed4f724f60 "HTTP/1.1 200 OK"
+Fetching 2 files:  50%|█████     | 1/2 [01:55<01:55, 115.90s/it]Fetching 2 files: 100%|██████████| 2/2 [01:55<00:00, 57.95s/it] 
+Loading weights:   0%|          | 0/339 [00:00<?, ?it/s]Loading weights:   0%|          | 1/339 [00:00<01:02,  5.44it/s]slurmstepd: error: *** JOB 3532177 ON c8 CANCELLED AT 2026-05-11T07:50:39 ***
