@@ -625,17 +625,24 @@ def test_conjecture_3_persistent_topology(hidden_states: dict) -> FalsificationR
 
 def test_conjecture_4_inner_outer_asymmetry(hidden_states: dict) -> FalsificationResult:
     """
-    CONJECTURE 4 PREDICTION: Inner (middle) layers perform the bulk of geometric
-    computation (large deformations), while first and last layers primarily translate.
-    The last layer often "morphs space back toward embedding geometry."
+    CONJECTURE 4 PREDICTION: The first and last layers primarily serve as
+    translators, while ALL inner layers (everything between first and last)
+    perform the bulk of geometric computation. The last layer often "morphs
+    space back toward embedding geometry" (reversal).
 
-    FALSIFICATION: If the deformation magnitude (||h^(ℓ+1) - h^(ℓ)||) does NOT peak
-    at middle layers, or if the last layer does NOT reverse direction, then C4 is falsified.
+    Koch does NOT claim that only the exact middle layer computes — he claims
+    that the outer layers (first and last) are mild while the inner layers
+    (all layers in between) do the heavy lifting.
+
+    FALSIFICATION: If the outer layers (first and last) do NOT have smaller
+    deformations than the inner layers on average, OR if the last layer does
+    NOT reverse direction, then C4 is falsified.
 
     We measure:
-    1. Per-layer deformation magnitude — should peak in the middle
-    2. Cosine similarity between first-layer delta and last-layer delta — should be NEGATIVE
-       (reversal)
+    1. Per-layer deformation magnitude — inner layers (all but first and last)
+       should have HIGHER average deformation than the outer layers (first and last)
+    2. Cosine similarity between first-layer delta and last-layer delta — should
+       be NEGATIVE (reversal)
     """
     logger.info("Testing Conjecture 4: Inner/outer layer asymmetry...")
 
@@ -667,7 +674,7 @@ def test_conjecture_4_inner_outer_asymmetry(hidden_states: dict) -> Falsificatio
         return FalsificationResult(
             conjecture="Conjecture 4",
             test_name="Inner/outer asymmetry",
-            prediction="Middle layers have largest deformations",
+            prediction="Inner layers have larger deformations than outer layers",
             observation="Insufficient data",
             falsified=False
         )
@@ -682,23 +689,35 @@ def test_conjecture_4_inner_outer_asymmetry(hidden_states: dict) -> Falsificatio
         padded.append(p)
     avg_profile = np.mean(padded, axis=0)
 
-    # Test 1: Peak should be in the middle third
+    # Test 1: Inner layers (all but first and last) should have higher
+    # average deformation than outer layers (first and last).
+    # Koch claims: "first and last layers primarily serve as translators"
+    # and "inner layers have the highest amount of space morphing"
     n_transitions = len(avg_profile)
-    peak_idx = np.argmax(avg_profile)
-    middle_start = n_transitions // 3
-    middle_end = 2 * n_transitions // 3
-    peak_in_middle = middle_start <= peak_idx <= middle_end
+
+    if n_transitions < 3:
+        return FalsificationResult(
+            conjecture="Conjecture 4",
+            test_name="Inner/outer asymmetry",
+            prediction="Inner layers have larger deformations than outer layers",
+            observation="Too few layer transitions for meaningful test",
+            falsified=False
+        )
+
+    outer_deformation = np.mean([avg_profile[0], avg_profile[-1]])
+    inner_deformation = np.mean(avg_profile[1:-1])
+    inner_greater_than_outer = inner_deformation > outer_deformation
 
     # Test 2: Reversal — last layer cosine should be negative
     mean_reversal_cos = np.mean(reversal_cosines)
     has_reversal = mean_reversal_cos < 0
 
     # Both must hold for Koch to not be falsified
-    falsified = not (peak_in_middle and has_reversal)
+    falsified = not (inner_greater_than_outer and has_reversal)
 
     observation_parts = [
-        f"Peak deformation at layer {peak_idx}/{n_transitions} "
-        f"({'MIDDLE' if peak_in_middle else 'NOT MIDDLE'})",
+        f"Mean deformation: inner={inner_deformation:.4f}, outer={outer_deformation:.4f} "
+        f"({'INNER > OUTER' if inner_greater_than_outer else 'INNER <= OUTER'})",
         f"Mean first-last cosine: {mean_reversal_cos:.4f} "
         f"({'REVERSAL' if has_reversal else 'NO REVERSAL'})",
     ]
@@ -706,19 +725,19 @@ def test_conjecture_4_inner_outer_asymmetry(hidden_states: dict) -> Falsificatio
     return FalsificationResult(
         conjecture="Conjecture 4",
         test_name="Inner/outer layer asymmetry",
-        prediction="Peak deformation in middle layers AND last layer reverses first layer",
+        prediction="Inner layers (all but first and last) have higher avg deformation than outer layers (first and last) AND last layer reverses first layer",
         observation="; ".join(observation_parts),
         falsified=falsified,
         details={
             "avg_deformation_profile": avg_profile.tolist(),
-            "peak_layer": int(peak_idx),
+            "inner_mean_deformation": float(inner_deformation),
+            "outer_mean_deformation": float(outer_deformation),
             "n_transitions": n_transitions,
             "mean_reversal_cosine": float(mean_reversal_cos),
-            "peak_in_middle": peak_in_middle,
+            "inner_greater_than_outer": bool(inner_greater_than_outer),
             "has_reversal": has_reversal,
         }
     )
-
 
 # ============================================================================
 # SECTION 5: Test Conjecture 5 (Jacobi field as holographic carrier)
