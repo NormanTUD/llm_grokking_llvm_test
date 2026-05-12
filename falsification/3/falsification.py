@@ -2178,13 +2178,6 @@ MODEL_REGISTRY = {
         "arch": "qwen",
         "min_ram_gb": 56,
     },
-    "Qwen/Qwen2.5-72B": {
-        "description": "Qwen 2.5 72B (80 layers, d=8192)",
-        "size": "xxxl",
-        "arch": "qwen",
-        "min_ram_gb": 144,
-    },
-
 }
 
 
