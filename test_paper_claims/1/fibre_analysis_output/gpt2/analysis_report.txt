@@ -1,0 +1,424 @@
+========================================================================
+FIBRE BUNDLE ANALYSIS REPORT
+Model: gpt2
+Parameters: 124.4M
+Layers: 12
+Hidden dim: 768
+Prompts analyzed: 4
+Output directory: fibre_analysis_output/gpt2
+========================================================================
+
+────────────────────────────────────────────────────────────────────────
+PROMPT 0: "The sky is blue because light scatters in the atmosphere"
+Tokens: 11 | Layers: 13 | Hidden dim: 768
+────────────────────────────────────────────────────────────────────────
+
+  ┌─ CONJECTURE 1: Space-morphing (Jacobian analysis)
+  │ Peak divergence at layer 0: 386.2109
+  │   (positive = expansion, negative = contraction)
+  │ Peak curl at layer 0: 423.6174
+  │   (rotational mixing between dimensions)
+  │ Peak shear at layer 0: 450.6732
+  │   (anisotropic distortion)
+  │ ○ Middle/outer activity ratio: 0.20
+  │   Geometric activity is relatively uniform across layers
+  └─
+
+  ┌─ CONJECTURE 2: Holographic scrambling
+  │ Layer 0: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.62×
+  │ Layer 3: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.24×
+  │ Layer 6: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.08×
+  │ Layer 9: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.29×
+  │ Layer 12: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.20×
+  │ ○ Ablation impact varies substantially (CV=0.65)
+  │   Some layers may store information more locally
+  └─
+
+  ┌─ CONJECTURE 3: Topological computation
+  │ Largest topological change: layer 11→12 (Wasserstein dist = 1.9862)
+  │ Mean topological change: 0.4825 ± 0.5251
+  │ ✓ Topological phase transitions detected at layers: [11]
+  │   SUPPORTS Conjecture 3: topology changes discretely, not smoothly
+  └─
+
+  ┌─ CONJECTURE 4: Inner layers compute, outer layers translate
+  │ Mean deformation — first quarter: 117.4573
+  │ Mean deformation — middle half:   29.6486
+  │ Mean deformation — last quarter:  223.5132
+  │ ○ Deformation pattern does not clearly peak in middle layers
+  │ Geometry correlation (first↔last):   0.8334
+  │ Geometry correlation (first↔middle): 0.9354
+  │ ○ Last layer does not clearly reverse toward embedding geometry
+  └─
+
+  ┌─ CONJECTURE 5: Jacobian eigenvalue spectra
+  │ Peak spectral radius at layer 0: 225.0855
+  │ Mean spectral radius: 22.9973 ± 61.0788
+  │ ✓ Complex eigenvalues detected (non-trivial phases)
+  │   Peak phase magnitude at layer 1: 3.1416 rad
+  │   Indicates rotational modes in the Jacobian — information
+  │   is encoded in phase relationships, not just magnitudes
+  │   SUPPORTS Conjecture 5: Jacobian carries holographic info
+  │ Peak spectral gap at layer 0: 113.3631
+  │   (large gap = dominant mode separates from rest = low-rank structure)
+  │ Correlation(spectral_radius, deformation): r=-0.094, p=0.7715
+  │ ○ No strong correlation between spectral radius and deformation
+  └─
+
+  ┌─ CONJECTURE 6: Dynamic map generation (layer-to-layer coupling)
+  │ Autocorrelation of Jacobian properties (layer ℓ → ℓ+1):
+  │   Divergence: r=0.030 (p=0.9296)
+  │   Curl:       r=-0.196 (p=0.5643)
+  │   Shear:      r=-0.162 (p=0.6352)
+  │ ○ No significant layer-to-layer coupling detected
+  │   Jacobian properties appear independent across layers
+  │ ○ Divergence is mostly monotonic (0/11 sign changes)
+  └─
+
+  ┌─ CURVATURE ANALYSIS
+  │ ORC range: [0.5652, 0.6608]
+  │ Peak |ORC| at layer 1: 0.6608
+  │   (positive = tokens converge, negative = tokens diverge)
+  │ ○ Curvature does not clearly peak in middle layers
+  │ Volume: 11 expanding, 1 contracting, 0 neutral layers
+  │ Net volume change: 8.9764
+  │   Net expansion: model is 'exploring' — opening up possibilities
+  │ Peak frame rotation at layer 11: 3.8439
+  │ Mean frame rotation: 2.7592 ± 0.6318
+  │   (high = large change in local coordinate frame = processing mode shift)
+  │ Correlation(frame_rotation, deformation): r=0.590, p=0.0434
+  └─
+
+  ┌─ ENCODING STRUCTURE
+  │ PCA variance explained (global): PC1=97.9%, top-5=99.5%, top-10=99.8%
+  │ Participation ratio (effective dimensionality): 1.0
+  │ ○ Representations are low-dimensional (PC1 dominates)
+  │   May indicate simple encoding or insufficient prompt complexity
+  │ ○ Low effective dimensionality (1.0) — concentrated encoding
+  └─
+
+────────────────────────────────────────────────────────────────────────
+PROMPT 1: "The sky is red because the sunset filters long wavelengths"
+Tokens: 10 | Layers: 13 | Hidden dim: 768
+────────────────────────────────────────────────────────────────────────
+
+  ┌─ CONJECTURE 1: Space-morphing (Jacobian analysis)
+  │ Peak divergence at layer 0: 284.3921
+  │   (positive = expansion, negative = contraction)
+  │ Peak curl at layer 0: 344.9031
+  │   (rotational mixing between dimensions)
+  │ Peak shear at layer 0: 350.9734
+  │   (anisotropic distortion)
+  │ ○ Middle/outer activity ratio: 0.08
+  │   Geometric activity is relatively uniform across layers
+  └─
+
+  ┌─ CONJECTURE 2: Holographic scrambling
+  │ Layer 0: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.63×
+  │ Layer 3: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.54×
+  │ Layer 6: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.77×
+  │ Layer 9: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 4.57×
+  │ Layer 12: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.37×
+  │ ○ Ablation impact varies substantially (CV=0.65)
+  │   Some layers may store information more locally
+  └─
+
+  ┌─ CONJECTURE 3: Topological computation
+  │ Largest topological change: layer 11→12 (Wasserstein dist = 1.3061)
+  │ Mean topological change: 0.4179 ± 0.3825
+  │ ✓ Topological phase transitions detected at layers: [0, 11]
+  │   SUPPORTS Conjecture 3: topology changes discretely, not smoothly
+  │ Layer 0: 1 persistent H1 features (long-lived topological structures)
+  └─
+
+  ┌─ CONJECTURE 4: Inner layers compute, outer layers translate
+  │ Mean deformation — first quarter: 126.3739
+  │ Mean deformation — middle half:   29.8636
+  │ Mean deformation — last quarter:  230.6127
+  │ ○ Deformation pattern does not clearly peak in middle layers
+  │ Geometry correlation (first↔last):   0.8470
+  │ Geometry correlation (first↔middle): 0.9505
+  │ ○ Last layer does not clearly reverse toward embedding geometry
+  └─
+
+  ┌─ CONJECTURE 5: Jacobian eigenvalue spectra
+  │ Peak spectral radius at layer 0: 168.5556
+  │ Mean spectral radius: 17.0132 ± 45.7348
+  │ ✓ Complex eigenvalues detected (non-trivial phases)
+  │   Peak phase magnitude at layer 0: 3.1416 rad
+  │   Indicates rotational modes in the Jacobian — information
+  │   is encoded in phase relationships, not just magnitudes
+  │   SUPPORTS Conjecture 5: Jacobian carries holographic info
+  │ Peak spectral gap at layer 0: 60.3319
+  │   (large gap = dominant mode separates from rest = low-rank structure)
+  │ Correlation(spectral_radius, deformation): r=-0.070, p=0.8294
+  │ ○ No strong correlation between spectral radius and deformation
+  └─
+
+  ┌─ CONJECTURE 6: Dynamic map generation (layer-to-layer coupling)
+  │ Autocorrelation of Jacobian properties (layer ℓ → ℓ+1):
+  │   Divergence: r=0.378 (p=0.2520)
+  │   Curl:       r=-0.150 (p=0.6594)
+  │   Shear:      r=-0.131 (p=0.7002)
+  │ ○ No significant layer-to-layer coupling detected
+  │   Jacobian properties appear independent across layers
+  │ ○ Divergence is mostly monotonic (1/11 sign changes)
+  └─
+
+  ┌─ CURVATURE ANALYSIS
+  │ ORC range: [0.5107, 0.6772]
+  │ Peak |ORC| at layer 4: 0.6772
+  │   (positive = tokens converge, negative = tokens diverge)
+  │ ○ Curvature does not clearly peak in middle layers
+  │ Volume: 11 expanding, 1 contracting, 0 neutral layers
+  │ Net volume change: 8.6580
+  │   Net expansion: model is 'exploring' — opening up possibilities
+  │ Peak frame rotation at layer 11: 3.7064
+  │ Mean frame rotation: 2.5114 ± 0.9198
+  │   (high = large change in local coordinate frame = processing mode shift)
+  │ Correlation(frame_rotation, deformation): r=0.500, p=0.0979
+  └─
+
+  ┌─ ENCODING STRUCTURE
+  │ PCA variance explained (global): PC1=98.1%, top-5=99.5%, top-10=99.8%
+  │ Participation ratio (effective dimensionality): 1.0
+  │ ○ Representations are low-dimensional (PC1 dominates)
+  │   May indicate simple encoding or insufficient prompt complexity
+  │ ○ Low effective dimensionality (1.0) — concentrated encoding
+  └─
+
+────────────────────────────────────────────────────────────────────────
+PROMPT 2: "Mathematics is the language of the universe and nature"
+Tokens: 11 | Layers: 13 | Hidden dim: 768
+────────────────────────────────────────────────────────────────────────
+
+  ┌─ CONJECTURE 1: Space-morphing (Jacobian analysis)
+  │ Peak divergence at layer 0: -221.9886
+  │   (positive = expansion, negative = contraction)
+  │ Peak curl at layer 0: 1059.8744
+  │   (rotational mixing between dimensions)
+  │ Peak shear at layer 0: 1098.4780
+  │   (anisotropic distortion)
+  │ ○ Middle/outer activity ratio: 0.06
+  │   Geometric activity is relatively uniform across layers
+  └─
+
+  ┌─ CONJECTURE 2: Holographic scrambling
+  │ Layer 0: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.55×
+  │ Layer 3: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.78×
+  │ Layer 6: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.89×
+  │ Layer 9: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.01×
+  │ Layer 12: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.01×
+  │ ○ Ablation impact varies substantially (CV=0.65)
+  │   Some layers may store information more locally
+  └─
+
+  ┌─ CONJECTURE 3: Topological computation
+  │ Largest topological change: layer 11→12 (Wasserstein dist = 2.6976)
+  │ Mean topological change: 0.6403 ± 0.6381
+  │ ✓ Topological phase transitions detected at layers: [11]
+  │   SUPPORTS Conjecture 3: topology changes discretely, not smoothly
+  └─
+
+  ┌─ CONJECTURE 4: Inner layers compute, outer layers translate
+  │ Mean deformation — first quarter: 116.2419
+  │ Mean deformation — middle half:   29.1221
+  │ Mean deformation — last quarter:  223.9095
+  │ ○ Deformation pattern does not clearly peak in middle layers
+  │ Geometry correlation (first↔last):   0.8121
+  │ Geometry correlation (first↔middle): 0.8840
+  │ ○ Last layer does not clearly reverse toward embedding geometry
+  └─
+
+  ┌─ CONJECTURE 5: Jacobian eigenvalue spectra
+  │ Peak spectral radius at layer 0: 293.7015
+  │ Mean spectral radius: 29.2012 ± 79.8535
+  │ ✓ Complex eigenvalues detected (non-trivial phases)
+  │   Peak phase magnitude at layer 0: 3.1416 rad
+  │   Indicates rotational modes in the Jacobian — information
+  │   is encoded in phase relationships, not just magnitudes
+  │   SUPPORTS Conjecture 5: Jacobian carries holographic info
+  │ Peak spectral gap at layer 0: 231.0095
+  │   (large gap = dominant mode separates from rest = low-rank structure)
+  │ Correlation(spectral_radius, deformation): r=-0.089, p=0.7827
+  │ ○ No strong correlation between spectral radius and deformation
+  └─
+
+  ┌─ CONJECTURE 6: Dynamic map generation (layer-to-layer coupling)
+  │ Autocorrelation of Jacobian properties (layer ℓ → ℓ+1):
+  │   Divergence: r=0.192 (p=0.5714)
+  │   Curl:       r=0.547 (p=0.0813)
+  │   Shear:      r=0.529 (p=0.0943)
+  │ ✓ Strong layer-to-layer coupling detected (2/3 properties)
+  │   SUPPORTS Conjecture 6: each layer's geometry shapes the next
+  │   The propagating deformation is structured, not independent
+  │ ○ Divergence is mostly monotonic (1/11 sign changes)
+  └─
+
+  ┌─ CURVATURE ANALYSIS
+  │ ORC range: [0.5834, 0.8303]
+  │ Peak |ORC| at layer 3: 0.8303
+  │   (positive = tokens converge, negative = tokens diverge)
+  │ ○ Curvature does not clearly peak in middle layers
+  │ Volume: 11 expanding, 1 contracting, 0 neutral layers
+  │ Net volume change: 8.6044
+  │   Net expansion: model is 'exploring' — opening up possibilities
+  │ Peak frame rotation at layer 0: 4.2148
+  │ Mean frame rotation: 2.3028 ± 0.9487
+  │   (high = large change in local coordinate frame = processing mode shift)
+  │ Correlation(frame_rotation, deformation): r=0.238, p=0.4564
+  └─
+
+  ┌─ ENCODING STRUCTURE
+  │ PCA variance explained (global): PC1=98.0%, top-5=99.6%, top-10=99.8%
+  │ Participation ratio (effective dimensionality): 1.0
+  │ ○ Representations are low-dimensional (PC1 dominates)
+  │   May indicate simple encoding or insufficient prompt complexity
+  │ ○ Low effective dimensionality (1.0) — concentrated encoding
+  └─
+
+────────────────────────────────────────────────────────────────────────
+PROMPT 3: "The cat sat on the mat and watched the birds outside"
+Tokens: 11 | Layers: 13 | Hidden dim: 768
+────────────────────────────────────────────────────────────────────────
+
+  ┌─ CONJECTURE 1: Space-morphing (Jacobian analysis)
+  │ Peak divergence at layer 0: -18329.4909
+  │   (positive = expansion, negative = contraction)
+  │ Peak curl at layer 0: 332281.8673
+  │   (rotational mixing between dimensions)
+  │ Peak shear at layer 0: 332759.1896
+  │   (anisotropic distortion)
+  │ ○ Middle/outer activity ratio: 0.00
+  │   Geometric activity is relatively uniform across layers
+  └─
+
+  ┌─ CONJECTURE 2: Holographic scrambling
+  │ Layer 0: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 2.87×
+  │ Layer 3: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 1.89×
+  │ Layer 6: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 3.46×
+  │ Layer 9: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 4.11×
+  │ Layer 12: ablating 10%→25% dims (ratio 2.5×) → distance change ratio 1.33×
+  │ ○ Ablation impact varies substantially (CV=0.69)
+  │   Some layers may store information more locally
+  └─
+
+  ┌─ CONJECTURE 3: Topological computation
+  │ Largest topological change: layer 11→12 (Wasserstein dist = 2.5891)
+  │ Mean topological change: 0.5980 ± 0.6688
+  │ ✓ Topological phase transitions detected at layers: [11]
+  │   SUPPORTS Conjecture 3: topology changes discretely, not smoothly
+  └─
+
+  ┌─ CONJECTURE 4: Inner layers compute, outer layers translate
+  │ Mean deformation — first quarter: 116.5958
+  │ Mean deformation — middle half:   29.7721
+  │ Mean deformation — last quarter:  229.7677
+  │ ○ Deformation pattern does not clearly peak in middle layers
+  │ Geometry correlation (first↔last):   0.7750
+  │ Geometry correlation (first↔middle): 0.9367
+  │ ○ Last layer does not clearly reverse toward embedding geometry
+  └─
+
+  ┌─ CONJECTURE 5: Jacobian eigenvalue spectra
+  │ Peak spectral radius at layer 0: 18734.7037
+  │ Mean spectral radius: 1574.0930 ± 5174.1666
+  │ ✓ Complex eigenvalues detected (non-trivial phases)
+  │   Peak phase magnitude at layer 0: 3.1416 rad
+  │   Indicates rotational modes in the Jacobian — information
+  │   is encoded in phase relationships, not just magnitudes
+  │   SUPPORTS Conjecture 5: Jacobian carries holographic info
+  │ Peak spectral gap at layer 0: 18548.1318
+  │   (large gap = dominant mode separates from rest = low-rank structure)
+  │ Correlation(spectral_radius, deformation): r=-0.083, p=0.7985
+  │ ○ No strong correlation between spectral radius and deformation
+  └─
+
+  ┌─ CONJECTURE 6: Dynamic map generation (layer-to-layer coupling)
+  │ Autocorrelation of Jacobian properties (layer ℓ → ℓ+1):
+  │   Divergence: r=0.558 (p=0.0746)
+  │   Curl:       r=-0.035 (p=0.9183)
+  │   Shear:      r=-0.006 (p=0.9864)
+  │ ○ Weak layer-to-layer coupling (1/3 properties)
+  │   Some evidence for dynamic map generation
+  │ ○ Divergence is mostly monotonic (3/11 sign changes)
+  └─
+
+  ┌─ CURVATURE ANALYSIS
+  │ ORC range: [0.5334, 0.7022]
+  │ Peak |ORC| at layer 4: 0.7022
+  │   (positive = tokens converge, negative = tokens diverge)
+  │ ○ Curvature does not clearly peak in middle layers
+  │ Volume: 11 expanding, 1 contracting, 0 neutral layers
+  │ Net volume change: 8.9616
+  │   Net expansion: model is 'exploring' — opening up possibilities
+  │ Peak frame rotation at layer 0: 4.3488
+  │ Mean frame rotation: 2.3752 ± 1.2362
+  │   (high = large change in local coordinate frame = processing mode shift)
+  │ Correlation(frame_rotation, deformation): r=0.501, p=0.0969
+  └─
+
+  ┌─ ENCODING STRUCTURE
+  │ PCA variance explained (global): PC1=97.9%, top-5=99.5%, top-10=99.8%
+  │ Participation ratio (effective dimensionality): 1.0
+  │ ○ Representations are low-dimensional (PC1 dominates)
+  │   May indicate simple encoding or insufficient prompt complexity
+  │ ○ Low effective dimensionality (1.0) — concentrated encoding
+  └─
+
+========================================================================
+OVERALL SUMMARY FOR gpt2
+========================================================================
+
+  Conjecture Assessment (across 4 prompts):
+  ────────────────────────────────────────────────────────────
+  ✓ SUPPORTED          | C1 (Space-morphing): 4/4 tests passed (100%)
+  ✗ NOT SUPPORTED      | C2 (Holographic): 0/4 tests passed (0%)
+  ✓ SUPPORTED          | C3 (Topological): 4/4 tests passed (100%)
+  ✗ NOT SUPPORTED      | C4 (Inner compute, outer translate): 0/8 tests passed (0%)
+  ✓ SUPPORTED          | C5 (Jacobian carrier): 4/4 tests passed (100%)
+  ✗ NOT SUPPORTED      | C6 (Dynamic map generation): 1/4 tests passed (25%)
+
+========================================================================
+INTERPRETATION GUIDE
+========================================================================
+
+  The paper (Koch, 2026) proposes that transformer layers morph
+  embedding space via Lipschitz maps, not just move points through it.
+  This tool tests that framework empirically by extracting hidden
+  states and computing geometric invariants at each layer transition.
+
+  Key geometric quantities and what they mean:
+  ┌────────────────────────┬──────────────────────────────────────────┐
+  │ Divergence (tr J)      │ Local expansion (+) or contraction (−)  │
+  │ Curl (‖J_antisym‖)     │ Rotational mixing between dimensions    │
+  │ Shear (‖J_sym−tr/d·I‖) │ Anisotropic distortion                 │
+  │ Spectral radius        │ Maximum stretching factor               │
+  │ Spectral gap           │ Dominance of leading mode               │
+  │ ORC                    │ Token convergence (+) / divergence (−)  │
+  │ Volume change          │ Local simplex expansion/contraction     │
+  │ Procrustes deviation   │ Frame rotation = processing mode shift  │
+  │ Participation ratio    │ Effective dimensionality of encoding    │
+  │ Wasserstein distance   │ Topological change between layers       │
+  └────────────────────────┴──────────────────────────────────────────┘
+
+  What to look for in the visualizations:
+  • deformation_profile.png: Does deformation peak in middle layers?
+    (Red bars = middle layers, should be tallest for Conjecture 4)
+  • jacobian_decomposition.png: Are div/curl/shear structured?
+    (Non-uniform patterns support Conjecture 1)
+  • eigenvalue_spectra.png: Are there complex eigenvalues?
+    (Non-zero phases = rotational encoding, supports Conjecture 5)
+  • holographic_ablation.png: Is ablation impact uniform?
+    (Proportional degradation supports Conjecture 2)
+  • topology.png: Are there persistent H1/H2 features?
+    (Long-lived loops/voids support Conjecture 3)
+  • curvature.png: Does ORC peak in middle layers?
+    (Supports Conjecture 4)
+  • fibre_view.png: Do token trajectories show structure?
+    (Smooth, diverging paths = structured space-morphing)
+  • encoding_search.png: Is there low-rank Jacobian structure?
+    (Persistent eigenvalue modes = internal encoding format)
+  • pca_trajectories.png: Does effective dim change across layers?
+    (Peak in middle = holographic computation zone)
+========================================================================
