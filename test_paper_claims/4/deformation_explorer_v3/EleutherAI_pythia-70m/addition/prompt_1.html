@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EleutherAI/pythia-70m — addition — &quot;15 + 27 =...&quot;</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    padding: 20px;
+  }
+  h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.6em; }
+  h2 { color: #79c0ff; margin: 30px 0 10px 0; font-size: 1.3em; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+  h3 { color: #d2a8ff; margin: 20px 0 8px 0; font-size: 1.1em; }
+  .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 0.95em; }
+  .plot-container { margin: 15px 0; border: 1px solid #21262d; border-radius: 8px; overflow: hidden; background: #161b22; }
+  .explanation {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 18px; margin: 10px 0 20px 0; font-size: 0.9em; line-height: 1.6;
+  }
+  .explanation strong { color: #58a6ff; }
+  .explanation em { color: #f0883e; font-style: normal; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+  .tag { display: inline-block; background: #21262d; color: #58a6ff; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin: 2px; }
+  .tag-red { background: #3d1f1f; color: #f85149; }
+  .tag-green { background: #1f3d1f; color: #3fb950; }
+  .tag-yellow { background: #3d3d1f; color: #d29922; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #30363d; padding: 8px 12px; text-align: left; font-size: 0.85em; }
+  th { background: #161b22; color: #58a6ff; }
+  td { background: #0d1117; }
+  .nav { position: sticky; top: 0; background: #0d1117; padding: 10px 0; z-index: 100; border-bottom: 1px solid #21262d; margin-bottom: 20px; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-right: 15px; font-size: 0.9em; }
+  .nav a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="nav">
+  <a href="#dim-traj">📈 Dim Trajectories</a>
+  <a href="#deform-heat">🔥 Deformation</a>
+  <a href="#signed-delta">🔵🔴 Signed Deltas</a>
+  <a href="#geometry">📐 Geometry</a>
+  <a href="#rank">🔬 Rank Test</a>
+  <a href="#pairs">🔗 Pair Distances</a>
+  <a href="#wave">🌊 Wave</a>
+  <a href="#reversal">🔄 Reversal</a>
+</div>
+<h1>🔬 EleutherAI/pythia-70m</h1>
+<div class="subtitle">Task: addition | Prompt: "15 + 27 =" | Tokens: 4 | Layers: 7 | Hidden dim: 512 | Top moving dims: [156, 169, 23, 181, 357, 336, 312, 276]</div>
+<div class="explanation"><strong>Tokens:</strong> <span class="tag">0: 15</span> <span class="tag">1: +</span> <span class="tag">2: 27</span> <span class="tag">3: =</span> </div>
+<h2 id="dim-traj">📈 Token Trajectories in Real Dimensions</h2>
+<div class="explanation">
+    Each chart shows one <strong>real hidden dimension</strong> (e.g. "Dimension 47" means
+    the 47th number in the model's internal vector). Each colored line is one <strong>token</strong>.
+    You can see exactly how each token's value in that dimension changes from layer 0 to the final layer.<br><br>
+    <strong>What to look for:</strong> Do tokens converge? Diverge? Cross each other?
+    Koch's Conjecture 1 says the geometry of these trajectories encodes semantic content.
+    <em>Click on legend entries to show/hide tokens. Hover for exact values.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_0" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_0', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.005107879638671875, 6.219424247741699, 12.339570045471191, 95.23018646240234, 98.399658203125, 43.113502502441406, 12.738627433776855], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 156</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.05645751953125, 3.7690303325653076, 4.465137958526611, 10.00804328918457, 11.102615356445312, 6.862853527069092, 13.901806831359863], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 156</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0201263427734375, 6.794776916503906, 3.3886146545410156, 5.381404876708984, 5.632468223571777, 6.089818000793457, 14.372650146484375], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 156</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [8.64267349243164e-06, 4.139851093292236, 4.705629825592041, 6.943037986755371, 6.670458793640137, 3.782622814178467, 13.5880126953125], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 156</extra>"}], {"title": {"text": "Real Dimension 156", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 156", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_1" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_1', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.07745361328125, 0.8242993950843811, -0.35250991582870483, 1.3788390159606934, 1.8276236057281494, 1.9842944145202637, 58.535457611083984], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 169</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.006595611572265625, -0.03858943283557892, -0.07953958213329315, 0.5248432159423828, 0.2575151026248932, 0.4235309958457947, 56.826026916503906], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 169</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0012769699096679688, -0.07559405267238617, 0.4279911518096924, 0.27802008390426636, 0.10937395691871643, 0.19865882396697998, 54.28154754638672], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 169</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.036285400390625, 0.28256678581237793, 0.5866344571113586, 0.8936250805854797, 0.5542644262313843, 1.095900535583496, 57.28877258300781], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 169</extra>"}], {"title": {"text": "Real Dimension 169", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 169", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_2" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_2', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.00982666015625, -0.21721866726875305, 6.658056735992432, 74.75128173828125, 67.02015686035156, 39.3459587097168, 10.024313926696777], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 23</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.019256591796875, 0.4211944043636322, 1.0894217491149902, 3.94876766204834, 0.9746150970458984, -0.07777154445648193, 12.017733573913574], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 23</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.04412841796875, 0.8993162512779236, 0.46178627014160156, 0.8941618204116821, 0.370863676071167, -0.2865956425666809, 14.989015579223633], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 23</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0205078125, 0.8709808588027954, 1.2319287061691284, 2.079277515411377, 0.357114315032959, -0.8574459552764893, 12.150704383850098], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 23</extra>"}], {"title": {"text": "Real Dimension 23", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 23", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_3" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_3', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.045806884765625, -0.3534866273403168, -0.32654818892478943, -0.016070127487182617, -0.5075286626815796, -0.20754262804985046, 41.24471664428711], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 181</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.007030487060546875, -0.3672599792480469, -0.3497060239315033, -0.4824862778186798, 0.1733475625514984, 0.30741024017333984, 48.418983459472656], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 181</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0025959014892578125, -0.11031540483236313, -0.3307662010192871, -0.894119918346405, -0.4043326675891876, 0.25088462233543396, 44.31939697265625], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 181</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.07574462890625, -0.36188840866088867, -0.10950043797492981, -0.6925286054611206, 0.08758527040481567, 0.43633705377578735, 48.531009674072266], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 181</extra>"}], {"title": {"text": "Real Dimension 181", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 181", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_4" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_4', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0517578125, -0.10906475782394409, -1.260944128036499, -1.0332179069519043, -0.8268031477928162, -1.5062190294265747, -46.40800476074219], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 357</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0361328125, -0.02193284034729004, -0.6453546285629272, -0.37821659445762634, -0.3303224742412567, -0.6130152940750122, -44.689205169677734], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 357</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0274505615234375, -0.025982320308685303, 0.0014506950974464417, -0.18402549624443054, -0.08649882674217224, -0.22594283521175385, -44.12165069580078], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 357</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.03375244140625, -0.0604701042175293, -0.062316134572029114, -0.2213757336139679, -0.09873636066913605, -0.09687645733356476, -42.07512283325195], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 357</extra>"}], {"title": {"text": "Real Dimension 357", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 357", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_5" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_5', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0017547607421875, 0.5280160903930664, 0.11545214056968689, -0.5028125047683716, -0.8560599684715271, -0.9692955613136292, 43.188011169433594], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 336</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.00411224365234375, 0.2030346691608429, -0.38278159499168396, -1.092824101448059, -0.9661456346511841, -0.8364121913909912, 41.938072204589844], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 336</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.003841400146484375, -0.06596863269805908, -0.2840592861175537, -0.5403947234153748, -0.6982710361480713, -0.37311145663261414, 41.018638610839844], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 336</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0289154052734375, 0.2664712369441986, -0.3890749514102936, -0.9546917676925659, -0.5969157218933105, -0.5658853650093079, 41.33805465698242], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 336</extra>"}], {"title": {"text": "Real Dimension 336", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 336", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_6" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_6', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.06024169921875, -0.11131563782691956, 0.7518147230148315, -0.5426579713821411, -0.15401950478553772, -0.3911839723587036, -42.511016845703125], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 312</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.029876708984375, 0.36348605155944824, 0.10309439897537231, 0.31699338555336, 0.24948376417160034, 0.45348721742630005, -40.8126220703125], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 312</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.0269622802734375, -0.09461687505245209, -0.039566561579704285, 0.23727919161319733, 0.4817010164260864, 0.49122124910354614, -40.38376998901367], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 312</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.024810791015625, 0.16618363559246063, -0.04055128991603851, 0.7358205318450928, 0.6049759387969971, 0.4191170930862427, -41.28288269042969], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 312</extra>"}], {"title": {"text": "Real Dimension 312", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 312", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_dimtraj_7" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_dimtraj_7', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.027618408203125, -0.2664543092250824, 0.5535597801208496, -0.39249324798583984, -0.7348901033401489, -0.9533311128616333, 41.52024841308594], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 276</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.027008056640625, -0.5725931525230408, -0.4969260096549988, -0.43844252824783325, -0.6207045316696167, -0.5502569079399109, 40.90559768676758], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 276</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.03271484375, 0.2792963981628418, -0.2900758981704712, 0.19618046283721924, 0.20520225167274475, 0.6012572050094604, 40.6806755065918], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 276</extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [-0.034423828125, -0.31188198924064636, -0.3995453119277954, -0.6004546284675598, -0.511996865272522, -0.4420366585254669, 41.23851776123047], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Value: %{y:.4f}<extra>Dim 276</extra>"}], {"title": {"text": "Real Dimension 276", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Value in dimension 276", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "legend": {"font": {"size": 10}}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="deform-heat">🔥 Deformation Heatmap: Who Moves Where?</h2>
+<div class="explanation">
+    <strong>X-axis:</strong> tokens (the actual words/pieces). <strong>Y-axis:</strong> layer transitions.
+    <strong>Color:</strong> how much that token moved (L2 norm of the change vector) — brighter = bigger change.<br><br>
+    <strong>What to look for:</strong> Koch's Conjecture 4 predicts that <em>middle rows should be brightest</em>
+    (inner layers do the heavy computation). The first and last rows should be dimmer (they just translate).
+    <em>Hover over any cell to see the exact deformation magnitude.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_deform" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_deform', [{"z": [[9.92401123046875, 7.457458019256592, 10.238152503967285, 7.646661281585693], [19.65384864807129, 6.956416130065918, 7.504843235015869, 5.9807257652282715], [112.0169448852539, 10.197607040405273, 8.179537773132324, 9.193216323852539], [16.5598087310791, 7.583128929138184, 8.496199607849121, 8.423151969909668], [66.76646423339844, 9.718091011047363, 9.778959274291992, 11.25033950805664], [440.4828186035156, 440.7569274902344, 436.9934387207031, 439.7963562011719]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "YlOrRd", "colorbar": {"title": "||\u0394h||\u2082"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>Deformation: %{z:.4f}<extra></extra>"}], {"title": {"text": "Per-Token Deformation Magnitude", "font": {"size": 14}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="signed-delta">🔵🔴 Signed Changes per Dimension</h2>
+<div class="explanation">
+    For each top-moving real dimension, this shows the <strong>signed change</strong> at each layer for each token.
+    <strong>Blue = value decreased</strong>, <strong>Red = value increased</strong>, <strong>White = no change</strong>.<br><br>
+    <strong>What to look for:</strong> Can you trace the computation? For negation parity, look for dimensions
+    where "not" causes a flip (alternating red/blue). For addition, look for dimensions where number tokens
+    accumulate changes. <em>Hover for exact signed delta values.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_0" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_0', [{"z": [[6.224532127380371, 3.8254878520965576, 6.774650573730469, 4.139842510223389], [6.120145797729492, 0.6961076259613037, -3.4061622619628906, 0.5657787322998047], [82.89061737060547, 5.542905330657959, 1.9927902221679688, 2.23740816116333], [3.1694717407226562, 1.0945720672607422, 0.25106334686279297, -0.2725791931152344], [-55.286155700683594, -4.239761829376221, 0.4573497772216797, -2.88783597946167], [-30.374874114990234, 7.0389533042907715, 8.282832145690918, 9.805389404296875]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -82.89061737060547, "zmax": 82.89061737060547, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 156: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 156: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_1" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_1', [{"z": [[0.7468457818031311, -0.04518504440784454, -0.0743170827627182, 0.24628138542175293], [-1.176809310913086, -0.04095014929771423, 0.5035852193832397, 0.3040676712989807], [1.731348991394043, 0.6043828129768372, -0.14997106790542603, 0.3069906234741211], [0.44878458976745605, -0.2673281133174896, -0.16864612698554993, -0.33936065435409546], [0.15667080879211426, 0.1660158932209015, 0.08928486704826355, 0.5416361093521118], [56.55116271972656, 56.402496337890625, 54.082889556884766, 56.19287109375]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -56.55116271972656, "zmax": 56.55116271972656, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 169: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 169: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_2" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_2', [{"z": [[-0.22704532742500305, 0.4019378125667572, 0.8551878333091736, 0.8914886713027954], [6.875275611877441, 0.6682273149490356, -0.437529981136322, 0.360947847366333], [68.09322357177734, 2.8593459129333496, 0.43237555027008057, 0.8473488092422485], [-7.7311248779296875, -2.9741525650024414, -0.5232981443405151, -1.722163200378418], [-27.674198150634766, -1.0523866415023804, -0.6574593186378479, -1.2145602703094482], [-29.321643829345703, 12.095504760742188, 15.27561092376709, 13.008150100708008]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -68.09322357177734, "zmax": 68.09322357177734, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 23: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 23: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_3" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_3', [{"z": [[-0.3992935121059418, -0.3602294921875, -0.10771950334310532, -0.43763303756713867], [0.026938438415527344, 0.01755395531654358, -0.22045078873634338, 0.25238797068595886], [0.3104780614376068, -0.1327802538871765, -0.5633537173271179, -0.5830281972885132], [-0.491458535194397, 0.6558338403701782, 0.4897872507572174, 0.7801138758659363], [0.2999860346317291, 0.13406267762184143, 0.6552172899246216, 0.3487517833709717], [41.4522590637207, 48.111572265625, 44.068511962890625, 48.09467315673828]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -48.111572265625, "zmax": 48.111572265625, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 181: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 181: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_4" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_4', [{"z": [[-0.05730694532394409, -0.05806565284729004, 0.0014682412147521973, -0.026717662811279297], [-1.1518793106079102, -0.6234217882156372, 0.027433015406131744, -0.001846030354499817], [0.22772622108459473, 0.2671380341053009, -0.1854761838912964, -0.15905959904193878], [0.20641475915908813, 0.04789412021636963, 0.0975266695022583, 0.12263937294483185], [-0.6794158816337585, -0.2826928198337555, -0.1394440084695816, 0.001859903335571289], [-44.90178680419922, -44.07619094848633, -43.89570617675781, -41.97824478149414]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -44.90178680419922, "zmax": 44.90178680419922, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 357: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 357: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_5" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_5', [{"z": [[0.5262613296508789, 0.20714691281318665, -0.06981003284454346, 0.2375558316707611], [-0.4125639498233795, -0.5858162641525269, -0.21809065341949463, -0.6555461883544922], [-0.6182646751403809, -0.7100424766540527, -0.25633543729782104, -0.5656168460845947], [-0.3532474637031555, 0.126678466796875, -0.15787631273269653, 0.35777604579925537], [-0.11323559284210205, 0.12973344326019287, 0.32515957951545715, 0.031030356884002686], [44.15730667114258, 42.77448272705078, 41.39175033569336, 41.90393829345703]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -44.15730667114258, "zmax": 44.15730667114258, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 336: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 336: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_6" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_6', [{"z": [[-0.051073938608169556, 0.39336276054382324, -0.06765459477901459, 0.14137284457683563], [0.8631303310394287, -0.2603916525840759, 0.0550503134727478, -0.20673492550849915], [-1.2944726943969727, 0.21389898657798767, 0.2768457531929016, 0.7763718366622925], [0.3886384665966034, -0.06750962138175964, 0.2444218248128891, -0.1308445930480957], [-0.2371644675731659, 0.2040034532546997, 0.009520232677459717, -0.1858588457107544], [-42.11983108520508, -41.266109466552734, -40.87499237060547, -41.70199966430664]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -42.11983108520508, "zmax": 42.11983108520508, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 312: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 312: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_sigdelta_7" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_sigdelta_7', [{"z": [[-0.2940727174282074, -0.5455850958824158, 0.2465815544128418, -0.27745816111564636], [0.8200141191482544, 0.07566714286804199, -0.569372296333313, -0.08766332268714905], [-0.9460530281066895, 0.05848348140716553, 0.48625636100769043, -0.2009093165397644], [-0.3423968553543091, -0.18226200342178345, 0.009021788835525513, 0.08845776319503784], [-0.21844100952148438, 0.07044762372970581, 0.3960549533367157, 0.06996020674705505], [42.47357940673828, 41.45585632324219, 40.07941818237305, 41.6805534362793]], "x": ["15", "+", "27", "="], "y": ["L0\u21921", "L1\u21922", "L2\u21923", "L3\u21924", "L4\u21925", "L5\u21926"], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 0, "zmin": -42.47357940673828, "zmax": 42.47357940673828, "colorbar": {"title": "\u0394 value"}, "hovertemplate": "Token: %{x}<br>Transition: %{y}<br>\u0394 dim 276: %{z:.4f}<extra></extra>"}], {"title": {"text": "Dimension 276: Signed \u0394 per Layer", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="geometry">📐 Geometric Invariants of the Space Morphing</h2>
+<div class="explanation">
+    Three key measurements of <strong>how the space is being deformed</strong> at each layer:<br>
+    <strong>1. Direction Coherence:</strong> Do all tokens move in the same direction? (>0 = together, <0 = apart, ~0 = independently)<br>
+    <strong>2. Expansion/Contraction:</strong> Does the space stretch (>1) or shrink (<1)? 1.0 = no change.<br>
+    <strong>3. Total Deformation:</strong> How much does the space change overall?<br><br>
+    Koch's Conjecture 1: Tokens should move <em>together</em> (coherence > 0) because the model deforms the
+    <em>space itself</em>, not individual points. <em>Click legend items to isolate individual traces.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_geom_coh" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_geom_coh', [{"x": [0, 1, 2, 3, 4, 5], "y": [0.5773531794548035, 0.3371194303035736, 0.4951151907444, 0.42889928817749023, 0.35080602765083313, 0.9888884425163269], "type": "bar", "marker": {"color": ["#3fb950", "#3fb950", "#3fb950", "#3fb950", "#3fb950", "#3fb950"]}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Coherence: %{y:.4f}<extra></extra>", "name": "Coherence"}], {"title": {"text": "Direction Coherence (Do tokens move together?)", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Mean Cosine Similarity", "range": [-1, 1], "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "shapes": [{"type": "line", "x0": 0, "x1": 5, "y0": 0, "y1": 0, "line": {"color": "#8b949e", "width": 1, "dash": "dash"}}], "annotations": [{"x": 0.02, "y": 0.98, "xref": "paper", "yref": "paper", "text": "Green = TOGETHER | Red = APART | Gray = INDEPENDENT", "showarrow": false, "font": {"size": 10, "color": "#8b949e"}, "bgcolor": "#161b22", "borderpad": 4}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_geom_exp" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_geom_exp', [{"x": [0, 1, 2, 3, 4, 5], "y": [9.329828258438305, 1.694199730823944, 3.505439077425074, 0.959100667757848, 0.8537706911221479, 2.609229527156115], "type": "bar", "marker": {"color": ["#f85149", "#f85149", "#f85149", "#58a6ff", "#58a6ff", "#f85149"]}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Ratio: %{y:.4f}<extra></extra>", "name": "Expansion"}], {"title": {"text": "Expansion / Contraction (Does the space stretch or shrink?)", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Mean Distance Ratio (after/before)", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "shapes": [{"type": "line", "x0": 0, "x1": 5, "y0": 1, "y1": 1, "line": {"color": "#d29922", "width": 1, "dash": "dash"}}], "annotations": [{"x": 0.02, "y": 0.98, "xref": "paper", "yref": "paper", "text": "Red = EXPANSION (>1) | Blue = CONTRACTION (<1)", "showarrow": false, "font": {"size": 10, "color": "#8b949e"}, "bgcolor": "#161b22", "borderpad": 4}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_geom_def" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_geom_def', [{"x": [0, 1, 2, 3, 4, 5], "y": [8.81657075881958, 10.023958444595337, 34.89682650566101, 10.265572309494019, 24.37846350669861, 439.50738525390625], "type": "bar", "marker": {"color": "#58a6ff", "opacity": 0.7}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Mean ||\u0394h||\u2082: %{y:.4f}<extra></extra>", "name": "Deformation"}], {"title": {"text": "Total Deformation per Layer", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Mean ||\u0394h||\u2082 across tokens", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "annotations": [{"x": 5, "y": 439.50738525390625, "text": "Peak: Layer 5\u21926", "showarrow": true, "arrowhead": 2, "arrowcolor": "#f85149", "font": {"color": "#f85149", "size": 11}}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="rank">🔬 Is This Real Space-Morphing or Just a Global Shift?</h2>
+<div class="explanation">
+    <strong>Key question:</strong> When the model changes token representations at each layer,
+    does it move each token <em>differently</em> (genuine space-morphing), or does it just
+    shift all tokens the same way (a global bias)?<br><br>
+    <strong>Effective Rank:</strong> If the delta matrix has rank ≈ 1, all tokens moved in the same direction —
+    that's just adding a bias vector, not "morphing space." If rank >> 1, different tokens were deformed
+    differently, which IS genuine space-morphing.<br>
+    <strong>Deformation Diversity:</strong> What fraction of the total change is NOT explained by the mean shift?
+    High = each token deformed differently. Low = just a global shift.<br><br>
+    Koch's framework is only interesting if the deformations are genuinely multi-dimensional and token-specific.
+    <em>Hover for exact values at each layer.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_rank_rank" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_rank_rank', [{"x": [0, 1, 2, 3, 4, 5], "y": [3.139573335647583, 2.7665085792541504, 1.4170295000076294, 3.137688398361206, 1.85466468334198, 1.2949812412261963], "type": "bar", "marker": {"color": ["#3fb950", "#d29922", "#f85149", "#3fb950", "#d29922", "#f85149"]}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Effective rank: %{y:.2f}<extra></extra>", "name": "Effective Rank"}], {"title": {"text": "Effective Rank of Layer Deltas (>1 = genuine per-token morphing)", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Effective Rank (participation ratio)", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "shapes": [{"type": "line", "x0": 0, "x1": 5, "y0": 1, "y1": 1, "line": {"color": "#f85149", "width": 1, "dash": "dash"}}], "annotations": [{"x": 0.02, "y": 0.98, "xref": "paper", "yref": "paper", "text": "Green = rich morphing (rank>3) | Red = just a global shift (rank\u22481)", "showarrow": false, "font": {"size": 10, "color": "#8b949e"}, "bgcolor": "#161b22", "borderpad": 4}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_rank_div" style="width:100%;height:350px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_rank_div', [{"x": [0, 1, 2, 3, 4, 5], "y": [0.32815977931022644, 0.6368770599365234, 0.692194402217865, 0.502797544002533, 0.6685179471969604, 0.008346693590283394], "type": "bar", "marker": {"color": ["#3fb950", "#3fb950", "#3fb950", "#3fb950", "#3fb950", "#f85149"]}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Diversity: %{y:.4f} (%{customdata:.1f}% NOT from mean shift)<extra></extra>", "customdata": [32.81597900390625, 63.687705993652344, 69.21943664550781, 50.279754638671875, 66.85179138183594, 0.8346693515777588], "name": "Diversity"}], {"title": {"text": "Deformation Diversity (fraction NOT explained by mean shift)", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Fraction of variance", "range": [0, 1], "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "shapes": [{"type": "line", "x0": 0, "x1": 5, "y0": 0.5, "y1": 0.5, "line": {"color": "#3fb950", "width": 1, "dash": "dash"}}, {"type": "line", "x0": 0, "x1": 5, "y0": 0.1, "y1": 0.1, "line": {"color": "#f85149", "width": 1, "dash": "dash"}}], "annotations": [{"x": 0.02, "y": 0.98, "xref": "paper", "yref": "paper", "text": "Green = genuine per-token morphing | Red = just a global shift", "showarrow": false, "font": {"size": 10, "color": "#8b949e"}, "bgcolor": "#161b22", "borderpad": 4}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 350, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="pairs">🔗 Token Relationship Evolution</h2>
+<div class="explanation">
+    For every pair of tokens, this tracks their <strong>real Euclidean distance</strong> across layers.
+    If the model is "morphing space," distances between tokens should change — some tokens get pulled
+    together, others pushed apart.<br><br>
+    <strong>What to look for:</strong> Do tokens that are semantically related (e.g., subject and verb)
+    get closer in later layers? Do unrelated tokens get pushed apart?
+    Koch's Section 5: "Positive ORC indicates that neighboring tokens converge (a gravitational source);
+    negative ORC indicates divergence."
+    <em>Click legend entries to show/hide specific pairs. Hover for exact distances.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_pairs" style="width:100%;height:450px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_pairs', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.9741168022155762, 8.96855640411377, 20.33385467529297, 115.6799545288086, 114.29682159423828, 59.37090301513672, 55.72835159301758], "mode": "lines+markers", "name": "15 \u2194 +", "marker": {"size": 3}, "line": {"color": "#636EFA", "width": 1.5}, "hovertemplate": "15 \u2194 +<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.8950053453445435, 8.304065704345703, 21.832012176513672, 121.3411865234375, 119.08597564697266, 61.161285400390625, 51.35537338256836], "mode": "lines+markers", "name": "15 \u2194 27", "marker": {"size": 3}, "line": {"color": "#EF553B", "width": 1.5}, "hovertemplate": "15 \u2194 27<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.9052565097808838, 9.248708724975586, 20.47453498840332, 119.39482879638672, 118.23038482666016, 62.62727737426758, 63.74293518066406], "mode": "lines+markers", "name": "15 \u2194 =", "marker": {"size": 3}, "line": {"color": "#00CC96", "width": 1.5}, "hovertemplate": "15 \u2194 =<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.9394208192825317, 8.56310749053955, 8.638660430908203, 11.651612281799316, 11.370353698730469, 12.453641891479492, 60.704811096191406], "mode": "lines+markers", "name": "+ \u2194 27", "marker": {"size": 3}, "line": {"color": "#AB63FA", "width": 1.5}, "hovertemplate": "+ \u2194 27<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.7706772685050964, 6.142928123474121, 6.615757942199707, 8.837794303894043, 7.828580856323242, 8.667842864990234, 27.845935821533203], "mode": "lines+markers", "name": "+ \u2194 =", "marker": {"size": 3}, "line": {"color": "#FFA15A", "width": 1.5}, "hovertemplate": "+ \u2194 =<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.8923377990722656, 9.093892097473145, 8.814872741699219, 11.191604614257812, 10.444352149963379, 14.177231788635254, 67.65694427490234], "mode": "lines+markers", "name": "27 \u2194 =", "marker": {"size": 3}, "line": {"color": "#19D3F3", "width": 1.5}, "hovertemplate": "27 \u2194 =<br>Layer: %{x}<br>Distance: %{y:.2f}<extra></extra>"}], {"title": {"text": "Token-Pair Euclidean Distance Across Layers", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Euclidean Distance (real space)", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "hovermode": "closest", "legend": {"font": {"size": 9}}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 450, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_pairs_ratio" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_pairs_ratio', [{"z": [[0.0, 57.20910658792751, 57.37996249086318, 70.41422459336266], [57.20910658792751, 0.0, 64.6193998994406, 36.13177266714276], [57.37996249086318, 64.6193998994406, 0.0, 75.8198733416742], [70.41422459336266, 36.13177266714276, 75.8198733416742, 0.0]], "x": ["15", "+", "27", "="], "y": ["15", "+", "27", "="], "type": "heatmap", "colorscale": "RdBu_r", "zmid": 1.0, "colorbar": {"title": "Ratio"}, "hovertemplate": "%{y} \u2194 %{x}<br>Distance ratio (last/first): %{z:.3f}<extra></extra>"}], {"title": {"text": "Distance Ratio: Last Layer / First Layer (Blue=closer, Red=farther)", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Token", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="wave">🌊 Wave of Space-Morphing</h2>
+<div class="explanation">
+    Koch (Section 2.3): "The cumulative effect h_i^(L) = h_i^(0) + Σ(delta) is a superposition
+    of deformations — a 'wave' of space-morphing that propagates from layer 0 to layer L."<br><br>
+    Each line shows how far one token has moved from its original embedding position, accumulated
+    across all layers. The <strong>shape of this curve</strong> tells you where the model does most
+    of its work. A steep section = that layer changed a lot. A flat section = that layer barely touched it.
+    <em>Click legend entries to isolate individual tokens.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_wave" style="width:100%;height:450px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_wave', [{"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0, 9.924012184143066, 22.75650978088379, 126.25259399414062, 123.8713150024414, 64.93802642822266, 441.1871032714844], "mode": "lines+markers", "name": "15", "marker": {"size": 4}, "line": {"color": "#636EFA", "width": 2}, "hovertemplate": "Token: 15<br>Layer: %{x}<br>Displacement from embedding: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0, 7.457457542419434, 8.9014892578125, 14.168004989624023, 14.000505447387695, 12.528106689453125, 442.04302978515625], "mode": "lines+markers", "name": "+", "marker": {"size": 4}, "line": {"color": "#EF553B", "width": 2}, "hovertemplate": "Token: +<br>Layer: %{x}<br>Displacement from embedding: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0, 10.238151550292969, 8.937039375305176, 11.418112754821777, 10.657882690429688, 12.178947448730469, 439.1959533691406], "mode": "lines+markers", "name": "27", "marker": {"size": 4}, "line": {"color": "#00CC96", "width": 2}, "hovertemplate": "Token: 27<br>Layer: %{x}<br>Displacement from embedding: %{y:.2f}<extra></extra>"}, {"x": [0, 1, 2, 3, 4, 5, 6], "y": [0.0, 7.646661281585693, 8.602057456970215, 12.335067749023438, 11.254752159118652, 12.820734024047852, 441.06298828125], "mode": "lines+markers", "name": "=", "marker": {"size": 4}, "line": {"color": "#AB63FA", "width": 2}, "hovertemplate": "Token: =<br>Layer: %{x}<br>Displacement from embedding: %{y:.2f}<extra></extra>"}], {"title": {"text": "Cumulative Displacement from Embedding Layer", "font": {"size": 14}}, "xaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "||h^(\u2113) - h^(0)||\u2082", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "hovermode": "closest", "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 450, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+
+<div class="plot-container">
+  <div id="p1_wave_heat" style="width:100%;height:300px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_wave_heat', [{"z": [[0.0, 0.0, 0.0, 0.0], [9.924012184143066, 7.457457542419434, 10.238151550292969, 7.646661281585693], [22.75650978088379, 8.9014892578125, 8.937039375305176, 8.602057456970215], [126.25259399414062, 14.168004989624023, 11.418112754821777, 12.335067749023438], [123.8713150024414, 14.000505447387695, 10.657882690429688, 11.254752159118652], [64.93802642822266, 12.528106689453125, 12.178947448730469, 12.820734024047852], [441.1871032714844, 442.04302978515625, 439.1959533691406, 441.06298828125]], "x": ["15", "+", "27", "="], "y": ["Layer 0", "Layer 1", "Layer 2", "Layer 3", "Layer 4", "Layer 5", "Layer 6"], "type": "heatmap", "colorscale": "Magma", "colorbar": {"title": "Displacement"}, "hovertemplate": "Token: %{x}<br>%{y}<br>Displacement: %{z:.2f}<extra></extra>"}], {"title": {"text": "Cumulative Displacement Heatmap (brighter = farther from embedding)", "font": {"size": 13}}, "xaxis": {"title": "Token", "tickangle": -45, "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Layer", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 300, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+<h2 id="reversal">🔄 Last-Layer Reversal Test</h2>
+<div class="explanation">
+    Koch (Conjecture 4): "The last layer often morphs the space back toward the embedding-layer geometry,
+    undoing much of the intermediate deformation so that the result can be read off by the language-modeling head."<br><br>
+    This measures the <strong>cosine similarity</strong> between each layer's change and the first layer's change.
+    If the last layer <strong>reverses</strong> the first layer, its cosine should be <strong>negative</strong>
+    (pointing in the opposite direction).<br>
+    <strong>Green</strong> = same direction as first layer. <strong>Red</strong> = opposite direction (reversal).
+    <em>Hover for exact cosine values.</em>
+    </div>
+
+<div class="plot-container">
+  <div id="p1_reversal" style="width:100%;height:400px;"></div>
+</div>
+<script>
+  Plotly.newPlot('p1_reversal', [{"x": [0, 1, 2, 3, 4, 5], "y": [0.9999998807907104, -0.11395207047462463, 0.2528989315032959, 0.035111550241708755, -0.31991687417030334, -0.00024171014956664294], "type": "bar", "marker": {"color": ["#3fb950", "#f85149", "#3fb950", "#8b949e", "#f85149", "#8b949e"]}, "hovertemplate": "Layer %{x}\u2192%{x+1}<br>Cosine with first layer: %{y:.4f}<extra></extra>", "name": "Cosine similarity"}], {"title": {"text": "Cosine Similarity of Each Layer's Delta with First Layer's Delta", "font": {"size": 13}}, "xaxis": {"title": "Layer Transition", "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "yaxis": {"title": "Cosine Similarity", "range": [-1.1, 1.1], "gridcolor": "#21262d", "zerolinecolor": "#30363d"}, "shapes": [{"type": "line", "x0": 0, "x1": 5, "y0": 0, "y1": 0, "line": {"color": "#8b949e", "width": 1, "dash": "dash"}}], "annotations": [{"x": 0.02, "y": 0.98, "xref": "paper", "yref": "paper", "text": "Green = same direction | Red = REVERSAL | Gray = orthogonal", "showarrow": false, "font": {"size": 10, "color": "#8b949e"}, "bgcolor": "#161b22", "borderpad": 4}, {"x": 5, "y": -0.00024171014956664294, "text": "No reversal (cos=-0.000)", "showarrow": true, "arrowhead": 2, "arrowcolor": "#8b949e", "font": {"color": "#8b949e", "size": 11}}], "paper_bgcolor": "#161b22", "plot_bgcolor": "#0d1117", "font": {"color": "#c9d1d9"}, "height": 400, "margin": {"l": 60, "r": 30, "t": 50, "b": 50}}, {responsive: true});
+</script>
+</body></html>

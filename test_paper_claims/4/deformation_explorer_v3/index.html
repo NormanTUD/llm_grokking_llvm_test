@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Space-Deformation Explorer — Index</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    padding: 20px;
+  }
+  h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.6em; }
+  h2 { color: #79c0ff; margin: 30px 0 10px 0; font-size: 1.3em; border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+  h3 { color: #d2a8ff; margin: 20px 0 8px 0; font-size: 1.1em; }
+  .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 0.95em; }
+  .plot-container { margin: 15px 0; border: 1px solid #21262d; border-radius: 8px; overflow: hidden; background: #161b22; }
+  .explanation {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 18px; margin: 10px 0 20px 0; font-size: 0.9em; line-height: 1.6;
+  }
+  .explanation strong { color: #58a6ff; }
+  .explanation em { color: #f0883e; font-style: normal; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+  .tag { display: inline-block; background: #21262d; color: #58a6ff; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin: 2px; }
+  .tag-red { background: #3d1f1f; color: #f85149; }
+  .tag-green { background: #1f3d1f; color: #3fb950; }
+  .tag-yellow { background: #3d3d1f; color: #d29922; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #30363d; padding: 8px 12px; text-align: left; font-size: 0.85em; }
+  th { background: #161b22; color: #58a6ff; }
+  td { background: #0d1117; }
+  .nav { position: sticky; top: 0; background: #0d1117; padding: 10px 0; z-index: 100; border-bottom: 1px solid #21262d; margin-bottom: 20px; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-right: 15px; font-size: 0.9em; }
+  .nav a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<h1>🔬 LLM Space-Deformation Explorer</h1>
+<div class="subtitle">Interactive visualizations of how LLMs deform space at each layer. NO PCA, NO dimensionality reduction — only real hidden-state dimensions.</div>
+<div class="explanation">
+    <strong>What is this?</strong> Koch's paper proposes that transformer layers don't move token
+    representations through a fixed space — they <em>morph the space itself</em>, like gravity
+    bends spacetime in general relativity. Each HTML file below lets you interactively explore
+    how a specific model processes a specific prompt, watching the space deformation happen
+    layer by layer in real dimensions.<br><br>
+    <strong>How to use:</strong> Click any link below to open an interactive page. You can zoom,
+    pan, hover for exact values, and toggle individual tokens on/off in every chart.
+    </div>
+<h2>🤖 gpt2</h2>
+<h3>addition — Integer addition</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "2 + 3 ="</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "15 + 27 ="</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "100 + 200 ="</a></li>
+</ul>
+<h3>negation_parity — Negation parity (Z/2Z group operation)</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/negation_parity/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/negation_parity/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "not not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/negation_parity/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "not not not not True is "</a></li>
+</ul>
+<h3>comparison — Number comparison</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/comparison/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "Is 5 greater than 3? Answer: "</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/comparison/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "Is 2 greater than 9? Answer: "</a></li>
+</ul>
+<h3>pattern — Sequence continuation</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/pattern/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "1, 2, 3, 4, "</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/pattern/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "2, 4, 6, 8, "</a></li>
+</ul>
+<h3>semantic — Semantic substitution — which dimensions respond?</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/compare_0_vs_1.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_1</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/compare_0_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/compare_1_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_1_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "The sky is blue"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "The sky is red"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/semantic/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "The ocean is blue"</a></li>
+</ul>
+<h2>🤖 EleutherAI/pythia-70m</h2>
+<h3>addition — Integer addition</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/addition/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "2 + 3 ="</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/addition/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "15 + 27 ="</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/addition/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "100 + 200 ="</a></li>
+</ul>
+<h3>negation_parity — Negation parity (Z/2Z group operation)</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/negation_parity/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/negation_parity/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "not not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/negation_parity/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "not not not not True is "</a></li>
+</ul>
+<h3>comparison — Number comparison</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/comparison/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "Is 5 greater than 3? Answer: "</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/comparison/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "Is 2 greater than 9? Answer: "</a></li>
+</ul>
+<h3>pattern — Sequence continuation</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/pattern/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "1, 2, 3, 4, "</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/pattern/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "2, 4, 6, 8, "</a></li>
+</ul>
+<h3>semantic — Semantic substitution — which dimensions respond?</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/compare_0_vs_1.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_1</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/compare_0_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/compare_1_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_1_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "The sky is blue"</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "The sky is red"</a></li>
+  <li style="margin: 5px 0;"><a href="EleutherAI_pythia-70m/semantic/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "The ocean is blue"</a></li>
+</ul>
+<h2>🤖 facebook/opt-125m</h2>
+<h3>addition — Integer addition</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/addition/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "2 + 3 ="</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/addition/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "15 + 27 ="</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/addition/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "100 + 200 ="</a></li>
+</ul>
+<h3>negation_parity — Negation parity (Z/2Z group operation)</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/negation_parity/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/negation_parity/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "not not not True is "</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/negation_parity/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "not not not not True is "</a></li>
+</ul>
+<h3>comparison — Number comparison</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/comparison/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "Is 5 greater than 3? Answer: "</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/comparison/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "Is 2 greater than 9? Answer: "</a></li>
+</ul>
+<h3>pattern — Sequence continuation</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/pattern/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "1, 2, 3, 4, "</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/pattern/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "2, 4, 6, 8, "</a></li>
+</ul>
+<h3>semantic — Semantic substitution — which dimensions respond?</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/compare_0_vs_1.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_1</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/compare_0_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_0_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/compare_1_vs_2.html" style="color: #58a6ff; text-decoration: none;">🎨 Semantic Comparison: compare_1_vs_2</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "The sky is blue"</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "The sky is red"</a></li>
+  <li style="margin: 5px 0;"><a href="facebook_opt-125m/semantic/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "The ocean is blue"</a></li>
+</ul>
+
+    <h2 id="guide">🔍 What to Look For</h2>
+    <div class="explanation">
+    <strong>1. Dimension Trajectories (📈):</strong> Each line is one token in one REAL dimension.
+    Do tokens converge, diverge, or cross? Koch's Conjecture 1 says the geometry encodes semantic content.<br><br>
+
+    <strong>2. Deformation Heatmap (🔥):</strong> Which tokens move most at which layers?
+    Koch's Conjecture 4 predicts middle rows should be brightest (inner layers compute).<br><br>
+
+    <strong>3. Signed Delta Heatmaps (🔵🔴):</strong> Blue=decrease, Red=increase.
+    Can you trace the exact computation? For negation parity, look for dimensions where "not" causes a flip.<br><br>
+
+    <strong>4. Geometric Invariants (📐):</strong> Coherence, expansion, deformation.
+    Koch's Conjecture 1: Tokens should move together (coherence > 0) = field deformation.<br><br>
+
+    <strong>5. Rank Test (🔬):</strong> Is this real morphing or just a global shift?
+    Green bars = genuine per-token morphing. Red = just a bias.<br><br>
+
+    <strong>6. Pair Distances (🔗):</strong> How do token relationships change?
+    Koch's Section 5: Positive ORC = tokens converge, negative = diverge.<br><br>
+
+    <strong>7. Wave Propagation (🌊):</strong> The cumulative "wave" of deformation.
+    Koch's Section 2.3: Superposition of deformations propagating through layers.<br><br>
+
+    <strong>8. Last Layer Reversal (🔄):</strong> Does the last layer undo the morphing?
+    Koch's Conjecture 4: Last layer morphs space back toward embedding geometry.<br><br>
+
+    <strong>9. Semantic Comparison (🎨):</strong> Which REAL dimensions respond to changing
+    "blue" to "red"? Koch's Observation 2: Selective dimensional response.
+    </div>
+    </body></html>
