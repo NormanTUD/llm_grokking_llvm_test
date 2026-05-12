@@ -683,7 +683,7 @@ class TestConjecture2HolographicScrambling:
 
             # Holographic: change should be spread across many dimensions
             assert fraction_active > 0.05, (
-                f"Only {fraction_active = fraction_active:.1%} of dimensions carry >1% of change. "
+                f"Only {fraction_active:.1%} of dimensions carry >1% of change. "
                 f"Paper claims holographic distribution for '{prompt_a}' vs '{prompt_b}'."
             )
 
