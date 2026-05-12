@@ -534,7 +534,7 @@ def gen_logit_lens_plot(trace: dict, div_prefix: str) -> str:
             "name": f'P("{token_label}")',
             "marker": {"size": 5, "color": "#3fb950"},
             "line": {"color": "#3fb950", "width": 2},
-            "hovertemplate": 'Layer %{x}<br>P("%s") = %%{y:.4f}<extra></extra>' % token_label,
+            "hovertemplate": f'Layer %{{x}}<br>P("{token_label}") = %{{y:.4f}}<extra></extra>',
         }]
         layout_prob = {
             "title": {"text": f'Step {step_idx}: How P("{token_label}") builds up across layers',
