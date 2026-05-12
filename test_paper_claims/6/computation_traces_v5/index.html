@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Computation Tracer — Index</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117; color: #c9d1d9; padding: 20px;
+    max-width: 1400px; margin: 0 auto;
+  }
+  h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.6em; }
+  h2 { color: #79c0ff; margin: 35px 0 10px 0; font-size: 1.3em;
+       border-bottom: 2px solid #21262d; padding-bottom: 8px; }
+  h3 { color: #d2a8ff; margin: 20px 0 8px 0; font-size: 1.05em; }
+  .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 0.95em; }
+  .plot-box { margin: 12px 0; border: 1px solid #21262d;
+               border-radius: 8px; overflow: hidden; background: #161b22; }
+  .info {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 18px; margin: 10px 0 18px 0; font-size: 0.9em; line-height: 1.7;
+  }
+  .info strong { color: #58a6ff; }
+  .info em { color: #f0883e; font-style: normal; }
+  .gen-text {
+    background: #161b22; border: 2px solid #58a6ff; border-radius: 8px;
+    padding: 16px 20px; margin: 15px 0; font-size: 1.15em; line-height: 1.8;
+    font-family: 'Courier New', monospace;
+  }
+  .prompt-part { color: #8b949e; }
+  .gen-part { color: #3fb950; font-weight: bold; }
+  .tok {
+    display: inline-block; padding: 2px 6px; margin: 1px;
+    border-radius: 4px; font-size: 0.85em; cursor: help;
+  }
+  .tok-p { background: #21262d; color: #8b949e; }
+  .tok-g { background: #1f3d1f; color: #3fb950; border: 1px solid #3fb950; }
+  .nav { position: sticky; top: 0; background: #0d1117ee; padding: 10px 0;
+          z-index: 100; border-bottom: 1px solid #21262d; margin-bottom: 20px;
+          backdrop-filter: blur(8px); }
+  .nav a { color: #58a6ff; text-decoration: none; margin-right: 12px; font-size: 0.85em; }
+  .nav a:hover { text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #30363d; padding: 6px 10px; text-align: left; font-size: 0.85em; }
+  th { background: #161b22; color: #58a6ff; }
+  td { background: #0d1117; }
+  .pbar { display: inline-block; height: 14px; background: #58a6ff;
+           border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .step-header {
+    background: #21262d; padding: 8px 14px; border-radius: 6px;
+    margin: 15px 0 5px 0; font-weight: bold; color: #d2a8ff;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+</style>
+</head>
+<body>
+<h1>🔬 LLM Computation Tracer v5</h1>
+<div class="subtitle">Watch models ACTUALLY GENERATE tokens, then trace HOW each token was computed through every layer in real dimensions. NO PCA, NO dimensionality reduction.</div>
+<div class="info">
+    <strong>What is this?</strong> Each page below shows a model actually generating text
+    for a given prompt, then traces exactly how each generated token was computed:<br><br>
+    • <strong>📝 Generated Output</strong> — what the model actually predicted, token by token<br>
+    • <strong>🔢 Step-by-Step</strong> — chosen token, probability, and top-10 alternatives<br>
+    • <strong>🔍 Logit Lens</strong> — what each intermediate layer would have predicted (watch the answer form!)<br>
+    • <strong>🗺️ Lens Heatmap</strong> — all steps × all layers: when does each layer "know" the answer?<br>
+    • <strong>📈 Dimension Trajectories</strong> — real hidden-state values changing layer by layer<br>
+    • <strong>🔵🔴 Signed Deltas</strong> — exact signed changes per dimension per layer<br>
+    • <strong>📐 Deformation Magnitude</strong> — how much work each layer does<br>
+    • <strong>🗺️ Full Map</strong> — all tokens × all layers × top dimensions (the raw data)<br>
+    • <strong>🌊 Wave Propagation</strong> — cumulative displacement from embedding<br>
+    • <strong>🌐 Token Cloud</strong> — pairwise distances: how tokens relate at first vs last layer<br>
+    • <strong>📏 Pair Evolution</strong> — token-pair distances across every layer<br>
+    • <strong>🔄 Reversal Test</strong> — does the last layer undo the morphing?<br>
+    • <strong>🔬 Rank Test</strong> — is this real space-morphing or just a global shift?<br>
+    • <strong>🔄 Cross-Step</strong> — same dimensions across different generated tokens<br><br>
+    <strong>How to use:</strong> Click any link below. Every chart is interactive —
+    zoom, pan, hover for exact values, toggle traces on/off.
+    </div>
+<h2>🤖 distilgpt2</h2>
+<h3>addition — Integer addition — watch the model build up digits</h3>
+<ul style="list-style:none; padding-left:10px;">
+  <li style="margin:5px 0;"><a href="distilgpt2/addition/prompt_0.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 0: "2 + 3 ="</a></li>
+  <li style="margin:5px 0;"><a href="distilgpt2/addition/prompt_1.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 1: "15 + 27 ="</a></li>
+</ul>
+<h3>counting — Counting — does the model learn the pattern?</h3>
+<ul style="list-style:none; padding-left:10px;">
+  <li style="margin:5px 0;"><a href="distilgpt2/counting/prompt_0.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 0: "1, 2, 3, 4,"</a></li>
+  <li style="margin:5px 0;"><a href="distilgpt2/counting/prompt_1.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 1: "10, 20, 30,"</a></li>
+</ul>
+<h3>completion — Factual completion — trace knowledge retrieval</h3>
+<ul style="list-style:none; padding-left:10px;">
+  <li style="margin:5px 0;"><a href="distilgpt2/completion/prompt_0.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 0: "The capital of France is"</a></li>
+  <li style="margin:5px 0;"><a href="distilgpt2/completion/prompt_1.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 1: "The color of the sky is"</a></li>
+</ul>
+<h3>reasoning — Simple reasoning — trace the logical chain</h3>
+<ul style="list-style:none; padding-left:10px;">
+  <li style="margin:5px 0;"><a href="distilgpt2/reasoning/prompt_0.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 0: "If it rains, the ground gets wet. It rained. Therefore,"</a></li>
+</ul>
+<h3>negation — Negation/antonyms — which dimensions flip?</h3>
+<ul style="list-style:none; padding-left:10px;">
+  <li style="margin:5px 0;"><a href="distilgpt2/negation/prompt_0.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 0: "The opposite of hot is"</a></li>
+  <li style="margin:5px 0;"><a href="distilgpt2/negation/prompt_1.html" style="color:#58a6ff;text-decoration:none;">📈 Prompt 1: "True is not False. False is not"</a></li>
+</ul>
+
+    <h2>🔍 What to Look For (mapped to Koch's conjectures)</h2>
+    <div class="info">
+    <strong>1. Logit Lens (🔍):</strong> THE key visualization. Watch the correct answer
+    emerge layer by layer. Early layers predict garbage, middle layers start forming
+    the answer, final layers lock it in.<br>
+    → Koch's Conjecture 4: "Inner layers compute, outer layers translate."
+    If true, the answer should emerge in the MIDDLE layers, not just appear at the end.<br><br>
+
+    <strong>2. Deformation Magnitude (📐):</strong> How much work does each layer do?<br>
+    → Koch's Conjecture 4 predicts middle layers should have the tallest bars.<br><br>
+
+    <strong>3. Signed Delta Heatmaps (🔵🔴):</strong> Blue=decrease, Red=increase.
+    Trace the exact computation step by step.<br>
+    → Koch's Conjecture 1: "The geometry of the map provides indirect access
+    to the model's reasoning."<br><br>
+
+    <strong>4. Token Cloud (🌐):</strong> Do related tokens get closer? Unrelated ones farther?<br>
+    → Koch's Section 5: "Positive ORC indicates that neighboring tokens converge
+    (a gravitational source); negative ORC indicates divergence."<br><br>
+
+    <strong>5. Last-Layer Reversal (🔄):</strong> Does the last layer undo the morphing?<br>
+    → Koch's Conjecture 4: "The last layer often morphs the space back toward the
+    embedding-layer geometry."<br><br>
+
+    <strong>6. Rank Test (🔬):</strong> Is this real space-morphing or just a global shift?<br>
+    → Koch's framework is only meaningful if deformations are genuinely multi-dimensional
+    and token-specific. If rank ≈ 1, it's just a bias — not interesting.<br><br>
+
+    <strong>7. Wave Propagation (🌊):</strong> The cumulative "wave" of deformation.<br>
+    → Koch's Section 2.3: "The cumulative effect is a superposition of deformations —
+    a 'wave' of space-morphing that propagates from layer 0 to layer L."<br><br>
+
+    <strong>8. Cross-Step Comparison (🔄):</strong> Does the model reuse the same circuits?<br>
+    → Koch's Conjecture 5: "The Jacobian field carries holographic information."
+    If true, you should see structured, repeating patterns across generation steps.<br><br>
+
+    <strong>9. Full Map (🗺️):</strong> The raw data — actual hidden-state values for all
+    tokens at all layers. This is what the model's "brain" actually looks like.
+    </div>
+    </body></html>
