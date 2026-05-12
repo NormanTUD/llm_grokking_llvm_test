@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Computation Tracer — Index</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117; color: #c9d1d9; padding: 20px;
+  }
+  h1 { color: #58a6ff; margin-bottom: 8px; font-size: 1.6em; }
+  h2 { color: #79c0ff; margin: 30px 0 10px 0; font-size: 1.3em;
+       border-bottom: 1px solid #21262d; padding-bottom: 6px; }
+  h3 { color: #d2a8ff; margin: 20px 0 8px 0; font-size: 1.1em; }
+  .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 0.95em; }
+  .plot-container { margin: 15px 0; border: 1px solid #21262d;
+                     border-radius: 8px; overflow: hidden; background: #161b22; }
+  .explanation {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 18px; margin: 10px 0 20px 0; font-size: 0.9em; line-height: 1.6;
+  }
+  .explanation strong { color: #58a6ff; }
+  .explanation em { color: #f0883e; font-style: normal; }
+  .generated-text {
+    background: #161b22; border: 2px solid #58a6ff; border-radius: 8px;
+    padding: 16px 20px; margin: 15px 0; font-size: 1.1em; line-height: 1.8;
+    font-family: 'Courier New', monospace;
+  }
+  .prompt-part { color: #8b949e; }
+  .generated-part { color: #3fb950; font-weight: bold; }
+  .token-box {
+    display: inline-block; padding: 2px 6px; margin: 1px;
+    border-radius: 4px; font-size: 0.85em;
+  }
+  .token-prompt { background: #21262d; color: #8b949e; }
+  .token-generated { background: #1f3d1f; color: #3fb950; border: 1px solid #3fb950; }
+  .nav { position: sticky; top: 0; background: #0d1117; padding: 10px 0;
+          z-index: 100; border-bottom: 1px solid #21262d; margin-bottom: 20px; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-right: 15px; font-size: 0.9em; }
+  .nav a:hover { text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+  th, td { border: 1px solid #30363d; padding: 6px 10px; text-align: left; font-size: 0.85em; }
+  th { background: #161b22; color: #58a6ff; }
+  td { background: #0d1117; }
+  .prob-bar { display: inline-block; height: 14px; background: #58a6ff;
+               border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<h1>🔬 LLM Computation Tracer</h1>
+<div class="subtitle">Watch models actually generate tokens, then trace HOW each token was computed through every layer in real dimensions.</div>
+<div class="explanation">
+    <strong>What is this?</strong> Each page below shows a model actually generating text
+    for a given prompt, then traces exactly how each generated token was computed:<br>
+    • <strong>The Logit Lens</strong> shows what each intermediate layer would have predicted<br>
+    • <strong>Dimension traces</strong> show real hidden-state values changing layer by layer<br>
+    • <strong>Signed delta heatmaps</strong> show exactly which dimensions increase/decrease at each layer<br>
+    • <strong>Cross-step comparison</strong> shows whether the model reuses the same circuits for different tokens<br><br>
+    <strong>NO PCA, NO dimensionality reduction</strong> — all values are real hidden-state dimensions.
+    </div>
+<h2>🤖 gpt2</h2>
+<h3>addition — Integer addition — watch how the model builds up the answer digit by digit</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "2 + 3 ="</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "15 + 27 ="</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/addition/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "100 + 200 ="</a></li>
+</ul>
+<h3>counting — Counting — does the model learn the pattern?</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/counting/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "1, 2, 3, 4,"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/counting/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "10, 20, 30,"</a></li>
+</ul>
+<h3>completion — Factual completion — trace how knowledge is retrieved</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/completion/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "The capital of France is"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/completion/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "Water freezes at"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/completion/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "The color of the sky is"</a></li>
+</ul>
+<h3>reasoning — Simple reasoning — trace the logical chain</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/reasoning/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "If it rains, the ground gets wet. It rained. Therefore, the ground is"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/reasoning/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "All cats are animals. Whiskers is a cat. Therefore, Whiskers is"</a></li>
+</ul>
+<h3>negation — Negation/antonyms — which dimensions flip?</h3>
+<ul style="list-style: none; padding-left: 10px;">
+  <li style="margin: 5px 0;"><a href="gpt2/negation/prompt_0.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 0: "The opposite of hot is"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/negation/prompt_1.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 1: "The opposite of big is"</a></li>
+  <li style="margin: 5px 0;"><a href="gpt2/negation/prompt_2.html" style="color: #58a6ff; text-decoration: none;">📈 Prompt 2: "True is not False. False is not"</a></li>
+</ul>
+
+    <h2>🔍 What to Look For</h2>
+    <div class="explanation">
+    <strong>1. Generated Output (📝):</strong> What did the model actually predict?
+    How confident was it at each step?<br><br>
+
+    <strong>2. Logit Lens (🔍):</strong> THE key visualization. Watch the correct answer
+    emerge layer by layer. Early layers predict garbage, middle layers start forming
+    the answer, final layers lock it in. Koch's C4: "inner layers compute."<br><br>
+
+    <strong>3. Dimension Traces (📈):</strong> Real hidden dimensions changing across layers.
+    Can you see dimensions that "specialize" for certain tokens?<br><br>
+
+    <strong>4. Signed Delta Heatmaps (🔵🔴):</strong> Exact signed changes per dimension per layer.
+    Blue = decrease, Red = increase. Trace the computation step by step.<br><br>
+
+    <strong>5. Expansion/Contraction (📐):</strong> How much work does each layer do?
+    Koch's C4 predicts middle layers should have the tallest bars.<br><br>
+
+    <strong>6. Cross-Step Comparison (🔄):</strong> Does the model reuse the same
+    "circuits" for different tokens, or adapt per token?
+    </div>
+    </body></html>
