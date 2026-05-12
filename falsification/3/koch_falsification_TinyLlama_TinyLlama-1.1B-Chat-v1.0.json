@@ -1,0 +1,353 @@
+{
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "model_info": {
+    "n_params": 1100048384,
+    "n_layers": 22,
+    "hidden_dim": 2048,
+    "device": "cuda"
+  },
+  "n_prompts": 12,
+  "n_semantic_pairs": 12,
+  "n_tests": 15,
+  "results": [
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Structured deformation (SV distribution)",
+      "prediction": "Layer deltas have structured (non-random) singular value distributions",
+      "observation": "KS stat=1.0000, p=0.000000. Median condition: real=6.94, random=1.16",
+      "p_value": 6.558051405798401e-158,
+      "effect_size": 0.050166235922800215,
+      "falsified": false,
+      "details": {
+        "real_median_condition": 6.936720848083496,
+        "random_median_condition": 1.162782971548121,
+        "ks_statistic": 1.0
+      }
+    },
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Semantic sensitivity of deformations",
+      "prediction": "Semantically similar prompts produce more similar deformations than dissimilar prompts",
+      "observation": "Mean deformation diff: similar=0.013122, dissimilar=0.026800",
+      "p_value": 0.0012626262614503503,
+      "effect_size": 1.7158989906311035,
+      "falsified": false,
+      "details": {
+        "mean_similar": 0.013121752068400383,
+        "mean_dissimilar": 0.026800159364938736,
+        "n_similar": 5,
+        "n_dissimilar": 7
+      }
+    },
+    {
+      "conjecture": "Conjecture 1",
+      "test_name": "Curvature concentration (heavy-tailedness)",
+      "prediction": "Curvature distribution is heavy-tailed (excess kurtosis > 1, non-Gaussian)",
+      "observation": "Excess kurtosis=387.4016, normality test p=0.000000. Mean curvature=0.0715, median=0.0263",
+      "p_value": 0.0,
+      "effect_size": 387.40159403960587,
+      "falsified": false,
+      "details": {
+        "excess_kurtosis": 387.40159403960587,
+        "normality_p": 0.0,
+        "mean_curvature": 0.07154963090190188,
+        "median_curvature": 0.02626925718679938,
+        "percentile_95": 0.1357148349672458,
+        "percentile_99": 0.35902578628821324,
+        "n_measurements": 4026
+      }
+    },
+    {
+      "conjecture": "Conjecture 2",
+      "test_name": "Holographic distribution (ablation uniformity)",
+      "prediction": "Ablation damage is uniform across tokens (CV < 0.5)",
+      "observation": "Mean CV of per-token ablation error: 0.0336",
+      "p_value": null,
+      "effect_size": 0.033567927935303984,
+      "falsified": false,
+      "details": {
+        "mean_cv": 0.033567927935303984,
+        "std_cv": 0.02209631937782108,
+        "n_measurements": 252,
+        "threshold": 0.5
+      }
+    },
+    {
+      "conjecture": "Conjecture 2",
+      "test_name": "Drift coherence (token delta alignment)",
+      "prediction": "Per-token drift directions within a layer are more aligned than random",
+      "observation": "Mean cosine coherence: real=0.2224, random=0.0001",
+      "p_value": 2.9929239479359973e-88,
+      "effect_size": 1.6765940896094134,
+      "falsified": false,
+      "details": {
+        "mean_real_coherence": 0.22236783802509308,
+        "mean_random_coherence": 6.333833949580112e-05,
+        "n_measurements": 264
+      }
+    },
+    {
+      "conjecture": "Conjecture 3",
+      "test_name": "Persistent topology (semantic structure)",
+      "prediction": "Topological features are prompt-dependent: within-prompt layer similarity > between-prompt similarity",
+      "observation": "Mean Wasserstein: within-prompt=1.0833, between-prompt=1.0406",
+      "p_value": 0.25067031211189433,
+      "effect_size": -0.02822442044584126,
+      "falsified": true,
+      "details": {
+        "mean_within_distance": 1.083267248928629,
+        "mean_between_distance": 1.0405861008137725,
+        "n_within": 240,
+        "n_between": 441
+      }
+    },
+    {
+      "conjecture": "Conjecture 3",
+      "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+      "prediction": "Topological change between layers is non-uniform (CV > 0.2)",
+      "observation": "Mean CV of Wasserstein distances: 1.5962",
+      "p_value": null,
+      "effect_size": 1.5961908991859275,
+      "falsified": false,
+      "details": {
+        "mean_cv": 1.5961908991859275,
+        "per_prompt_cvs": [
+          1.7241825338392867,
+          1.7752583785035831,
+          2.470799587604211,
+          1.4243268674165395,
+          2.0310576709494983,
+          1.2891907737492636,
+          1.1027832960370492,
+          1.3887467530186082,
+          1.4623833364064045,
+          1.4125874596172319,
+          1.4361675022204785,
+          1.6368066308689777
+        ],
+        "n_prompts": 12
+      }
+    },
+    {
+      "conjecture": "Conjecture 4",
+      "test_name": "Inner/outer layer asymmetry",
+      "prediction": "Inner layers (all but first and last) have higher avg deformation than outer layers (first and last) AND last layer reverses first layer",
+      "observation": "Mean deformation: inner=3.9747, outer=36.3693 (INNER <= OUTER); Mean first-last cosine: 0.0441 (NO REVERSAL)",
+      "p_value": null,
+      "effect_size": null,
+      "falsified": true,
+      "details": {
+        "avg_deformation_profile": [
+          0.6093670725822449,
+          0.5375312566757202,
+          12.421772003173828,
+          0.7390942573547363,
+          0.9006941914558411,
+          1.0565584897994995,
+          1.2880476713180542,
+          1.8540472984313965,
+          1.6904464960098267,
+          1.9158391952514648,
+          2.0261051654815674,
+          2.101005792617798,
+          2.5365512371063232,
+          2.860926389694214,
+          3.3911173343658447,
+          4.128023624420166,
+          5.224512577056885,
+          5.66761589050293,
+          7.5414137840271,
+          9.315167427062988,
+          12.297562599182129,
+          72.1292495727539
+        ],
+        "inner_mean_deformation": 3.9747016429901123,
+        "outer_mean_deformation": 36.36930847167969,
+        "n_transitions": 22,
+        "mean_reversal_cosine": 0.04410719871520996,
+        "inner_greater_than_outer": false,
+        "has_reversal": false
+      }
+    },
+    {
+      "conjecture": "Conjecture 4",
+      "test_name": "Isotropy profile (inner vs outer layers)",
+      "prediction": "Inner layers have lower isotropy (more structured) than outer layers",
+      "observation": "Min isotropy at layer 3/23 (NOT MIDDLE). Middle avg=0.011832, outer avg=0.051416 (DIP)",
+      "p_value": null,
+      "effect_size": null,
+      "falsified": false,
+      "details": {
+        "avg_isotropy_profile": [
+          0.07826436311006546,
+          0.1179938092827797,
+          0.12672509253025055,
+          0.002779390662908554,
+          0.0037252651527523994,
+          0.0050779422745108604,
+          0.006276683881878853,
+          0.007311373949050903,
+          0.008547169156372547,
+          0.009652668610215187,
+          0.011160497553646564,
+          0.012388664297759533,
+          0.01352758426219225,
+          0.015048562549054623,
+          0.01702224463224411,
+          0.02003081701695919,
+          0.023442745208740234,
+          0.02816854417324066,
+          0.035251323133707047,
+          0.043521326035261154,
+          0.053960349410772324,
+          0.06550395488739014,
+          0.16051869094371796
+        ],
+        "min_layer": 3,
+        "middle_avg_isotropy": 0.011832345277071,
+        "outer_avg_isotropy": 0.05141602084040642,
+        "min_in_middle": false,
+        "has_dip": true
+      }
+    },
+    {
+      "conjecture": "Conjecture 5",
+      "test_name": "Jacobian as information carrier (effective dimensionality)",
+      "prediction": "Jacobian field (layer deltas) has effective dimensionality >= 50% of hidden states",
+      "observation": "Mean effective dim: hidden=3.37, jacobian=11.73, ratio=3.4855",
+      "p_value": 1.0,
+      "effect_size": 3.485461711883545,
+      "falsified": false,
+      "details": {
+        "mean_hidden_eff_dim": 3.366609811782837,
+        "mean_jacobian_eff_dim": 11.734189987182617,
+        "ratio": 3.485461711883545
+      }
+    },
+    {
+      "conjecture": "Conjecture 5",
+      "test_name": "Procrustes connection structure (variability)",
+      "prediction": "Procrustes deviation varies meaningfully across tokens/layers (CV > 0.1)",
+      "observation": "CV of Procrustes deviations: 0.9070, mean=1.0418, std=0.9449",
+      "p_value": null,
+      "effect_size": 0.907003600609973,
+      "falsified": false,
+      "details": {
+        "cv": 0.907003600609973,
+        "mean_deviation": 1.0417525034133202,
+        "std_deviation": 0.944873271631035,
+        "n_measurements": 4026
+      }
+    },
+    {
+      "conjecture": "Conjecture 6",
+      "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+      "prediction": "Consecutive layer deformations are more correlated than non-consecutive ones",
+      "observation": "Mean |corr|: consecutive=0.0751, non-consecutive=0.0505",
+      "p_value": 4.4588317464449375e-18,
+      "effect_size": 0.3374549511915369,
+      "falsified": false,
+      "details": {
+        "mean_consecutive_corr": 0.07509130708111106,
+        "mean_nonconsecutive_corr": 0.050497165390890435,
+        "n_consecutive": 252,
+        "n_nonconsecutive": 468
+      }
+    },
+    {
+      "conjecture": "Conjecture 6",
+      "test_name": "Cross-prompt deformation structure (shared variance)",
+      "prediction": "PC1 of cross-prompt deformations explains >20% variance (shared template from weights)",
+      "observation": "Mean PC1 variance explained: 0.2244 (22.4%)",
+      "p_value": null,
+      "effect_size": 0.22436609864234924,
+      "falsified": false,
+      "details": {
+        "mean_shared_variance": 0.22436609864234924,
+        "per_layer_shared_variance": [
+          0.3101986050605774,
+          0.26189544796943665,
+          0.9908475279808044,
+          0.17170991003513336,
+          0.1495649367570877,
+          0.1596963107585907,
+          0.17544609308242798,
+          0.1696586012840271,
+          0.1524011790752411,
+          0.1528039127588272,
+          0.17041178047657013,
+          0.1822294443845749,
+          0.1884302794933319,
+          0.18633756041526794,
+          0.19050836563110352,
+          0.166411891579628,
+          0.17959831655025482,
+          0.15831051766872406,
+          0.18137523531913757,
+          0.164693683385849,
+          0.18651027977466583,
+          0.2870142459869385
+        ]
+      }
+    },
+    {
+      "conjecture": "Conjecture 7",
+      "test_name": "Local consistency (sheaf resolution across layers)",
+      "prediction": "Within-prompt / between-prompt distance ratio decreases with layer depth (later layers resolve semantic structure)",
+      "observation": "Spearman correlation between layer depth and distance ratio: r=-0.5464, p=0.006979. Early ratio=3.7032, late ratio=1.9299",
+      "p_value": 0.006979445684996816,
+      "effect_size": -0.5464426877470356,
+      "falsified": false,
+      "details": {
+        "layer_ratios": [
+          3.7031583015631067,
+          4.034256295192597,
+          3.9375259960866913,
+          11.15487094459109,
+          10.990988724607893,
+          10.707113782650609,
+          10.363682575465603,
+          9.925851499091861,
+          9.14977600839909,
+          8.97806088149086,
+          8.435790022465442,
+          7.9545515364170125,
+          7.693728905565444,
+          7.05416748972661,
+          6.405676054365453,
+          6.007458232317668,
+          5.624083010150476,
+          4.559968195371268,
+          4.080158813756174,
+          3.454883017943323,
+          3.1009702987572236,
+          2.851039904612612,
+          1.9298691086479707
+        ],
+        "spearman_r": -0.5464426877470356,
+        "early_ratio": 3.7031583015631067,
+        "late_ratio": 1.9298691086479707
+      }
+    },
+    {
+      "conjecture": "Meta (Necessity)",
+      "test_name": "Effective dimensionality of deformations",
+      "prediction": "Layer deformations are multi-dimensional (effective rank > 2) and token-specific (diversity > 10%), justifying geometric analysis",
+      "observation": "Mean effective rank of deltas: 11.55 (max possible: 15). Mean deformation diversity: 0.7381 (73.8% variance NOT explained by global shift)",
+      "p_value": null,
+      "effect_size": 11.54853630065918,
+      "falsified": false,
+      "details": {
+        "mean_effective_rank": 11.54853630065918,
+        "mean_max_possible_rank": 15.25,
+        "mean_deformation_diversity": 0.738079309463501,
+        "n_measurements": 264
+      }
+    }
+  ],
+  "summary": {
+    "n_falsified": 2,
+    "n_not_falsified": 7,
+    "n_inconclusive": 6
+  }
+}
