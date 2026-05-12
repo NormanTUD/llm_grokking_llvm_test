@@ -1,0 +1,2611 @@
+{
+  "models": [
+    "gpt2",
+    "gpt2-medium",
+    "gpt2-large",
+    "gpt2-xl",
+    "EleutherAI/pythia-70m",
+    "EleutherAI/pythia-160m",
+    "EleutherAI/pythia-410m",
+    "EleutherAI/pythia-1b",
+    "EleutherAI/pythia-1.4b",
+    "EleutherAI/pythia-2.8b",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
+    "facebook/opt-125m",
+    "facebook/opt-350m",
+    "facebook/opt-1.3b",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "google/gemma-2b",
+    "Qwen/Qwen2-0.5B",
+    "Qwen/Qwen2-1.5B",
+    "deepseek-ai/DeepSeek-V3",
+    "deepseek-ai/DeepSeek-R1",
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+    "mistralai/Mistral-7B-v0.3",
+    "mistralai/Mixtral-8x7B-v0.1",
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-70B",
+    "Qwen/Qwen2.5-7B",
+    "Qwen/Qwen2.5-14B"
+  ],
+  "per_model_results": {
+    "gpt2": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 8.56099843802256e-86,
+        "effect_size": 0.20720516797347188
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 2.0124762058258057
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 1.8185788194119377e-279,
+        "effect_size": 11.900601582913632
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.051808776969146764
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.959785834431754e-49,
+        "effect_size": 1.6583313974588996
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.7017847623717749,
+        "effect_size": -0.12113011531151986
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9732616984052852
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.4191219806671143
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.8596338271287872
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 3.1398432868103553e-09,
+        "effect_size": 0.3314966732561464
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.3215046525001526
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.641516421586088,
+        "effect_size": -0.14285714285714285
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 5.434476852416992
+      }
+    ],
+    "gpt2-medium": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.13023521535374985
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9968665838241577
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 29.42038989550276
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.056580370809781885
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.6157136132529597
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.253107716943981,
+        "effect_size": -0.01666149603404685
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.2932597486055928
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 3.142975091934204
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.1809455426172977
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.013637821077821e-05,
+        "effect_size": 0.2355536433016434
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2296750545501709
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.11519500605167757,
+        "effect_size": -0.3230769230769231
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.504682540893555
+      }
+    ],
+    "gpt2-large": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 5.991784920086137e-259,
+        "effect_size": 0.38146918338117525
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9985688924789429
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 58.66319507201652
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.05028905779310029
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.440929614285188e-143,
+        "effect_size": 1.417141085879116
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.015695262447417264,
+        "effect_size": 0.06044159671564732
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.6096206450825605
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.003969430923462
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4107859864871088
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.2563600056819848e-06,
+        "effect_size": 0.28658115951038277
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.24067632853984833
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.6716369683113379,
+        "effect_size": -0.07207207207207207
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.2969794273376465
+      }
+    ],
+    "gpt2-xl": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 0.457964895450993
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.895268440246582
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 64.56763697091331
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.03294981342911101
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.797050199469963e-190,
+        "effect_size": 1.4535281649028295
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 2.2748760419035737e-07,
+        "effect_size": 0.12917023182719048
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.7956447672780165
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.1593093872070312
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.6077189959222276
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 0.0006216119005781122,
+        "effect_size": 0.09373332242782857
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2948431968688965
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.24605695666306282,
+        "effect_size": -0.16887755102040813
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.210047245025635
+      }
+    ],
+    "EleutherAI/pythia-70m": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 1.3511568957277997e-42,
+        "effect_size": 0.9174763319868743
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.8470954895019531
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 1.222501719892264e-303,
+        "effect_size": 85.79826923611536
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.02701670634568353
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 1.9982238522835737e-25,
+        "effect_size": 1.693582052039254
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.9627247818395147,
+        "effect_size": -0.3035960378718237
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0296458074098487
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 0.033297378569841385,
+        "effect_size": 0.8748252987861633
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.5844991341300112
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 9.760827934440963e-16,
+        "effect_size": 1.289394647078036
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.37600627541542053
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 1.0,
+        "effect_size": 0.0
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 5.085901260375977
+      }
+    ],
+    "EleutherAI/pythia-160m": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 8.56099843802256e-86,
+        "effect_size": 0.6327762163882671
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.824037790298462
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 170.88939819066417
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.03659513638477551
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.959785834431754e-49,
+        "effect_size": 1.6554461675418293
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.36582603895461696,
+        "effect_size": 0.006745078595313116
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9918877227877624
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 1.6188452243804932
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.6484405893276579
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.3231834903488077e-07,
+        "effect_size": 0.6697448339613692
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.3053886294364929
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.830542385756094,
+        "effect_size": 0.06593406593406594
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 5.724550247192383
+      }
+    ],
+    "EleutherAI/pythia-410m": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.34677378900638317
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9886577129364014
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 359.7692067679145
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.025763836767648297
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.8028533637774249
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.030993993757043935,
+        "effect_size": 0.0326647330195113
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.3190905276961955
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.366638660430908
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9461376437999934
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 8.3611054785566485e-22,
+        "effect_size": 0.7457342118168077
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.27473095059394836
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.7011275748533197,
+        "effect_size": 0.08076923076923077
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.446065425872803
+      }
+    ],
+    "EleutherAI/pythia-1b": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 1.2474408300930894e-114,
+        "effect_size": 0.19920901428752716
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.96364426612854
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 237.7569608882007
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.019322197155420405
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 9.947350213517328e-65,
+        "effect_size": 1.7202992707759528
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.12955349317466275,
+        "effect_size": -0.012299497085155603
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4044843314946387
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.5722689628601074
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9807110773068242
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 9.364241362998385e-18,
+        "effect_size": 0.8686610040337324
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2894296944141388
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.9702105713958576,
+        "effect_size": -0.009803921568627453
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 6.869739532470703
+      }
+    ],
+    "EleutherAI/pythia-1.4b": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.26460519250634024
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9849318265914917
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 360.7811654980875
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.027596868440698502
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.7521405872554463
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.005192654803757727,
+        "effect_size": 0.0727719517596225
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.2629511087038627
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.884936809539795
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.2148766962612743
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.8247165240419935e-36,
+        "effect_size": 0.9641215251930427
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2170853167772293
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.2193465644118854,
+        "effect_size": -0.25461538461538463
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.907236576080322
+      }
+    ],
+    "EleutherAI/pythia-2.8b": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 4.475847141224385e-230,
+        "effect_size": 0.6696830689630819
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.8320229053497314
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 475.74136807510143
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.033203275065662494
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.0312562686604556e-127,
+        "effect_size": 1.6844039105991115
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.0009551365038333055,
+        "effect_size": 0.1452570064370916
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.367368876028918
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.5669469833374023
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.2899064218867853
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 3.881640373154234e-21,
+        "effect_size": 0.6045394908733128
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.24097676575183868
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.0010541718090135226,
+        "effect_size": -0.544451871657754
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 6.811712741851807
+      }
+    ],
+    "microsoft/phi-1_5": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.6479359330220413
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.8351125717163086
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 351.87204557889044
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.029722511260319325
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.8065731351754795
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.018251600102093406,
+        "effect_size": 0.04083279164254605
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.486795594207126
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.4264490604400635
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.3525988191348723
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 6.42775854233991e-09,
+        "effect_size": 0.3383501461047928
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2227214127779007
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.0019731836136078354,
+        "effect_size": -0.5884615384615385
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 8.107925415039062
+      }
+    ],
+    "microsoft/phi-2": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 4.475847141224385e-230,
+        "effect_size": 0.5400894418224188
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.7175880670547485
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 466.6535993807
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.02733989376173677
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.0312562686604556e-127,
+        "effect_size": 1.7897004966396124
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.00014554990158954328,
+        "effect_size": 0.10353705172087929
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.5306703201263037
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.3539600372314453
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.3649413755121655
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 0.004882908767258027,
+        "effect_size": 0.20160241390626493
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.22367554903030396
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 8.598644932419003e-07,
+        "effect_size": -0.7399732620320856
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 9.08791446685791
+      }
+    ],
+    "facebook/opt-125m": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 8.56099843802256e-86,
+        "effect_size": 0.21371680077895605
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9828444719314575
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 3.4782185667459088e-251,
+        "effect_size": 12.074658106729151
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.07519660700548067
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.959785834431754e-49,
+        "effect_size": 1.7275905849584479
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.5614724351674849,
+        "effect_size": -0.12628574224666544
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4253898606825433
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 5.144415378570557
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9228729049347257
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 4.840174773592973e-16,
+        "effect_size": 0.5358175058977495
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.45202746987342834
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.08186423116569438,
+        "effect_size": -0.5
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 6.247405052185059
+      }
+    ],
+    "facebook/opt-350m": [],
+    "facebook/opt-1.3b": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.3313370400496177
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9825241565704346
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 164.9100500340391
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.03820659982960121
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.3613944277245027
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.027491129060520262,
+        "effect_size": 0.007217661327862484
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.8243055786052078
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 1.843120813369751
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.176034259999159
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 3.781634642794932e-13,
+        "effect_size": 0.3888175615635163
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.20597679913043976
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 2.3368932104106912e-20,
+        "effect_size": -0.9884615384615385
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 10.17625904083252
+      }
+    ],
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 6.558051405798401e-158,
+        "effect_size": 0.050147247843071965
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.7158989906311035
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 387.40159403960587
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.034856178352853075
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.9929239479359973e-88,
+        "effect_size": 1.6762882851319258
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.25067031211189433,
+        "effect_size": -0.028224859754474408
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.5961912218248813
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 3.485461711883545
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9070035767618772
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 4.4588317464449375e-18,
+        "effect_size": 0.3374549511915369
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.22436609864234924
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.006979445684996816,
+        "effect_size": -0.5464426877470356
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 11.54853630065918
+      }
+    ],
+    "google/gemma-2b": [],
+    "Qwen/Qwen2-0.5B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 2.4333925226320105e-172,
+        "effect_size": 0.09767557692747925
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.935633659362793
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 355.6250152919045
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.03386492780655677
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.362916360632744e-96,
+        "effect_size": 1.610473616071799
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.005842477383317063,
+        "effect_size": 0.010799714236792471
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4701864087056846
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 3.4884793758392334
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0890016902080681
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 3.946568658086615e-37,
+        "effect_size": 0.6856514905573432
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2919001281261444
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.04572957500344942,
+        "effect_size": -0.40307692307692305
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.852649211883545
+      }
+    ],
+    "Qwen/Qwen2-1.5B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 3.317256489290391e-201,
+        "effect_size": 0.09053261274919419
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9674971103668213
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 405.58685432652027
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.024799838270537986
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 9.364998613183233e-112,
+        "effect_size": 1.6047906599515636
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.000470799842043132,
+        "effect_size": -0.0013033073191086938
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.3674717899236695
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 3.9792401790618896
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.052527928663768
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 5.620972982840677e-33,
+        "effect_size": 0.8666434833332117
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.22472421824932098
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 7.63800116038592e-05,
+        "effect_size": -0.6674876847290638
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 8.933344841003418
+      }
+    ],
+    "deepseek-ai/DeepSeek-V3": [],
+    "deepseek-ai/DeepSeek-R1": [],
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 3.317256489290391e-201,
+        "effect_size": 0.10397093855059389
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.6256707906723022
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 381.8886115638373
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.033280431064960654
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 9.364998613183233e-112,
+        "effect_size": 1.6853353068271428
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.00011096951273576583,
+        "effect_size": 0.04575926430709138
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.5967498484396685
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 2.897141695022583
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0976030473937006
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 2.2215098069782645e-13,
+        "effect_size": 0.2892100751701947
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.29758143424987793
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.07298386509258915,
+        "effect_size": 0.3379310344827586
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.19293737411499
+      }
+    ],
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 0.015741097898417416
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.7616159915924072
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 708.3109764224586
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.017252436888432483
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.797050199469963e-190,
+        "effect_size": 1.6484075310827582
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 2.459199468750056e-06,
+        "effect_size": 0.017244913049931934
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4333917390448498
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 4.603128433227539
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.2847050710669972
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 4.5275485312800525e-50,
+        "effect_size": 0.42046854487581836
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.24060164391994476
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.0024308323084727135,
+        "effect_size": -0.423469387755102
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 8.513376235961914
+      }
+    ],
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 4.475847141224385e-230,
+        "effect_size": 0.047215061976361425
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": true,
+        "p_value": 0.21590909361839294,
+        "effect_size": 0.8397919535636902
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 801.2623586266809
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.021369040018122728
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.0312562686604556e-127,
+        "effect_size": 1.6706662962756438
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.0966047497573776,
+        "effect_size": 0.01956912324545253
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.8968239466472188
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 6.11483097076416
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.9873428702502111
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 5.226145605720376e-29,
+        "effect_size": 0.7415912955386227
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.21526475250720978
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 1.4094510714594968e-05,
+        "effect_size": -0.6788101604278076
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 12.942790031433105
+      }
+    ],
+    "mistralai/Mistral-7B-v0.3": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 4.475847141224385e-230,
+        "effect_size": 0.026617274397602475
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.8258841037750244
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 567.20687596312
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.05965625474287661
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.0312562686604556e-127,
+        "effect_size": 1.8679751146377244
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.01157328633997168,
+        "effect_size": 0.03402416996300626
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 3.3563807263465417
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 4.986361980438232
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0938148433973536
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": true,
+        "p_value": 0.056201430902761765,
+        "effect_size": 0.11104505906980347
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2074035108089447
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 2.023925660943582e-10,
+        "effect_size": -0.8566176470588237
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 11.100284576416016
+      }
+    ],
+    "mistralai/Mixtral-8x7B-v0.1": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 4.475847141224385e-230,
+        "effect_size": 0.01274467461048672
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0025252525229007006,
+        "effect_size": 1.7144471406936646
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 513.992121969883
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.05164678010513888
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 2.0312562686604556e-127,
+        "effect_size": 1.7946801372899601
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": true,
+        "p_value": 0.18586605660793204,
+        "effect_size": -0.018669933454382174
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0996727659947876
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 4.183435916900635
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.014376560532689
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": true,
+        "p_value": 0.37364343741679806,
+        "effect_size": 0.061003738132058796
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.21348819136619568
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 8.04082390817958e-09,
+        "effect_size": -0.814505347593583
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 9.132946014404297
+      }
+    ],
+    "meta-llama/Llama-3.1-8B": [],
+    "meta-llama/Llama-3.1-70B": [],
+    "Qwen/Qwen2.5-7B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 3.317256489290391e-201,
+        "effect_size": 0.02064028652723445
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.3072930574417114
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 408.81490300625285
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.02352652551965186
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 9.364998613183233e-112,
+        "effect_size": 1.697049278409938
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 0.04224602861239647,
+        "effect_size": -0.058429120108474494
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.4618149271700922
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 3.536116361618042
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.0906957733914098
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.080031130036174e-20,
+        "effect_size": 0.3896698793698861
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.2751619815826416
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": true,
+        "p_value": 0.22182262773153094,
+        "effect_size": -0.23399014778325114
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 7.26763391494751
+      }
+    ],
+    "Qwen/Qwen2.5-14B": [
+      {
+        "test_name": "Structured deformation (SV distribution)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 0.012533486551783405
+      },
+      {
+        "test_name": "Semantic sensitivity of deformations",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0012626262614503503,
+        "effect_size": 1.9496791362762451
+      },
+      {
+        "test_name": "Curvature concentration (heavy-tailedness)",
+        "conjecture": "Conjecture 1",
+        "falsified": false,
+        "p_value": 0.0,
+        "effect_size": 706.4447798161823
+      },
+      {
+        "test_name": "Holographic distribution (ablation uniformity)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.017279652577427716
+      },
+      {
+        "test_name": "Drift coherence (token delta alignment)",
+        "conjecture": "Conjecture 2",
+        "falsified": false,
+        "p_value": 4.797050199469963e-190,
+        "effect_size": 1.639771557740188
+      },
+      {
+        "test_name": "Persistent topology (semantic structure)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": 9.516509575812084e-07,
+        "effect_size": 0.03990381273655916
+      },
+      {
+        "test_name": "Topology evolution (Wasserstein distance CV across layers)",
+        "conjecture": "Conjecture 3",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.6554577631495089
+      },
+      {
+        "test_name": "Inner/outer layer asymmetry",
+        "conjecture": "Conjecture 4",
+        "falsified": true,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Isotropy profile (inner vs outer layers)",
+        "conjecture": "Conjecture 4",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": null
+      },
+      {
+        "test_name": "Jacobian as information carrier (effective dimensionality)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": 1.0,
+        "effect_size": 4.5464396476745605
+      },
+      {
+        "test_name": "Procrustes connection structure (variability)",
+        "conjecture": "Conjecture 5",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 1.3223271376374277
+      },
+      {
+        "test_name": "Layer dependency (consecutive vs non-consecutive correlation)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": 1.722594957238367e-45,
+        "effect_size": 0.4321989181323862
+      },
+      {
+        "test_name": "Cross-prompt deformation structure (shared variance)",
+        "conjecture": "Conjecture 6",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 0.23103994131088257
+      },
+      {
+        "test_name": "Local consistency (sheaf resolution across layers)",
+        "conjecture": "Conjecture 7",
+        "falsified": false,
+        "p_value": 0.0004573122198528687,
+        "effect_size": -0.48173469387755097
+      },
+      {
+        "test_name": "Effective dimensionality of deformations",
+        "conjecture": "Meta (Necessity)",
+        "falsified": false,
+        "p_value": null,
+        "effect_size": 8.609607696533203
+      }
+    ]
+  },
+  "consistency": 0.5555555555555556
+}
